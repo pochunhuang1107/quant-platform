@@ -63,6 +63,61 @@ class ArtifactStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class DataSnapshotKind(StrEnum):
+    """Dataset snapshot categories used by reproducible research runs."""
+
+    MARKET_DATA = "market_data"
+    FUNDAMENTAL_DATA = "fundamental_data"
+    REFERENCE_DATA = "reference_data"
+    CORPORATE_ACTIONS = "corporate_actions"
+    UNIVERSE_MEMBERSHIP = "universe_membership"
+    BENCHMARK_DATA = "benchmark_data"
+    MIXED = "mixed"
+    OTHER = "other"
+
+
+class DataSourceType(StrEnum):
+    """Source categories for data snapshot manifests."""
+
+    VENDOR = "vendor"
+    EXCHANGE = "exchange"
+    PUBLIC_DATASET = "public_dataset"
+    INTERNAL = "internal"
+    RESEARCH_GENERATED = "research_generated"
+    MANUAL = "manual"
+    OTHER = "other"
+
+
+class DataAdjustmentPolicy(StrEnum):
+    """Adjustment policy labels for data snapshot manifests."""
+
+    RAW = "raw"
+    SPLIT_ADJUSTED = "split_adjusted"
+    TOTAL_RETURN = "total_return"
+    CONTINUOUS = "continuous"
+    OTHER = "other"
+
+
+class TemporalCoverage(StrEnum):
+    """Point-in-time semantics for a data snapshot."""
+
+    POINT_IN_TIME = "point_in_time"
+    FIRST_AVAILABLE = "first_available"
+    LATEST_KNOWN = "latest_known"
+    MIXED = "mixed"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class DataSnapshotStatus(StrEnum):
+    """Lifecycle status recorded by a data snapshot manifest."""
+
+    CREATED = "created"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INVALID = "invalid"
+    SUPERSEDED = "superseded"
+
+
 class ExperimentRunStatus(StrEnum):
     """Allowed experiment ledger run statuses."""
 

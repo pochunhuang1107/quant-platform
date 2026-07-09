@@ -1,0 +1,405 @@
+{
+  "$defs": {
+    "AssetClass": {
+      "description": "Supported high-level asset classes for research contracts.",
+      "enum": [
+        "equities",
+        "etfs",
+        "futures",
+        "fx",
+        "crypto",
+        "indices",
+        "options",
+        "mixed"
+      ],
+      "title": "AssetClass",
+      "type": "string"
+    },
+    "AssetUniverseReference": {
+      "additionalProperties": false,
+      "description": "Reference to a point-in-time asset universe.",
+      "properties": {
+        "as_of": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "symbols": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/NonEmptyString"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Symbols"
+        },
+        "universe_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "AssetUniverseReference",
+      "type": "object"
+    },
+    "DataAdjustmentPolicy": {
+      "description": "Adjustment policy labels for data snapshot manifests.",
+      "enum": [
+        "raw",
+        "split_adjusted",
+        "total_return",
+        "continuous",
+        "other"
+      ],
+      "title": "DataAdjustmentPolicy",
+      "type": "string"
+    },
+    "DataSnapshotKind": {
+      "description": "Dataset snapshot categories used by reproducible research runs.",
+      "enum": [
+        "market_data",
+        "fundamental_data",
+        "reference_data",
+        "corporate_actions",
+        "universe_membership",
+        "benchmark_data",
+        "mixed",
+        "other"
+      ],
+      "title": "DataSnapshotKind",
+      "type": "string"
+    },
+    "DataSnapshotStatus": {
+      "description": "Lifecycle status recorded by a data snapshot manifest.",
+      "enum": [
+        "created",
+        "completed",
+        "failed",
+        "invalid",
+        "superseded"
+      ],
+      "title": "DataSnapshotStatus",
+      "type": "string"
+    },
+    "DataSourceType": {
+      "description": "Source categories for data snapshot manifests.",
+      "enum": [
+        "vendor",
+        "exchange",
+        "public_dataset",
+        "internal",
+        "research_generated",
+        "manual",
+        "other"
+      ],
+      "title": "DataSourceType",
+      "type": "string"
+    },
+    "HashAlgorithm": {
+      "description": "Content hash algorithms supported by artifact manifests.",
+      "enum": [
+        "sha256"
+      ],
+      "title": "HashAlgorithm",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "TemporalCoverage": {
+      "description": "Point-in-time semantics for a data snapshot.",
+      "enum": [
+        "point_in_time",
+        "first_available",
+        "latest_known",
+        "mixed",
+        "not_applicable"
+      ],
+      "title": "TemporalCoverage",
+      "type": "string"
+    },
+    "TimeRange": {
+      "additionalProperties": false,
+      "description": "Inclusive date range covered by an experiment run.",
+      "properties": {
+        "end_date": {
+          "format": "date",
+          "title": "End Date",
+          "type": "string"
+        },
+        "start_date": {
+          "format": "date",
+          "title": "Start Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Manifest describing a full point-in-time dataset snapshot.",
+  "properties": {
+    "adjustment_policy": {
+      "$ref": "#/$defs/DataAdjustmentPolicy"
+    },
+    "adjustment_policy_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "as_of": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "asset_class": {
+      "$ref": "#/$defs/AssetClass"
+    },
+    "asset_universe": {
+      "$ref": "#/$defs/AssetUniverseReference"
+    },
+    "available_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "calendar": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "corporate_action_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "created_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "data_root_uri": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "delisting_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "file_count": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "File Count"
+    },
+    "frequency": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "hash_algorithm": {
+      "$ref": "#/$defs/HashAlgorithm"
+    },
+    "ingestion_completed_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "known_limitations": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Known Limitations",
+      "type": "array"
+    },
+    "license_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "rollover_policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "row_count": {
+      "minimum": 0,
+      "title": "Row Count",
+      "type": "integer"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "size_bytes": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Size Bytes"
+    },
+    "snapshot_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "snapshot_kind": {
+      "$ref": "#/$defs/DataSnapshotKind"
+    },
+    "source_dataset": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_observed_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "source_type": {
+      "$ref": "#/$defs/DataSourceType"
+    },
+    "source_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "status": {
+      "$ref": "#/$defs/DataSnapshotStatus"
+    },
+    "survivorship_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "temporal_coverage": {
+      "$ref": "#/$defs/TemporalCoverage"
+    },
+    "temporal_coverage_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "time_range": {
+      "$ref": "#/$defs/TimeRange"
+    },
+    "timezone": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "universe_membership_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "vendor_name": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "snapshot_kind",
+    "status",
+    "created_at",
+    "created_by",
+    "asset_class",
+    "asset_universe",
+    "time_range",
+    "frequency",
+    "data_root_uri",
+    "source_dataset",
+    "source_version",
+    "source_type",
+    "temporal_coverage",
+    "as_of",
+    "available_at",
+    "ingestion_completed_at",
+    "adjustment_policy",
+    "calendar",
+    "timezone",
+    "universe_membership_policy",
+    "corporate_action_policy",
+    "survivorship_policy",
+    "delisting_policy",
+    "hash_algorithm",
+    "content_hash",
+    "row_count",
+    "known_limitations"
+  ],
+  "title": "DataSnapshotManifest",
+  "type": "object"
+}

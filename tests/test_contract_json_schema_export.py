@@ -6,11 +6,16 @@ from research_sdk.contracts import (
     ArtifactKind,
     ArtifactStatus,
     AssetClass,
+    DataAdjustmentPolicy,
+    DataSnapshotKind,
+    DataSnapshotStatus,
+    DataSourceType,
     ExperimentRunStatus,
     FailureLabel,
     HashAlgorithm,
     ReviewRole,
     ReviewStatus,
+    TemporalCoverage,
 )
 from research_sdk.contracts.json_schema import (
     SCHEMA_EXPORTS,
@@ -32,6 +37,7 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "review_metadata.schema.json",
         "experiment_run_record.schema.json",
         "run_artifact_manifest.schema.json",
+        "data_snapshot_manifest.schema.json",
     }
 
 
@@ -202,4 +208,71 @@ def test_run_artifact_manifest_schema_contains_contract_definitions() -> None:
         status.value for status in ArtifactStatus
     }
     assert "RunArtifactEntry" in schema_defs
+    assert "SchemaVersion" in schema_defs
+
+
+def test_data_snapshot_manifest_schema_contains_expected_fields() -> None:
+    schema = load_schema("data_snapshot_manifest.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "snapshot_id",
+        "schema_version",
+        "snapshot_kind",
+        "status",
+        "created_at",
+        "created_by",
+        "asset_class",
+        "asset_universe",
+        "time_range",
+        "frequency",
+        "data_root_uri",
+        "source_dataset",
+        "source_version",
+        "source_type",
+        "temporal_coverage",
+        "as_of",
+        "available_at",
+        "ingestion_completed_at",
+        "adjustment_policy",
+        "calendar",
+        "timezone",
+        "universe_membership_policy",
+        "corporate_action_policy",
+        "survivorship_policy",
+        "delisting_policy",
+        "hash_algorithm",
+        "content_hash",
+        "row_count",
+        "known_limitations",
+    }
+
+
+def test_data_snapshot_manifest_schema_contains_contract_definitions() -> None:
+    schema = load_schema("data_snapshot_manifest.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["DataSnapshotKind"]["enum"]) == {  # type: ignore[index]
+        kind.value for kind in DataSnapshotKind
+    }
+    assert set(schema_defs["DataSourceType"]["enum"]) == {  # type: ignore[index]
+        source_type.value for source_type in DataSourceType
+    }
+    assert set(schema_defs["DataAdjustmentPolicy"]["enum"]) == {  # type: ignore[index]
+        policy.value for policy in DataAdjustmentPolicy
+    }
+    assert set(schema_defs["TemporalCoverage"]["enum"]) == {  # type: ignore[index]
+        coverage.value for coverage in TemporalCoverage
+    }
+    assert set(schema_defs["DataSnapshotStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in DataSnapshotStatus
+    }
+    assert set(schema_defs["AssetClass"]["enum"]) == {  # type: ignore[index]
+        asset_class.value for asset_class in AssetClass
+    }
+    assert set(schema_defs["HashAlgorithm"]["enum"]) == {  # type: ignore[index]
+        algorithm.value for algorithm in HashAlgorithm
+    }
+    assert "AssetUniverseReference" in schema_defs
+    assert "TimeRange" in schema_defs
     assert "SchemaVersion" in schema_defs

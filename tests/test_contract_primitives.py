@@ -12,6 +12,11 @@ from research_sdk.contracts import (
     ArtifactStatus,
     AssetClass,
     BaseContractModel,
+    DataAdjustmentPolicy,
+    DataSnapshotKind,
+    DataSnapshotManifest,
+    DataSnapshotStatus,
+    DataSourceType,
     ExperimentRunRecord,
     ExperimentRunStatus,
     FailureLabel,
@@ -23,6 +28,7 @@ from research_sdk.contracts import (
     RunArtifactEntry,
     RunArtifactManifest,
     SchemaVersion,
+    TemporalCoverage,
     UtcDatetime,
     ensure_utc_datetime,
 )
@@ -38,6 +44,11 @@ def test_contracts_exports_primitives() -> None:
     assert contracts.ArtifactFormat is ArtifactFormat
     assert contracts.ArtifactKind is ArtifactKind
     assert contracts.ArtifactStatus is ArtifactStatus
+    assert contracts.DataAdjustmentPolicy is DataAdjustmentPolicy
+    assert contracts.DataSnapshotKind is DataSnapshotKind
+    assert contracts.DataSnapshotManifest is DataSnapshotManifest
+    assert contracts.DataSnapshotStatus is DataSnapshotStatus
+    assert contracts.DataSourceType is DataSourceType
     assert contracts.ExperimentRunRecord is ExperimentRunRecord
     assert contracts.ExperimentRunStatus is ExperimentRunStatus
     assert contracts.FailureLabel is FailureLabel
@@ -47,6 +58,7 @@ def test_contracts_exports_primitives() -> None:
     assert contracts.RESEARCH_SDK_CONTRACT_SCHEMA_VERSION == "1.0.0"
     assert contracts.RunArtifactEntry is RunArtifactEntry
     assert contracts.RunArtifactManifest is RunArtifactManifest
+    assert contracts.TemporalCoverage is TemporalCoverage
 
 
 def test_asset_class_contains_documented_values() -> None:
@@ -104,6 +116,61 @@ def test_artifact_status_contains_documented_values() -> None:
         "missing",
         "failed",
         "skipped",
+    }
+
+
+def test_data_snapshot_kind_contains_documented_values() -> None:
+    assert {kind.value for kind in DataSnapshotKind} == {
+        "market_data",
+        "fundamental_data",
+        "reference_data",
+        "corporate_actions",
+        "universe_membership",
+        "benchmark_data",
+        "mixed",
+        "other",
+    }
+
+
+def test_data_source_type_contains_documented_values() -> None:
+    assert {source_type.value for source_type in DataSourceType} == {
+        "vendor",
+        "exchange",
+        "public_dataset",
+        "internal",
+        "research_generated",
+        "manual",
+        "other",
+    }
+
+
+def test_data_adjustment_policy_contains_documented_values() -> None:
+    assert {policy.value for policy in DataAdjustmentPolicy} == {
+        "raw",
+        "split_adjusted",
+        "total_return",
+        "continuous",
+        "other",
+    }
+
+
+def test_temporal_coverage_contains_documented_values() -> None:
+    assert {coverage.value for coverage in TemporalCoverage} == {
+        "point_in_time",
+        "first_available",
+        "latest_known",
+        "mixed",
+        "not_applicable",
+    }
+
+
+def test_data_snapshot_status_contains_documented_values() -> None:
+    assert {status.value for status in DataSnapshotStatus} == {
+        "created",
+        "completed",
+        "failed",
+        "invalid",
+        "superseded",
     }
 
 
