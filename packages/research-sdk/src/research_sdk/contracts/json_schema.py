@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Final
 
 from research_sdk.contracts.base import BaseContractModel
+from research_sdk.contracts.ledger import ExperimentRunRecord
 from research_sdk.contracts.review import ReviewMetadata
 from research_sdk.contracts.schema import VersionedContract
 
 SCHEMA_EXPORTS: Final[dict[str, type[BaseContractModel]]] = {
     "versioned_contract.schema.json": VersionedContract,
     "review_metadata.schema.json": ReviewMetadata,
+    "experiment_run_record.schema.json": ExperimentRunRecord,
 }
 
 

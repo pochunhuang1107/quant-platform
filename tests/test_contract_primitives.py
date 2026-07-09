@@ -9,6 +9,10 @@ from research_sdk.contracts import (
     RESEARCH_SDK_CONTRACT_SCHEMA_VERSION,
     AssetClass,
     BaseContractModel,
+    ExperimentRunRecord,
+    ExperimentRunStatus,
+    FailureLabel,
+    NonEmptyString,
     ReviewMetadata,
     ReviewRole,
     ReviewStatus,
@@ -25,6 +29,10 @@ def test_research_sdk_imports() -> None:
 def test_contracts_exports_primitives() -> None:
     assert contracts.BaseContractModel is BaseContractModel
     assert contracts.AssetClass is AssetClass
+    assert contracts.ExperimentRunRecord is ExperimentRunRecord
+    assert contracts.ExperimentRunStatus is ExperimentRunStatus
+    assert contracts.FailureLabel is FailureLabel
+    assert contracts.NonEmptyString is NonEmptyString
     assert contracts.ReviewMetadata is ReviewMetadata
     assert contracts.RESEARCH_SDK_CONTRACT_SCHEMA_VERSION == "1.0.0"
 

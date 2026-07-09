@@ -1,0 +1,592 @@
+{
+  "$defs": {
+    "AssetClass": {
+      "description": "Supported high-level asset classes for research contracts.",
+      "enum": [
+        "equities",
+        "etfs",
+        "futures",
+        "fx",
+        "crypto",
+        "indices",
+        "options",
+        "mixed"
+      ],
+      "title": "AssetClass",
+      "type": "string"
+    },
+    "AssetUniverseReference": {
+      "additionalProperties": false,
+      "description": "Reference to a point-in-time asset universe.",
+      "properties": {
+        "as_of": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "symbols": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/NonEmptyString"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Symbols"
+        },
+        "universe_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "AssetUniverseReference",
+      "type": "object"
+    },
+    "BenchmarkReference": {
+      "additionalProperties": false,
+      "description": "Benchmark identifier and point-in-time snapshot reference.",
+      "properties": {
+        "benchmark_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "snapshot_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "benchmark_id",
+        "snapshot_id"
+      ],
+      "title": "BenchmarkReference",
+      "type": "object"
+    },
+    "ExperimentRunStatus": {
+      "description": "Allowed experiment ledger run statuses.",
+      "enum": [
+        "created",
+        "running",
+        "completed",
+        "under_review",
+        "accepted",
+        "rejected",
+        "failed",
+        "invalid",
+        "superseded",
+        "cancelled"
+      ],
+      "title": "ExperimentRunStatus",
+      "type": "string"
+    },
+    "FailureLabel": {
+      "description": "Machine-readable labels for experiment run failure modes.",
+      "enum": [
+        "data_unavailable",
+        "data_validation_failed",
+        "config_validation_failed",
+        "leakage_check_failed",
+        "artifact_validation_failed",
+        "execution_error",
+        "timeout",
+        "resource_limit",
+        "dependency_error",
+        "unknown"
+      ],
+      "title": "FailureLabel",
+      "type": "string"
+    },
+    "MetricScalar": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "RandomSeedMetadata": {
+      "additionalProperties": false,
+      "description": "Random seed metadata for stochastic or explicitly deterministic runs.",
+      "properties": {
+        "rationale": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seed"
+        }
+      },
+      "required": [
+        "seed"
+      ],
+      "title": "RandomSeedMetadata",
+      "type": "object"
+    },
+    "ReviewMetadata": {
+      "additionalProperties": false,
+      "description": "Structured review metadata without approval workflow behavior.",
+      "properties": {
+        "approval_expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "approval_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Scope"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision"
+        },
+        "linked_pr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Linked Pr"
+        },
+        "review_notes_uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Notes Uri"
+        },
+        "review_role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewRole"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reviewer_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "risk_approval_required": {
+          "title": "Risk Approval Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "review_status",
+        "risk_approval_required"
+      ],
+      "title": "ReviewMetadata",
+      "type": "object"
+    },
+    "ReviewRole": {
+      "description": "Reviewer role labels used in durable review metadata.",
+      "enum": [
+        "human_owner",
+        "risk_reviewer",
+        "agent_reviewer"
+      ],
+      "title": "ReviewRole",
+      "type": "string"
+    },
+    "ReviewStatus": {
+      "description": "Review states captured as metadata, not approval workflow logic.",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "changes_requested"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "RunEnvironment": {
+      "additionalProperties": false,
+      "description": "Minimal reproducibility metadata for an experiment run environment.",
+      "properties": {
+        "container_image_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "platform": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "python_version": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "runner": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "python_version",
+        "platform",
+        "runner"
+      ],
+      "title": "RunEnvironment",
+      "type": "object"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "TimeRange": {
+      "additionalProperties": false,
+      "description": "Inclusive date range covered by an experiment run.",
+      "properties": {
+        "end_date": {
+          "format": "date",
+          "title": "End Date",
+          "type": "string"
+        },
+        "start_date": {
+          "format": "date",
+          "title": "Start Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start_date",
+        "end_date"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Experiment ledger record for a reproducible research run.",
+  "properties": {
+    "artifact_manifest_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "artifact_manifest_uri": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "artifact_uri": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "artifacts_incomplete": {
+      "default": false,
+      "title": "Artifacts Incomplete",
+      "type": "boolean"
+    },
+    "asset_class": {
+      "$ref": "#/$defs/AssetClass"
+    },
+    "asset_universe": {
+      "$ref": "#/$defs/AssetUniverseReference"
+    },
+    "benchmark": {
+      "$ref": "#/$defs/BenchmarkReference"
+    },
+    "config_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "config_uri": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "cost_model": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "created_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "data_snapshot_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "dependency_lock_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "engine_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "environment": {
+      "$ref": "#/$defs/RunEnvironment"
+    },
+    "execution_command": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "experiment_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "failure_labels": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FailureLabel"
+      },
+      "title": "Failure Labels",
+      "type": "array"
+    },
+    "failure_logs_uri": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "failure_reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "feature_snapshot_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "frequency": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "git_commit_sha": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "lag_assumptions": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "leakage_review": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "lookback": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "metrics_summary": {
+      "additionalProperties": {
+        "$ref": "#/$defs/MetricScalar"
+      },
+      "title": "Metrics Summary",
+      "type": "object"
+    },
+    "parameter_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "parent_run_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "random_seed": {
+      "$ref": "#/$defs/RandomSeedMetadata"
+    },
+    "repo_dirty": {
+      "title": "Repo Dirty",
+      "type": "boolean"
+    },
+    "review": {
+      "$ref": "#/$defs/ReviewMetadata"
+    },
+    "run_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "slippage_model": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "status": {
+      "$ref": "#/$defs/ExperimentRunStatus"
+    },
+    "status_updated_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "status_updated_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "strategy_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "strategy_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "supersedes_run_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "time_range": {
+      "$ref": "#/$defs/TimeRange"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "experiment_id",
+    "created_at",
+    "created_by",
+    "status",
+    "status_updated_at",
+    "status_updated_by",
+    "strategy_id",
+    "strategy_version",
+    "git_commit_sha",
+    "repo_dirty",
+    "asset_class",
+    "asset_universe",
+    "time_range",
+    "frequency",
+    "benchmark",
+    "data_snapshot_id",
+    "config_uri",
+    "config_hash",
+    "artifact_uri",
+    "artifact_manifest_uri",
+    "artifact_manifest_hash",
+    "cost_model",
+    "slippage_model",
+    "lookback",
+    "lag_assumptions",
+    "leakage_review",
+    "environment",
+    "dependency_lock_hash",
+    "execution_command",
+    "engine_version",
+    "random_seed",
+    "parameter_hash",
+    "metrics_summary",
+    "review"
+  ],
+  "title": "ExperimentRunRecord",
+  "type": "object"
+}
