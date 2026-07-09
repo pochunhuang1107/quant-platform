@@ -1,0 +1,81 @@
+{
+  "note_id": "note-20260709-001",
+  "schema_version": "1.0.0",
+  "note_type": "experiment_result",
+  "status": "ready_for_review",
+  "created_at": "2026-07-09T02:00:00-07:00",
+  "created_by": "agent-codex",
+  "updated_at": "2026-07-09T02:30:00-07:00",
+  "updated_by": "agent-codex",
+  "title": "Momentum baseline research note",
+  "hypothesis": {
+    "statement": "A simple momentum baseline can outperform the benchmark.",
+    "status": "testing"
+  },
+  "motivation": "Establish a simple, testable baseline before complex models.",
+  "methodology": "Compare a deterministic momentum signal against benchmark returns.",
+  "benchmark_summary": "Example benchmark snapshot referenced for comparison.",
+  "cost_assumptions": "Fixed 1bp transaction cost assumption.",
+  "slippage_assumptions": "Fixed 2bp slippage assumption.",
+  "lookback": "252 trading days.",
+  "lag_assumptions": "Signals use data available at prior close.",
+  "leakage_review": "Point-in-time data and universe controls are required.",
+  "results_summary": "Example result summary for roundtrip validation.",
+  "interpretation": "Initial result requires human review before acceptance.",
+  "risks": [
+    "overfitting"
+  ],
+  "failure_modes": [
+    "momentum reverses in volatile regimes"
+  ],
+  "validation_plan": "Run against a deterministic baseline with sensitivity checks.",
+  "limitations": [
+    "Fixture values are declarative and do not imply accepted results."
+  ],
+  "next_steps": [
+    "Review contract example coverage."
+  ],
+  "evidence_strength": "none",
+  "decision": {
+    "outcome": "continue_research",
+    "rationale": "Example result remains pending human review."
+  },
+  "review": {
+    "review_status": "pending",
+    "reviewer_id": "agent-codex",
+    "review_role": "agent_reviewer",
+    "reviewed_at": "2026-07-09T02:35:00-07:00",
+    "risk_approval_required": true
+  },
+  "references": {
+    "experiment_ids": [
+      "exp-momentum-baseline"
+    ],
+    "run_ids": [
+      "run-20260709-001"
+    ],
+    "artifact_uris": [
+      "artifacts/run-20260709-001/research_note.md"
+    ],
+    "artifact_manifest_uris": [
+      "artifacts/run-20260709-001/artifact_manifest.json"
+    ],
+    "data_snapshot_ids": [
+      "market-snapshot-20260709"
+    ],
+    "feature_snapshot_ids": [],
+    "benchmark_snapshot_ids": [
+      "benchmark-snapshot-20260709"
+    ],
+    "strategy_ids": [
+      "strategies/equities/momentum_baseline"
+    ]
+  },
+  "tags": [
+    "momentum",
+    "baseline"
+  ],
+  "body_markdown": "# Momentum baseline\n\nDeclarative fixture body only.",
+  "parent_note_id": null,
+  "supersedes_note_id": null
+}
