@@ -1,0 +1,504 @@
+{
+  "$defs": {
+    "DecisionOutcome": {
+      "description": "Decision outcomes captured by research notes.",
+      "enum": [
+        "no_decision",
+        "continue_research",
+        "accept_result",
+        "reject_result",
+        "mark_invalid",
+        "supersede_prior",
+        "needs_changes"
+      ],
+      "title": "DecisionOutcome",
+      "type": "string"
+    },
+    "EvidenceStrength": {
+      "description": "Qualitative evidence strength for a research note decision.",
+      "enum": [
+        "none",
+        "weak",
+        "moderate",
+        "strong"
+      ],
+      "title": "EvidenceStrength",
+      "type": "string"
+    },
+    "HypothesisStatus": {
+      "description": "Validation status for a research hypothesis.",
+      "enum": [
+        "proposed",
+        "testing",
+        "supported",
+        "partially_supported",
+        "not_supported",
+        "inconclusive",
+        "superseded"
+      ],
+      "title": "HypothesisStatus",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "ResearchDecision": {
+      "additionalProperties": false,
+      "description": "Structured decision recorded by a research note.",
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/DecisionOutcome"
+        },
+        "rationale": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "outcome",
+        "rationale"
+      ],
+      "title": "ResearchDecision",
+      "type": "object"
+    },
+    "ResearchHypothesis": {
+      "additionalProperties": false,
+      "description": "Structured hypothesis statement and validation status.",
+      "properties": {
+        "statement": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "status": {
+          "$ref": "#/$defs/HypothesisStatus"
+        }
+      },
+      "required": [
+        "statement",
+        "status"
+      ],
+      "title": "ResearchHypothesis",
+      "type": "object"
+    },
+    "ResearchNoteReferences": {
+      "additionalProperties": false,
+      "description": "Declarative references linked from a research note.",
+      "properties": {
+        "artifact_manifest_uris": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Artifact Manifest Uris",
+          "type": "array"
+        },
+        "artifact_uris": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Artifact Uris",
+          "type": "array"
+        },
+        "benchmark_snapshot_ids": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Benchmark Snapshot Ids",
+          "type": "array"
+        },
+        "data_snapshot_ids": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Data Snapshot Ids",
+          "type": "array"
+        },
+        "experiment_ids": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Experiment Ids",
+          "type": "array"
+        },
+        "feature_snapshot_ids": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Feature Snapshot Ids",
+          "type": "array"
+        },
+        "run_ids": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Run Ids",
+          "type": "array"
+        },
+        "strategy_ids": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "title": "Strategy Ids",
+          "type": "array"
+        }
+      },
+      "title": "ResearchNoteReferences",
+      "type": "object"
+    },
+    "ResearchNoteStatus": {
+      "description": "Lifecycle status for a structured research note.",
+      "enum": [
+        "draft",
+        "ready_for_review",
+        "under_review",
+        "finalized",
+        "superseded",
+        "archived"
+      ],
+      "title": "ResearchNoteStatus",
+      "type": "string"
+    },
+    "ResearchNoteType": {
+      "description": "Structured research note categories.",
+      "enum": [
+        "hypothesis",
+        "experiment_result",
+        "failure_analysis",
+        "review_note",
+        "other"
+      ],
+      "title": "ResearchNoteType",
+      "type": "string"
+    },
+    "ReviewMetadata": {
+      "additionalProperties": false,
+      "description": "Structured review metadata without approval workflow behavior.",
+      "properties": {
+        "approval_expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "approval_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approval Scope"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision"
+        },
+        "linked_pr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Linked Pr"
+        },
+        "review_notes_uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Notes Uri"
+        },
+        "review_role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewRole"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "reviewed_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reviewer_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "risk_approval_required": {
+          "title": "Risk Approval Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "review_status",
+        "risk_approval_required"
+      ],
+      "title": "ReviewMetadata",
+      "type": "object"
+    },
+    "ReviewRole": {
+      "description": "Reviewer role labels used in durable review metadata.",
+      "enum": [
+        "human_owner",
+        "risk_reviewer",
+        "agent_reviewer"
+      ],
+      "title": "ReviewRole",
+      "type": "string"
+    },
+    "ReviewStatus": {
+      "description": "Review states captured as metadata, not approval workflow logic.",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "changes_requested"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Structured research note contract for reproducible research review.",
+  "properties": {
+    "benchmark_summary": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "body_markdown": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "cost_assumptions": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "created_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "decision": {
+      "$ref": "#/$defs/ResearchDecision"
+    },
+    "evidence_strength": {
+      "$ref": "#/$defs/EvidenceStrength"
+    },
+    "failure_modes": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Failure Modes",
+      "type": "array"
+    },
+    "hypothesis": {
+      "$ref": "#/$defs/ResearchHypothesis"
+    },
+    "interpretation": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "lag_assumptions": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "leakage_review": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "limitations": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "lookback": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "methodology": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "motivation": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "next_steps": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Next Steps",
+      "type": "array"
+    },
+    "note_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "note_type": {
+      "$ref": "#/$defs/ResearchNoteType"
+    },
+    "parent_note_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "references": {
+      "$ref": "#/$defs/ResearchNoteReferences"
+    },
+    "results_summary": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "review": {
+      "$ref": "#/$defs/ReviewMetadata"
+    },
+    "risks": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Risks",
+      "type": "array"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "slippage_assumptions": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "status": {
+      "$ref": "#/$defs/ResearchNoteStatus"
+    },
+    "supersedes_note_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tags": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "title": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "updated_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "updated_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "validation_plan": {
+      "$ref": "#/$defs/NonEmptyString"
+    }
+  },
+  "required": [
+    "schema_version",
+    "note_id",
+    "note_type",
+    "status",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "updated_by",
+    "title",
+    "hypothesis",
+    "motivation",
+    "methodology",
+    "benchmark_summary",
+    "cost_assumptions",
+    "slippage_assumptions",
+    "lookback",
+    "lag_assumptions",
+    "leakage_review",
+    "results_summary",
+    "interpretation",
+    "risks",
+    "failure_modes",
+    "validation_plan",
+    "limitations",
+    "next_steps",
+    "evidence_strength",
+    "decision",
+    "review"
+  ],
+  "title": "ResearchNote",
+  "type": "object"
+}
