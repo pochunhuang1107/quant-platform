@@ -7,15 +7,21 @@ import research_sdk
 import research_sdk.contracts as contracts
 from research_sdk.contracts import (
     RESEARCH_SDK_CONTRACT_SCHEMA_VERSION,
+    ArtifactFormat,
+    ArtifactKind,
+    ArtifactStatus,
     AssetClass,
     BaseContractModel,
     ExperimentRunRecord,
     ExperimentRunStatus,
     FailureLabel,
+    HashAlgorithm,
     NonEmptyString,
     ReviewMetadata,
     ReviewRole,
     ReviewStatus,
+    RunArtifactEntry,
+    RunArtifactManifest,
     SchemaVersion,
     UtcDatetime,
     ensure_utc_datetime,
@@ -29,12 +35,18 @@ def test_research_sdk_imports() -> None:
 def test_contracts_exports_primitives() -> None:
     assert contracts.BaseContractModel is BaseContractModel
     assert contracts.AssetClass is AssetClass
+    assert contracts.ArtifactFormat is ArtifactFormat
+    assert contracts.ArtifactKind is ArtifactKind
+    assert contracts.ArtifactStatus is ArtifactStatus
     assert contracts.ExperimentRunRecord is ExperimentRunRecord
     assert contracts.ExperimentRunStatus is ExperimentRunStatus
     assert contracts.FailureLabel is FailureLabel
+    assert contracts.HashAlgorithm is HashAlgorithm
     assert contracts.NonEmptyString is NonEmptyString
     assert contracts.ReviewMetadata is ReviewMetadata
     assert contracts.RESEARCH_SDK_CONTRACT_SCHEMA_VERSION == "1.0.0"
+    assert contracts.RunArtifactEntry is RunArtifactEntry
+    assert contracts.RunArtifactManifest is RunArtifactManifest
 
 
 def test_asset_class_contains_documented_values() -> None:
@@ -47,6 +59,51 @@ def test_asset_class_contains_documented_values() -> None:
         "indices",
         "options",
         "mixed",
+    }
+
+
+def test_artifact_kind_contains_documented_values() -> None:
+    assert {kind.value for kind in ArtifactKind} == {
+        "config",
+        "metrics",
+        "trade_log",
+        "signal_log",
+        "daily_equity",
+        "drawdown_series",
+        "monthly_returns",
+        "regime_breakdown",
+        "failure_analysis",
+        "research_note",
+        "chart",
+        "log",
+        "diagnostic",
+        "other",
+    }
+
+
+def test_artifact_format_contains_documented_values() -> None:
+    assert {artifact_format.value for artifact_format in ArtifactFormat} == {
+        "json",
+        "parquet",
+        "markdown",
+        "png",
+        "svg",
+        "html",
+        "csv",
+        "text",
+    }
+
+
+def test_hash_algorithm_contains_documented_values() -> None:
+    assert {algorithm.value for algorithm in HashAlgorithm} == {"sha256"}
+
+
+def test_artifact_status_contains_documented_values() -> None:
+    assert {status.value for status in ArtifactStatus} == {
+        "produced",
+        "missing",
+        "failed",
+        "skipped",
     }
 
 
