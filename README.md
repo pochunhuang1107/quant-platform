@@ -34,6 +34,18 @@ Complete Phase 0 by making the documented scaffold, docs, safety rules, ledger
 contract, data contracts, and risk policy satisfy the measurable checklist in
 `docs/roadmap.md`.
 
+## Development Commands
+
+This project uses Python 3.13, uv, pytest, ruff, and mypy.
+
+```bash
+uv sync
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy packages/research-sdk/src
+uv run pytest
+```
+
 ## Key Rule
 
 No live trading automation until paper trading, validation, risk limits, and human approval gates exist.
