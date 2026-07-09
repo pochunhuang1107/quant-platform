@@ -8,6 +8,12 @@ dependencies = [
     "pydantic>=2,<3",
 ]
 
+[build-system]
+requires = [
+    "setuptools>=80",
+]
+build-backend = "setuptools.build_meta"
+
 [dependency-groups]
 dev = [
     "mypy>=1.18.2",
@@ -52,3 +58,11 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.13"
 strict = true
+
+[tool.setuptools]
+package-dir = {"" = "packages/research-sdk/src"}
+
+[tool.setuptools.packages.find]
+where = [
+    "packages/research-sdk/src",
+]

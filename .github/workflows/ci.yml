@@ -32,5 +32,8 @@ jobs:
       - name: Type check
         run: uv run mypy packages/research-sdk/src
 
+      - name: Check JSON Schema exports
+        run: uv run python -m research_sdk.contracts.json_schema --output-dir packages/research-sdk/schema --check
+
       - name: Test
         run: uv run pytest

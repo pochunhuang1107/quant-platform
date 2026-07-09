@@ -1,0 +1,20 @@
+{
+  "$defs": {
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Base class for contracts that carry an explicit schema version.",
+  "properties": {
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    }
+  },
+  "required": [
+    "schema_version"
+  ],
+  "title": "VersionedContract",
+  "type": "object"
+}
