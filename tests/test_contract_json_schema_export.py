@@ -1,7 +1,13 @@
 import json
 from pathlib import Path
 
-from research_sdk.contracts import ReviewRole, ReviewStatus
+from research_sdk.contracts import (
+    AssetClass,
+    ExperimentRunStatus,
+    FailureLabel,
+    ReviewRole,
+    ReviewStatus,
+)
 from research_sdk.contracts.json_schema import (
     SCHEMA_EXPORTS,
     generate_schema_files,
@@ -20,6 +26,7 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
     assert set(SCHEMA_EXPORTS) == {
         "versioned_contract.schema.json",
         "review_metadata.schema.json",
+        "experiment_run_record.schema.json",
     }
 
 
@@ -91,3 +98,68 @@ def test_review_metadata_schema_contains_documented_review_enums() -> None:
     assert set(schema_defs["ReviewRole"]["enum"]) == {  # type: ignore[index]
         role.value for role in ReviewRole
     }
+
+
+def test_experiment_run_record_schema_contains_expected_fields() -> None:
+    schema = load_schema("experiment_run_record.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "run_id",
+        "experiment_id",
+        "schema_version",
+        "created_at",
+        "created_by",
+        "status",
+        "status_updated_at",
+        "status_updated_by",
+        "strategy_id",
+        "strategy_version",
+        "git_commit_sha",
+        "repo_dirty",
+        "asset_class",
+        "asset_universe",
+        "time_range",
+        "frequency",
+        "benchmark",
+        "data_snapshot_id",
+        "config_uri",
+        "config_hash",
+        "artifact_uri",
+        "artifact_manifest_uri",
+        "artifact_manifest_hash",
+        "cost_model",
+        "slippage_model",
+        "lookback",
+        "lag_assumptions",
+        "leakage_review",
+        "environment",
+        "dependency_lock_hash",
+        "execution_command",
+        "engine_version",
+        "random_seed",
+        "parameter_hash",
+        "metrics_summary",
+        "review",
+    }
+
+
+def test_experiment_run_record_schema_contains_contract_definitions() -> None:
+    schema = load_schema("experiment_run_record.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["ExperimentRunStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in ExperimentRunStatus
+    }
+    assert set(schema_defs["FailureLabel"]["enum"]) == {  # type: ignore[index]
+        label.value for label in FailureLabel
+    }
+    assert set(schema_defs["AssetClass"]["enum"]) == {  # type: ignore[index]
+        asset_class.value for asset_class in AssetClass
+    }
+    assert "ReviewMetadata" in schema_defs
+    assert "AssetUniverseReference" in schema_defs
+    assert "BenchmarkReference" in schema_defs
+    assert "RunEnvironment" in schema_defs
+    assert "RandomSeedMetadata" in schema_defs
+    assert "TimeRange" in schema_defs

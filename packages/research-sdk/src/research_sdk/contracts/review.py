@@ -1,17 +1,9 @@
 """Review metadata skeleton for research contracts."""
 
-from typing import Annotated
-
-from pydantic import StringConstraints
-
 from research_sdk.contracts.base import BaseContractModel
 from research_sdk.contracts.enums import ReviewRole, ReviewStatus
 from research_sdk.contracts.time import UtcDatetime
-
-type NonEmptyString = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1),
-]
+from research_sdk.contracts.types import NonEmptyString
 
 
 class ReviewMetadata(BaseContractModel):
