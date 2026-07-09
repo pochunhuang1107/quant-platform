@@ -1,0 +1,52 @@
+[project]
+name = "quant-platform"
+version = "0.1.0"
+description = "Enterprise-grade multi-asset quant research platform."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18.2",
+    "pytest>=8.4.2",
+    "ruff>=0.14.5",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+]
+pythonpath = [
+    "packages/research-sdk/src",
+]
+testpaths = [
+    "tests",
+]
+
+[tool.ruff]
+line-length = 88
+src = [
+    "packages/research-sdk/src",
+    "tests",
+]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+]
+
+[tool.ruff.format]
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
