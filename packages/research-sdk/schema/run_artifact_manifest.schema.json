@@ -1,0 +1,217 @@
+{
+  "$defs": {
+    "ArtifactFormat": {
+      "description": "Supported file formats for run artifact manifest entries.",
+      "enum": [
+        "json",
+        "parquet",
+        "markdown",
+        "png",
+        "svg",
+        "html",
+        "csv",
+        "text"
+      ],
+      "title": "ArtifactFormat",
+      "type": "string"
+    },
+    "ArtifactKind": {
+      "description": "Run artifact categories recorded in artifact manifests.",
+      "enum": [
+        "config",
+        "metrics",
+        "trade_log",
+        "signal_log",
+        "daily_equity",
+        "drawdown_series",
+        "monthly_returns",
+        "regime_breakdown",
+        "failure_analysis",
+        "research_note",
+        "chart",
+        "log",
+        "diagnostic",
+        "other"
+      ],
+      "title": "ArtifactKind",
+      "type": "string"
+    },
+    "ArtifactStatus": {
+      "description": "Production status for a run artifact manifest entry.",
+      "enum": [
+        "produced",
+        "missing",
+        "failed",
+        "skipped"
+      ],
+      "title": "ArtifactStatus",
+      "type": "string"
+    },
+    "HashAlgorithm": {
+      "description": "Content hash algorithms supported by artifact manifests.",
+      "enum": [
+        "sha256"
+      ],
+      "title": "HashAlgorithm",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "RunArtifactEntry": {
+      "additionalProperties": false,
+      "description": "Single artifact entry in a run artifact manifest.",
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/ArtifactKind"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "filename": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "format": {
+          "$ref": "#/$defs/ArtifactFormat"
+        },
+        "hash_algorithm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HashAlgorithm"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "row_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Count"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Bytes"
+        },
+        "status": {
+          "$ref": "#/$defs/ArtifactStatus"
+        },
+        "uri": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "validator_version": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_kind",
+        "uri",
+        "filename",
+        "format",
+        "status"
+      ],
+      "title": "RunArtifactEntry",
+      "type": "object"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Manifest describing required and optional artifacts for a research run.",
+  "properties": {
+    "artifact_root_uri": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/RunArtifactEntry"
+      },
+      "minItems": 1,
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "experiment_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "required_artifacts_complete": {
+      "title": "Required Artifacts Complete",
+      "type": "boolean"
+    },
+    "run_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "experiment_id",
+    "artifact_root_uri",
+    "created_at",
+    "required_artifacts_complete",
+    "artifacts"
+  ],
+  "title": "RunArtifactManifest",
+  "type": "object"
+}

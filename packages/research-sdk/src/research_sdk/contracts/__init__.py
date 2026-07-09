@@ -1,10 +1,18 @@
 """Shared contract primitives for research platform schemas."""
 
+from research_sdk.contracts.artifacts import (
+    RunArtifactEntry,
+    RunArtifactManifest,
+)
 from research_sdk.contracts.base import BaseContractModel
 from research_sdk.contracts.enums import (
+    ArtifactFormat,
+    ArtifactKind,
+    ArtifactStatus,
     AssetClass,
     ExperimentRunStatus,
     FailureLabel,
+    HashAlgorithm,
     ReviewRole,
     ReviewStatus,
 )
@@ -28,17 +36,23 @@ from research_sdk.contracts.types import NonEmptyString
 __all__ = [
     "AssetClass",
     "AssetUniverseReference",
+    "ArtifactFormat",
+    "ArtifactKind",
+    "ArtifactStatus",
     "BaseContractModel",
     "BenchmarkReference",
     "ExperimentRunRecord",
     "ExperimentRunStatus",
     "FailureLabel",
+    "HashAlgorithm",
     "NonEmptyString",
     "RESEARCH_SDK_CONTRACT_SCHEMA_VERSION",
     "RandomSeedMetadata",
     "ReviewMetadata",
     "ReviewRole",
     "ReviewStatus",
+    "RunArtifactEntry",
+    "RunArtifactManifest",
     "RunEnvironment",
     "SchemaVersion",
     "TimeRange",

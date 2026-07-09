@@ -2,9 +2,13 @@ import json
 from pathlib import Path
 
 from research_sdk.contracts import (
+    ArtifactFormat,
+    ArtifactKind,
+    ArtifactStatus,
     AssetClass,
     ExperimentRunStatus,
     FailureLabel,
+    HashAlgorithm,
     ReviewRole,
     ReviewStatus,
 )
@@ -27,6 +31,7 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "versioned_contract.schema.json",
         "review_metadata.schema.json",
         "experiment_run_record.schema.json",
+        "run_artifact_manifest.schema.json",
     }
 
 
@@ -163,3 +168,38 @@ def test_experiment_run_record_schema_contains_contract_definitions() -> None:
     assert "RunEnvironment" in schema_defs
     assert "RandomSeedMetadata" in schema_defs
     assert "TimeRange" in schema_defs
+
+
+def test_run_artifact_manifest_schema_contains_expected_fields() -> None:
+    schema = load_schema("run_artifact_manifest.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "run_id",
+        "experiment_id",
+        "schema_version",
+        "artifact_root_uri",
+        "created_at",
+        "required_artifacts_complete",
+        "artifacts",
+    }
+
+
+def test_run_artifact_manifest_schema_contains_contract_definitions() -> None:
+    schema = load_schema("run_artifact_manifest.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["ArtifactKind"]["enum"]) == {  # type: ignore[index]
+        kind.value for kind in ArtifactKind
+    }
+    assert set(schema_defs["ArtifactFormat"]["enum"]) == {  # type: ignore[index]
+        artifact_format.value for artifact_format in ArtifactFormat
+    }
+    assert set(schema_defs["HashAlgorithm"]["enum"]) == {  # type: ignore[index]
+        algorithm.value for algorithm in HashAlgorithm
+    }
+    assert set(schema_defs["ArtifactStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in ArtifactStatus
+    }
+    assert "RunArtifactEntry" in schema_defs
+    assert "SchemaVersion" in schema_defs

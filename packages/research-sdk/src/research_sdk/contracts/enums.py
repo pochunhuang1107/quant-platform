@@ -16,6 +16,53 @@ class AssetClass(StrEnum):
     MIXED = "mixed"
 
 
+class ArtifactKind(StrEnum):
+    """Run artifact categories recorded in artifact manifests."""
+
+    CONFIG = "config"
+    METRICS = "metrics"
+    TRADE_LOG = "trade_log"
+    SIGNAL_LOG = "signal_log"
+    DAILY_EQUITY = "daily_equity"
+    DRAWDOWN_SERIES = "drawdown_series"
+    MONTHLY_RETURNS = "monthly_returns"
+    REGIME_BREAKDOWN = "regime_breakdown"
+    FAILURE_ANALYSIS = "failure_analysis"
+    RESEARCH_NOTE = "research_note"
+    CHART = "chart"
+    LOG = "log"
+    DIAGNOSTIC = "diagnostic"
+    OTHER = "other"
+
+
+class ArtifactFormat(StrEnum):
+    """Supported file formats for run artifact manifest entries."""
+
+    JSON = "json"
+    PARQUET = "parquet"
+    MARKDOWN = "markdown"
+    PNG = "png"
+    SVG = "svg"
+    HTML = "html"
+    CSV = "csv"
+    TEXT = "text"
+
+
+class HashAlgorithm(StrEnum):
+    """Content hash algorithms supported by artifact manifests."""
+
+    SHA256 = "sha256"
+
+
+class ArtifactStatus(StrEnum):
+    """Production status for a run artifact manifest entry."""
+
+    PRODUCED = "produced"
+    MISSING = "missing"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class ExperimentRunStatus(StrEnum):
     """Allowed experiment ledger run statuses."""
 
