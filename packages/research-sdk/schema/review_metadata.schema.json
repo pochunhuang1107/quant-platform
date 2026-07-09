@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "ReviewRole": {
+      "description": "Reviewer role labels used in durable review metadata.",
+      "enum": [
+        "human_owner",
+        "risk_reviewer",
+        "agent_reviewer"
+      ],
+      "title": "ReviewRole",
+      "type": "string"
+    },
+    "ReviewStatus": {
+      "description": "Review states captured as metadata, not approval workflow logic.",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "changes_requested"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Structured review metadata without approval workflow behavior.",
+  "properties": {
+    "approval_expires_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "approval_scope": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approval Scope"
+    },
+    "decision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision"
+    },
+    "linked_pr": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Linked Pr"
+    },
+    "review_notes_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Review Notes Uri"
+    },
+    "review_role": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReviewRole"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "review_status": {
+      "$ref": "#/$defs/ReviewStatus"
+    },
+    "reviewed_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reviewer_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "risk_approval_required": {
+      "title": "Risk Approval Required",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "review_status",
+    "risk_approval_required"
+  ],
+  "title": "ReviewMetadata",
+  "type": "object"
+}

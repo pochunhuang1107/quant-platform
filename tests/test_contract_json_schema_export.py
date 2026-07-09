@@ -1,0 +1,93 @@
+import json
+from pathlib import Path
+
+from research_sdk.contracts import ReviewRole, ReviewStatus
+from research_sdk.contracts.json_schema import (
+    SCHEMA_EXPORTS,
+    generate_schema_files,
+    write_schema_files,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_DIR = REPO_ROOT / "packages" / "research-sdk" / "schema"
+
+
+def load_schema(filename: str) -> dict[str, object]:
+    return json.loads((SCHEMA_DIR / filename).read_text(encoding="utf-8"))
+
+
+def test_schema_export_allowlist_contains_expected_files_only() -> None:
+    assert set(SCHEMA_EXPORTS) == {
+        "versioned_contract.schema.json",
+        "review_metadata.schema.json",
+    }
+
+
+def test_schema_export_output_is_deterministic_across_directories(
+    tmp_path: Path,
+) -> None:
+    first_output_dir = tmp_path / "first"
+    second_output_dir = tmp_path / "second"
+
+    write_schema_files(first_output_dir)
+    write_schema_files(second_output_dir)
+
+    first_files = {
+        path.name: path.read_bytes() for path in sorted(first_output_dir.iterdir())
+    }
+    second_files = {
+        path.name: path.read_bytes() for path in sorted(second_output_dir.iterdir())
+    }
+
+    assert first_files == second_files
+
+
+def test_committed_schema_files_match_freshly_generated_output() -> None:
+    for filename, expected_content in generate_schema_files().items():
+        schema_path = SCHEMA_DIR / filename
+
+        assert schema_path.read_text(encoding="utf-8") == expected_content
+
+
+def test_versioned_contract_schema_contains_expected_fields() -> None:
+    schema = load_schema("versioned_contract.schema.json")
+    schema_version_def = schema["$defs"]["SchemaVersion"]  # type: ignore[index]
+
+    assert "schema_version" in schema["properties"]  # type: ignore[operator]
+    assert schema["required"] == ["schema_version"]
+    assert (
+        schema_version_def["pattern"]  # type: ignore[index]
+        == r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
+    )
+    assert schema["additionalProperties"] is False
+
+
+def test_review_metadata_schema_contains_expected_fields() -> None:
+    schema = load_schema("review_metadata.schema.json")
+
+    assert set(schema["properties"]) == {  # type: ignore[arg-type]
+        "review_status",
+        "reviewer_id",
+        "review_role",
+        "reviewed_at",
+        "decision",
+        "approval_scope",
+        "approval_expires_at",
+        "linked_pr",
+        "review_notes_uri",
+        "risk_approval_required",
+    }
+    assert set(schema["required"]) == {"review_status", "risk_approval_required"}  # type: ignore[arg-type]
+    assert schema["additionalProperties"] is False
+
+
+def test_review_metadata_schema_contains_documented_review_enums() -> None:
+    schema = load_schema("review_metadata.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["ReviewStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in ReviewStatus
+    }
+    assert set(schema_defs["ReviewRole"]["enum"]) == {  # type: ignore[index]
+        role.value for role in ReviewRole
+    }

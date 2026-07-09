@@ -43,6 +43,7 @@ uv sync
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy packages/research-sdk/src
+uv run python -m research_sdk.contracts.json_schema --output-dir packages/research-sdk/schema --check
 uv run pytest
 ```
 
