@@ -10,9 +10,14 @@ from research_sdk.contracts import (
     DataSnapshotKind,
     DataSnapshotStatus,
     DataSourceType,
+    DecisionOutcome,
+    EvidenceStrength,
     ExperimentRunStatus,
     FailureLabel,
     HashAlgorithm,
+    HypothesisStatus,
+    ResearchNoteStatus,
+    ResearchNoteType,
     ReviewRole,
     ReviewStatus,
     TemporalCoverage,
@@ -38,6 +43,7 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "experiment_run_record.schema.json",
         "run_artifact_manifest.schema.json",
         "data_snapshot_manifest.schema.json",
+        "research_note.schema.json",
     }
 
 
@@ -276,3 +282,64 @@ def test_data_snapshot_manifest_schema_contains_contract_definitions() -> None:
     assert "AssetUniverseReference" in schema_defs
     assert "TimeRange" in schema_defs
     assert "SchemaVersion" in schema_defs
+
+
+def test_research_note_schema_contains_expected_fields() -> None:
+    schema = load_schema("research_note.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "note_id",
+        "schema_version",
+        "note_type",
+        "status",
+        "created_at",
+        "created_by",
+        "updated_at",
+        "updated_by",
+        "title",
+        "hypothesis",
+        "motivation",
+        "methodology",
+        "benchmark_summary",
+        "cost_assumptions",
+        "slippage_assumptions",
+        "lookback",
+        "lag_assumptions",
+        "leakage_review",
+        "results_summary",
+        "interpretation",
+        "risks",
+        "failure_modes",
+        "validation_plan",
+        "limitations",
+        "next_steps",
+        "evidence_strength",
+        "decision",
+        "review",
+    }
+
+
+def test_research_note_schema_contains_contract_definitions() -> None:
+    schema = load_schema("research_note.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["ResearchNoteType"]["enum"]) == {  # type: ignore[index]
+        note_type.value for note_type in ResearchNoteType
+    }
+    assert set(schema_defs["ResearchNoteStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in ResearchNoteStatus
+    }
+    assert set(schema_defs["HypothesisStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in HypothesisStatus
+    }
+    assert set(schema_defs["EvidenceStrength"]["enum"]) == {  # type: ignore[index]
+        strength.value for strength in EvidenceStrength
+    }
+    assert set(schema_defs["DecisionOutcome"]["enum"]) == {  # type: ignore[index]
+        outcome.value for outcome in DecisionOutcome
+    }
+    assert "ResearchHypothesis" in schema_defs
+    assert "ResearchNoteReferences" in schema_defs
+    assert "ResearchDecision" in schema_defs
+    assert "ReviewMetadata" in schema_defs

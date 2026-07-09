@@ -17,11 +17,20 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     DataSnapshotStatus,
     DataSourceType,
+    DecisionOutcome,
+    EvidenceStrength,
     ExperimentRunRecord,
     ExperimentRunStatus,
     FailureLabel,
     HashAlgorithm,
+    HypothesisStatus,
     NonEmptyString,
+    ResearchDecision,
+    ResearchHypothesis,
+    ResearchNote,
+    ResearchNoteReferences,
+    ResearchNoteStatus,
+    ResearchNoteType,
     ReviewMetadata,
     ReviewRole,
     ReviewStatus,
@@ -49,11 +58,20 @@ def test_contracts_exports_primitives() -> None:
     assert contracts.DataSnapshotManifest is DataSnapshotManifest
     assert contracts.DataSnapshotStatus is DataSnapshotStatus
     assert contracts.DataSourceType is DataSourceType
+    assert contracts.DecisionOutcome is DecisionOutcome
     assert contracts.ExperimentRunRecord is ExperimentRunRecord
     assert contracts.ExperimentRunStatus is ExperimentRunStatus
+    assert contracts.EvidenceStrength is EvidenceStrength
     assert contracts.FailureLabel is FailureLabel
     assert contracts.HashAlgorithm is HashAlgorithm
+    assert contracts.HypothesisStatus is HypothesisStatus
     assert contracts.NonEmptyString is NonEmptyString
+    assert contracts.ResearchDecision is ResearchDecision
+    assert contracts.ResearchHypothesis is ResearchHypothesis
+    assert contracts.ResearchNote is ResearchNote
+    assert contracts.ResearchNoteReferences is ResearchNoteReferences
+    assert contracts.ResearchNoteStatus is ResearchNoteStatus
+    assert contracts.ResearchNoteType is ResearchNoteType
     assert contracts.ReviewMetadata is ReviewMetadata
     assert contracts.RESEARCH_SDK_CONTRACT_SCHEMA_VERSION == "1.0.0"
     assert contracts.RunArtifactEntry is RunArtifactEntry
@@ -188,6 +206,60 @@ def test_review_role_contains_documented_values() -> None:
         "human_owner",
         "risk_reviewer",
         "agent_reviewer",
+    }
+
+
+def test_research_note_type_contains_documented_values() -> None:
+    assert {note_type.value for note_type in ResearchNoteType} == {
+        "hypothesis",
+        "experiment_result",
+        "failure_analysis",
+        "review_note",
+        "other",
+    }
+
+
+def test_research_note_status_contains_documented_values() -> None:
+    assert {status.value for status in ResearchNoteStatus} == {
+        "draft",
+        "ready_for_review",
+        "under_review",
+        "finalized",
+        "superseded",
+        "archived",
+    }
+
+
+def test_hypothesis_status_contains_documented_values() -> None:
+    assert {status.value for status in HypothesisStatus} == {
+        "proposed",
+        "testing",
+        "supported",
+        "partially_supported",
+        "not_supported",
+        "inconclusive",
+        "superseded",
+    }
+
+
+def test_evidence_strength_contains_documented_values() -> None:
+    assert {strength.value for strength in EvidenceStrength} == {
+        "none",
+        "weak",
+        "moderate",
+        "strong",
+    }
+
+
+def test_decision_outcome_contains_documented_values() -> None:
+    assert {outcome.value for outcome in DecisionOutcome} == {
+        "no_decision",
+        "continue_research",
+        "accept_result",
+        "reject_result",
+        "mark_invalid",
+        "supersede_prior",
+        "needs_changes",
     }
 
 

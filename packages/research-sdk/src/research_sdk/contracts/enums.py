@@ -148,6 +148,60 @@ class FailureLabel(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ResearchNoteType(StrEnum):
+    """Structured research note categories."""
+
+    HYPOTHESIS = "hypothesis"
+    EXPERIMENT_RESULT = "experiment_result"
+    FAILURE_ANALYSIS = "failure_analysis"
+    REVIEW_NOTE = "review_note"
+    OTHER = "other"
+
+
+class ResearchNoteStatus(StrEnum):
+    """Lifecycle status for a structured research note."""
+
+    DRAFT = "draft"
+    READY_FOR_REVIEW = "ready_for_review"
+    UNDER_REVIEW = "under_review"
+    FINALIZED = "finalized"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
+
+
+class HypothesisStatus(StrEnum):
+    """Validation status for a research hypothesis."""
+
+    PROPOSED = "proposed"
+    TESTING = "testing"
+    SUPPORTED = "supported"
+    PARTIALLY_SUPPORTED = "partially_supported"
+    NOT_SUPPORTED = "not_supported"
+    INCONCLUSIVE = "inconclusive"
+    SUPERSEDED = "superseded"
+
+
+class EvidenceStrength(StrEnum):
+    """Qualitative evidence strength for a research note decision."""
+
+    NONE = "none"
+    WEAK = "weak"
+    MODERATE = "moderate"
+    STRONG = "strong"
+
+
+class DecisionOutcome(StrEnum):
+    """Decision outcomes captured by research notes."""
+
+    NO_DECISION = "no_decision"
+    CONTINUE_RESEARCH = "continue_research"
+    ACCEPT_RESULT = "accept_result"
+    REJECT_RESULT = "reject_result"
+    MARK_INVALID = "mark_invalid"
+    SUPERSEDE_PRIOR = "supersede_prior"
+    NEEDS_CHANGES = "needs_changes"
+
+
 class ReviewStatus(StrEnum):
     """Review states captured as metadata, not approval workflow logic."""
 
