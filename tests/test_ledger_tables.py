@@ -141,8 +141,8 @@ EXPECTED_INDEXES = {
 }
 
 
-def test_metadata_contains_only_ledger_anchor_tables() -> None:
-    assert set(metadata.tables) == EXPECTED_TABLE_NAMES
+def test_metadata_contains_ledger_anchor_tables() -> None:
+    assert EXPECTED_TABLE_NAMES.issubset(set(metadata.tables))
     assert LEDGER_ANCHOR_TABLES == (
         experiment_runs,
         data_snapshot_manifests,

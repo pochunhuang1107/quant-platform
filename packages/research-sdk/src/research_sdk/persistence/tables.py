@@ -10,20 +10,26 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     Table,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
 from research_sdk.contracts.enums import (
+    ArtifactFormat,
+    ArtifactKind,
+    ArtifactStatus,
     AssetClass,
     DataAdjustmentPolicy,
     DataSnapshotKind,
     DataSnapshotStatus,
     DataSourceType,
     ExperimentRunStatus,
+    HashAlgorithm,
     ReviewRole,
     ReviewStatus,
     TemporalCoverage,
@@ -205,3 +211,108 @@ LEDGER_ANCHOR_TABLES = (
     experiment_runs,
     data_snapshot_manifests,
 )
+
+
+run_artifact_manifests = Table(
+    "run_artifact_manifests",
+    metadata,
+    Column("manifest_id", Text, primary_key=True),
+    Column("run_id", Text, nullable=False),
+    Column("experiment_id", Text, nullable=False),
+    Column("schema_version", Text, nullable=False),
+    Column("artifact_root_uri", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("required_artifacts_complete", Boolean, nullable=False),
+    Column("contract_hash", Text, nullable=False),
+    Column("raw_contract", JSONB, nullable=False),
+    Column(
+        "inserted_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    ),
+    UniqueConstraint(
+        "run_id",
+        "contract_hash",
+        name="uq_run_artifact_manifests_run_id_contract_hash",
+    ),
+)
+
+Index("ix_run_artifact_manifests_run_id", run_artifact_manifests.c.run_id)
+Index(
+    "ix_run_artifact_manifests_experiment_id_created_at",
+    run_artifact_manifests.c.experiment_id,
+    run_artifact_manifests.c.created_at,
+)
+
+
+run_artifact_entries = Table(
+    "run_artifact_entries",
+    metadata,
+    Column("manifest_id", Text, primary_key=True),
+    Column("artifact_id", Text, primary_key=True),
+    Column("run_id", Text, nullable=False),
+    Column("artifact_kind", Text, nullable=False),
+    Column("uri", Text, nullable=False),
+    Column("filename", Text, nullable=False),
+    Column("format", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("hash_algorithm", Text, nullable=True),
+    Column("content_hash", Text, nullable=True),
+    Column("size_bytes", BigInteger, nullable=True),
+    Column("row_count", BigInteger, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=True),
+    Column("validator_version", Text, nullable=True),
+    Column(
+        "inserted_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    ),
+    ForeignKeyConstraint(
+        ["manifest_id"],
+        ["run_artifact_manifests.manifest_id"],
+        name="fk_run_artifact_entries_manifest_id_run_artifact_manifests",
+    ),
+    CheckConstraint(
+        f"artifact_kind IN ({_quoted_enum_values(ArtifactKind)})",
+        name="artifact_kind_values",
+    ),
+    CheckConstraint(
+        f"format IN ({_quoted_enum_values(ArtifactFormat)})",
+        name="format_values",
+    ),
+    CheckConstraint(
+        f"status IN ({_quoted_enum_values(ArtifactStatus)})",
+        name="status_values",
+    ),
+    CheckConstraint(
+        f"hash_algorithm IS NULL OR hash_algorithm IN ("
+        f"{_quoted_enum_values(HashAlgorithm)})",
+        name="hash_algorithm_values",
+    ),
+    CheckConstraint(
+        "size_bytes IS NULL OR size_bytes >= 0",
+        name="size_bytes_nonnegative",
+    ),
+    CheckConstraint(
+        "row_count IS NULL OR row_count >= 0",
+        name="row_count_nonnegative",
+    ),
+)
+
+Index(
+    "ix_run_artifact_entries_run_id_artifact_kind",
+    run_artifact_entries.c.run_id,
+    run_artifact_entries.c.artifact_kind,
+)
+Index("ix_run_artifact_entries_status", run_artifact_entries.c.status)
+Index("ix_run_artifact_entries_manifest_id", run_artifact_entries.c.manifest_id)
+
+
+ARTIFACT_TABLES = (
+    run_artifact_manifests,
+    run_artifact_entries,
+)
+
+LEDGER_TABLES = LEDGER_ANCHOR_TABLES + ARTIFACT_TABLES
