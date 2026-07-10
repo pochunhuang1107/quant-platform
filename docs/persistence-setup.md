@@ -93,10 +93,35 @@ repositories, DAOs, DB write paths, FastAPI endpoints, backtest integration,
 artifact IO, data ingestion, storage IO, file existence checks, hash
 verification, broker integration, live trading, paper trading, or a DB driver.
 
-Artifact manifest, artifact entry, research note, and review event tables remain
-deferred to later migrations. Foreign keys are also deferred because current
-contract references are declarative and insertion/backfill lifecycle rules have
-not been designed yet.
+Research note and review event tables remain deferred to later migrations.
+Cross-contract foreign keys are also deferred because current contract
+references are declarative and insertion/backfill lifecycle rules have not been
+designed yet.
+
+## Artifact Table Revision
+
+The migration after the ledger anchor table revision is `0003_artifact_tables`.
+It adds the artifact metadata layer:
+
+- `run_artifact_manifests`.
+- `run_artifact_entries`.
+
+The artifact revision stores manifest metadata, artifact entry projections,
+declared hashes, and the validated manifest payload as `raw_contract JSONB`.
+Artifact files, parquet/csv contents, logs, charts, and raw market data remain
+outside the database. The database records declared metadata only; it does not
+perform artifact IO, object storage IO, file existence checks, or hash
+verification.
+
+`run_artifact_entries.manifest_id` has a foreign key to
+`run_artifact_manifests.manifest_id` because entries are an internal projection
+of the same artifact manifest contract. Cross-contract foreign keys to
+`experiment_runs` remain deferred until write ordering, correction, replay, and
+backfill behavior are designed.
+
+The artifact revision still does not add repositories, DAOs, DB write paths,
+FastAPI endpoints, backtest integration, artifact IO, storage IO, hash
+verification, a DB driver, or live Postgres tests.
 
 ## Local Commands
 
