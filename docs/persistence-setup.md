@@ -79,6 +79,25 @@ table effects.
 This gives future migrations a stable baseline without mixing migration tooling
 with the first ledger table design.
 
+## Ledger Anchor Table Revision
+
+The next migration after the empty baseline is
+`0002_ledger_anchor_tables`. It adds the first two experiment ledger anchor
+tables:
+
+- `experiment_runs`.
+- `data_snapshot_manifests`.
+
+The anchor revision keeps persistence metadata-only. It does not add
+repositories, DAOs, DB write paths, FastAPI endpoints, backtest integration,
+artifact IO, data ingestion, storage IO, file existence checks, hash
+verification, broker integration, live trading, paper trading, or a DB driver.
+
+Artifact manifest, artifact entry, research note, and review event tables remain
+deferred to later migrations. Foreign keys are also deferred because current
+contract references are declarative and insertion/backfill lifecycle rules have
+not been designed yet.
+
 ## Local Commands
 
 Commands that do not require a live database:
@@ -117,8 +136,8 @@ prefix.
 
 ## Next Persistence PR
 
-PR 12 is expected to add the first actual experiment ledger table migration.
-That PR should keep table design, constraints, indexes, and tests reviewable and
-should still avoid repositories, DB write paths, API endpoints, backtest
-integration, artifact IO, data ingestion, broker integration, live trading, and
-paper trading execution unless separately approved.
+After PR 12, future persistence PRs should keep table design, constraints,
+indexes, and tests reviewable and should still avoid repositories, DB write
+paths, API endpoints, backtest integration, artifact IO, data ingestion, broker
+integration, live trading, and paper trading execution unless separately
+approved.

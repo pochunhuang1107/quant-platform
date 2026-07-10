@@ -2,8 +2,7 @@
 
 ## Purpose And Scope
 
-This is the Phase 1 DB implementation plan for the experiment ledger. It is
-planning and documentation only.
+This is the Phase 1 DB implementation plan for the experiment ledger.
 
 The plan maps the existing Pydantic and JSON-schema contracts to future
 Postgres tables for the experiment ledger metadata layer. It defines table
@@ -11,16 +10,16 @@ boundaries, planned relational projections, JSONB usage, idempotency rules,
 audit expectations, indexing, future migration sequencing, and later DB test
 coverage.
 
-This PR does not create migrations, dependencies, SQLAlchemy models, Alembic
-setup, DB connections, APIs, write paths, or persistence code.
+PR 12 is the first actual ledger table migration. It implements only the
+`experiment_runs` and `data_snapshot_manifests` anchor tables using SQLAlchemy
+Core metadata and a hand-written Alembic migration. Artifact manifests,
+artifact entries, research notes, and review events remain deferred.
 
 ## Non-Goals
 
-This plan does not implement:
+The ledger persistence scope still does not implement:
 
-- Actual migrations.
-- SQLAlchemy models.
-- Alembic setup.
+- ORM models.
 - DB connection code.
 - Repositories/DAOs.
 - API endpoints.
@@ -51,6 +50,10 @@ The DB is a metadata ledger, not object storage.
 The DB stores run metadata, data snapshot metadata, artifact manifest metadata,
 artifact entry projections, research note metadata, review events, references,
 lifecycle status, projected query columns, and raw validated contract JSON.
+
+As of PR 12, only run metadata and data snapshot metadata have physical anchor
+tables. Artifact manifest metadata, artifact entry projections, research note
+metadata, and review events are planned but not yet migrated.
 
 Artifact files, parquet/csv contents, logs, charts, market data, raw datasets,
 and large result payloads remain outside the DB. The DB stores URIs and declared
@@ -324,32 +327,39 @@ requires them.
 
 ## Planned Migration Sequence
 
-This sequence is planned only:
+This sequence is partially implemented:
 
-1. Add Alembic setup and the SQLAlchemy dependency in a dedicated migration PR.
+1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
    `DATABASE_URL` handling, and empty baseline revision. That setup creates no
    ledger tables.
-2. Create initial metadata tables:
+2. Add the first ledger anchor table migration:
    - `experiment_runs`.
    - `data_snapshot_manifests`.
-   - `run_artifact_manifests`.
-   - `run_artifact_entries`.
-   - `research_notes`.
-   - `review_events`.
-3. Add basic constraints and text check constraints for enum-like fields.
-4. Add stable non-blocking foreign keys where appropriate.
-5. Add indexes.
-6. Add migration tests.
-7. Add contract fixture persistence tests.
-8. Add repository/write-path code only in a later PR after migrations are reviewed.
+3. Add basic constraints and text check constraints for enum-like fields on
+   those anchor tables.
+4. Add anchor-table indexes and migration structure tests without requiring a
+   live Postgres instance.
+5. Defer `run_artifact_manifests`, `run_artifact_entries`, `research_notes`,
+   and `review_events` to later migrations.
+6. Add stable non-blocking foreign keys later where appropriate.
+7. Add contract fixture persistence tests later.
+8. Add repository/write-path code only in a later PR after migrations are
+   reviewed.
 9. Require Pydantic contract validation before persistence.
+
+PR 12 intentionally adds no foreign keys. Contract references are declarative
+today, and insertion ordering, backfill behavior, and lifecycle rules are not
+designed yet. Foreign keys can be added later once those write-path rules are
+explicit.
 
 ## Future SQLAlchemy/Alembic Integration Steps
 
-The dedicated persistence setup PR adds dependencies, the Alembic environment,
+The dedicated persistence setup PR added dependencies, the Alembic environment,
 the migration directory, SQLAlchemy Core metadata, and an empty baseline only.
-Actual ledger tables remain deferred to the next persistence migration PR.
+PR 12 adds the first actual SQLAlchemy Core table definitions and the
+`0002_ledger_anchor_tables` Alembic revision for the run and data snapshot
+anchors.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
