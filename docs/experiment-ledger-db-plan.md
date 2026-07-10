@@ -327,6 +327,9 @@ requires them.
 This sequence is planned only:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated migration PR.
+   See [Persistence Setup](persistence-setup.md) for the minimal tooling,
+   `DATABASE_URL` handling, and empty baseline revision. That setup creates no
+   ledger tables.
 2. Create initial metadata tables:
    - `experiment_runs`.
    - `data_snapshot_manifests`.
@@ -344,9 +347,9 @@ This sequence is planned only:
 
 ## Future SQLAlchemy/Alembic Integration Steps
 
-Add dependencies in a separate PR. Add the Alembic environment and migration
-directory in the same dedicated persistence setup work or in a narrowly scoped
-follow-up.
+The dedicated persistence setup PR adds dependencies, the Alembic environment,
+the migration directory, SQLAlchemy Core metadata, and an empty baseline only.
+Actual ledger tables remain deferred to the next persistence migration PR.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
