@@ -4,6 +4,9 @@ Data contracts define the minimum fields and assumptions needed for reproducible
 research. They intentionally avoid choosing a data vendor, broker, or storage
 backend in Phase 0.
 
+See [Contract Map](contract-map.md) for the current schema-backed contracts and
+fixture coverage.
+
 ## General Rules
 
 - All timestamps are timezone-aware and stored in UTC unless a contract explicitly states otherwise.

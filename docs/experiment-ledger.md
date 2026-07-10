@@ -140,6 +140,9 @@ The `review` object should include:
 - Phase 1 starts with JSON/Pydantic contracts.
 - Postgres/Alembic migrations are added only after JSON/Pydantic contracts stabilize.
 
+See [Contract Map](contract-map.md) for the current Python model, JSON schema,
+fixture, and validation matrix.
+
 ## Phase 0 Acceptance Criteria
 
 - Ledger purpose, minimum fields, artifact list, artifact manifest, status lifecycle, review metadata, correction rules, and immutability rules are documented.
