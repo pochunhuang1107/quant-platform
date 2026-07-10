@@ -59,6 +59,9 @@ References are declarative only. Current contracts do not validate that
 referenced IDs, URIs, files, hashes, or snapshots actually exist. Hash fields are
 declared metadata only in this phase.
 
+See [Experiment Ledger DB Plan](experiment-ledger-db-plan.md) for how
+schema-backed contracts are expected to map to future Postgres tables.
+
 ## Current Schema And Fixture Files
 
 Current schema files:

@@ -143,6 +143,9 @@ The `review` object should include:
 See [Contract Map](contract-map.md) for the current Python model, JSON schema,
 fixture, and validation matrix.
 
+See [Experiment Ledger DB Plan](experiment-ledger-db-plan.md) for the planned
+Postgres table mapping and migration sequence.
+
 ## Phase 0 Acceptance Criteria
 
 - Ledger purpose, minimum fields, artifact list, artifact manifest, status lifecycle, review metadata, correction rules, and immutability rules are documented.
