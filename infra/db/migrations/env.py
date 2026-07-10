@@ -7,6 +7,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import research_sdk.persistence.tables  # noqa: F401
 from research_sdk.persistence.database import get_database_url
 from research_sdk.persistence.metadata import metadata
 

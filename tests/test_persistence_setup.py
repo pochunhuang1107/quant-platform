@@ -13,11 +13,11 @@ from research_sdk.persistence.metadata import metadata
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
 BASELINE_REVISION = "0001_persistence_baseline"
+LEDGER_ANCHOR_REVISION = "0002_ledger_anchor_tables"
 
 
-def test_persistence_metadata_is_empty_sqlalchemy_metadata() -> None:
+def test_persistence_metadata_is_sqlalchemy_metadata() -> None:
     assert isinstance(metadata, MetaData)
-    assert metadata.tables == {}
 
 
 def test_persistence_metadata_has_stable_naming_convention() -> None:
@@ -58,13 +58,17 @@ def test_alembic_config_points_to_migration_directory() -> None:
     assert config.get_main_option("script_location") == "infra/db/migrations"
 
 
-def test_alembic_script_directory_has_empty_baseline_head() -> None:
+def test_alembic_script_directory_has_ledger_anchor_head() -> None:
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
     heads = script.get_heads()
-    assert heads == [BASELINE_REVISION]
+    assert heads == [LEDGER_ANCHOR_REVISION]
 
     baseline = script.get_revision(BASELINE_REVISION)
     assert baseline is not None
     assert baseline.down_revision is None
+
+    ledger_anchor = script.get_revision(LEDGER_ANCHOR_REVISION)
+    assert ledger_anchor is not None
+    assert ledger_anchor.down_revision == BASELINE_REVISION
