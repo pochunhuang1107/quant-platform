@@ -15,6 +15,7 @@ ALEMBIC_INI = REPO_ROOT / "alembic.ini"
 BASELINE_REVISION = "0001_persistence_baseline"
 LEDGER_ANCHOR_REVISION = "0002_ledger_anchor_tables"
 ARTIFACT_REVISION = "0003_artifact_tables"
+RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
 
 
 def test_persistence_metadata_is_sqlalchemy_metadata() -> None:
@@ -59,12 +60,12 @@ def test_alembic_config_points_to_migration_directory() -> None:
     assert config.get_main_option("script_location") == "infra/db/migrations"
 
 
-def test_alembic_script_directory_has_artifact_table_head() -> None:
+def test_alembic_script_directory_has_research_review_table_head() -> None:
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
     heads = script.get_heads()
-    assert heads == [ARTIFACT_REVISION]
+    assert heads == [RESEARCH_REVIEW_REVISION]
 
     baseline = script.get_revision(BASELINE_REVISION)
     assert baseline is not None
@@ -77,3 +78,7 @@ def test_alembic_script_directory_has_artifact_table_head() -> None:
     artifact_tables = script.get_revision(ARTIFACT_REVISION)
     assert artifact_tables is not None
     assert artifact_tables.down_revision == LEDGER_ANCHOR_REVISION
+
+    research_review_tables = script.get_revision(RESEARCH_REVIEW_REVISION)
+    assert research_review_tables is not None
+    assert research_review_tables.down_revision == ARTIFACT_REVISION

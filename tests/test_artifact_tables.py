@@ -19,6 +19,8 @@ EXPECTED_TABLE_NAMES = {
     "data_snapshot_manifests",
     "run_artifact_manifests",
     "run_artifact_entries",
+    "research_notes",
+    "review_events",
 }
 
 EXPECTED_MANIFEST_COLUMNS = {

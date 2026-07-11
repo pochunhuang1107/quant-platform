@@ -22,6 +22,7 @@ MIGRATION_PATH = (
 BASELINE_REVISION = "0001_persistence_baseline"
 LEDGER_ANCHOR_REVISION = "0002_ledger_anchor_tables"
 ARTIFACT_REVISION = "0003_artifact_tables"
+RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
 
 APPROVED_TABLES = {
     "experiment_runs",
@@ -93,7 +94,7 @@ def test_alembic_script_directory_contains_ledger_anchor_revision() -> None:
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == [ARTIFACT_REVISION]
+    assert script.get_heads() == [RESEARCH_REVIEW_REVISION]
 
     ledger_anchor = script.get_revision(LEDGER_ANCHOR_REVISION)
     assert ledger_anchor is not None
@@ -102,6 +103,10 @@ def test_alembic_script_directory_contains_ledger_anchor_revision() -> None:
     artifact_tables = script.get_revision(ARTIFACT_REVISION)
     assert artifact_tables is not None
     assert artifact_tables.down_revision == LEDGER_ANCHOR_REVISION
+
+    research_review_tables = script.get_revision(RESEARCH_REVIEW_REVISION)
+    assert research_review_tables is not None
+    assert research_review_tables.down_revision == ARTIFACT_REVISION
 
 
 def test_ledger_anchor_migration_upgrade_scope(monkeypatch: Any) -> None:

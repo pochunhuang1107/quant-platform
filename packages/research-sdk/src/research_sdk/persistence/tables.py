@@ -28,8 +28,13 @@ from research_sdk.contracts.enums import (
     DataSnapshotKind,
     DataSnapshotStatus,
     DataSourceType,
+    DecisionOutcome,
+    EvidenceStrength,
     ExperimentRunStatus,
     HashAlgorithm,
+    HypothesisStatus,
+    ResearchNoteStatus,
+    ResearchNoteType,
     ReviewRole,
     ReviewStatus,
     TemporalCoverage,
@@ -315,4 +320,160 @@ ARTIFACT_TABLES = (
     run_artifact_entries,
 )
 
-LEDGER_TABLES = LEDGER_ANCHOR_TABLES + ARTIFACT_TABLES
+
+research_notes = Table(
+    "research_notes",
+    metadata,
+    Column("note_id", Text, primary_key=True),
+    Column("schema_version", Text, nullable=False),
+    Column("note_type", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("created_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("updated_by", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("hypothesis_status", Text, nullable=False),
+    Column("evidence_strength", Text, nullable=False),
+    Column("decision_outcome", Text, nullable=False),
+    Column("parent_note_id", Text, nullable=True),
+    Column("supersedes_note_id", Text, nullable=True),
+    Column("review_status", Text, nullable=False),
+    Column("reviewer_id", Text, nullable=True),
+    Column("review_role", Text, nullable=True),
+    Column("reviewed_at", DateTime(timezone=True), nullable=True),
+    Column("risk_approval_required", Boolean, nullable=False),
+    Column("contract_hash", Text, nullable=False),
+    Column("raw_contract", JSONB, nullable=False),
+    Column(
+        "inserted_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    ),
+    CheckConstraint(
+        "parent_note_id IS NULL OR parent_note_id <> note_id",
+        name="parent_note_id_not_self",
+    ),
+    CheckConstraint(
+        "supersedes_note_id IS NULL OR supersedes_note_id <> note_id",
+        name="supersedes_note_id_not_self",
+    ),
+    CheckConstraint(
+        f"note_type IN ({_quoted_enum_values(ResearchNoteType)})",
+        name="note_type_values",
+    ),
+    CheckConstraint(
+        f"status IN ({_quoted_enum_values(ResearchNoteStatus)})",
+        name="status_values",
+    ),
+    CheckConstraint(
+        f"hypothesis_status IN ({_quoted_enum_values(HypothesisStatus)})",
+        name="hypothesis_status_values",
+    ),
+    CheckConstraint(
+        f"evidence_strength IN ({_quoted_enum_values(EvidenceStrength)})",
+        name="evidence_strength_values",
+    ),
+    CheckConstraint(
+        f"decision_outcome IN ({_quoted_enum_values(DecisionOutcome)})",
+        name="decision_outcome_values",
+    ),
+    CheckConstraint(
+        f"review_status IN ({_quoted_enum_values(ReviewStatus)})",
+        name="review_status_values",
+    ),
+    CheckConstraint(
+        f"review_role IS NULL OR review_role IN ({_quoted_enum_values(ReviewRole)})",
+        name="review_role_values",
+    ),
+)
+
+Index(
+    "ix_research_notes_status_updated_at",
+    research_notes.c.status,
+    research_notes.c.updated_at,
+)
+Index(
+    "ix_research_notes_note_type_created_at",
+    research_notes.c.note_type,
+    research_notes.c.created_at,
+)
+Index(
+    "ix_research_notes_review_status_updated_at",
+    research_notes.c.review_status,
+    research_notes.c.updated_at,
+)
+Index(
+    "ix_research_notes_decision_outcome_updated_at",
+    research_notes.c.decision_outcome,
+    research_notes.c.updated_at,
+)
+Index("ix_research_notes_parent_note_id", research_notes.c.parent_note_id)
+Index("ix_research_notes_supersedes_note_id", research_notes.c.supersedes_note_id)
+
+
+review_events = Table(
+    "review_events",
+    metadata,
+    Column("review_event_id", Text, primary_key=True),
+    Column("subject_type", Text, nullable=False),
+    Column("subject_id", Text, nullable=False),
+    Column("review_status", Text, nullable=False),
+    Column("reviewer_id", Text, nullable=True),
+    Column("review_role", Text, nullable=True),
+    Column("reviewed_at", DateTime(timezone=True), nullable=True),
+    Column("decision", Text, nullable=True),
+    Column("approval_scope", Text, nullable=True),
+    Column("approval_expires_at", DateTime(timezone=True), nullable=True),
+    Column("linked_pr", Text, nullable=True),
+    Column("review_notes_uri", Text, nullable=True),
+    Column("risk_approval_required", Boolean, nullable=False),
+    Column("raw_review", JSONB, nullable=False),
+    Column(
+        "inserted_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    ),
+    CheckConstraint(
+        "subject_type IN ("
+        "'experiment_run', 'research_note', 'data_snapshot_manifest', "
+        "'run_artifact_manifest'"
+        ")",
+        name="subject_type_values",
+    ),
+    CheckConstraint(
+        f"review_status IN ({_quoted_enum_values(ReviewStatus)})",
+        name="review_status_values",
+    ),
+    CheckConstraint(
+        f"review_role IS NULL OR review_role IN ({_quoted_enum_values(ReviewRole)})",
+        name="review_role_values",
+    ),
+)
+
+Index(
+    "ix_review_events_subject_type_subject_id_inserted_at",
+    review_events.c.subject_type,
+    review_events.c.subject_id,
+    review_events.c.inserted_at,
+)
+Index(
+    "ix_review_events_reviewer_id_inserted_at",
+    review_events.c.reviewer_id,
+    review_events.c.inserted_at,
+)
+Index(
+    "ix_review_events_review_status_inserted_at",
+    review_events.c.review_status,
+    review_events.c.inserted_at,
+)
+
+
+RESEARCH_REVIEW_TABLES = (
+    research_notes,
+    review_events,
+)
+
+LEDGER_TABLES = LEDGER_ANCHOR_TABLES + ARTIFACT_TABLES + RESEARCH_REVIEW_TABLES
