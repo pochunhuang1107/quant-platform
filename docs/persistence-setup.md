@@ -18,9 +18,9 @@ but it does not create ledger tables or persistence write paths.
 
 ## What This Does Not Add
 
-This setup does not add `experiment_runs`, `data_snapshot_manifests`,
+This setup PR did not add `experiment_runs`, `data_snapshot_manifests`,
 `run_artifact_manifests`, `run_artifact_entries`, `research_notes`, or
-`review_events`.
+`review_events`. Later migrations add those tables incrementally.
 
 It also does not add ORM models, repositories, DAOs, DB write paths, FastAPI
 endpoints, backtest integration, artifact IO, data ingestion, vendor API calls,
@@ -93,10 +93,10 @@ repositories, DAOs, DB write paths, FastAPI endpoints, backtest integration,
 artifact IO, data ingestion, storage IO, file existence checks, hash
 verification, broker integration, live trading, paper trading, or a DB driver.
 
-Research note and review event tables remain deferred to later migrations.
-Cross-contract foreign keys are also deferred because current contract
-references are declarative and insertion/backfill lifecycle rules have not been
-designed yet.
+At the end of the ledger anchor revision, research note and review event tables
+were still deferred to later migrations. Cross-contract foreign keys are also
+deferred because current contract references are declarative and
+insertion/backfill lifecycle rules have not been designed yet.
 
 ## Artifact Table Revision
 
@@ -122,6 +122,36 @@ backfill behavior are designed.
 The artifact revision still does not add repositories, DAOs, DB write paths,
 FastAPI endpoints, backtest integration, artifact IO, storage IO, hash
 verification, a DB driver, or live Postgres tests.
+
+## Research And Review Table Revision
+
+The migration after the artifact table revision is
+`0004_research_review_tables`. It adds the research/review metadata layer:
+
+- `research_notes`.
+- `review_events`.
+
+`research_notes` stores projected metadata from the validated `ResearchNote`
+contract plus `raw_contract JSONB` and `contract_hash`. `review_events` stores
+generic review/audit metadata based on `ReviewMetadata` using `subject_type`,
+`subject_id`, and `raw_review JSONB`.
+
+Review events are metadata records only. They do not authorize trading, enforce
+human approval gates, verify reviewer identity, or implement lifecycle
+transitions.
+
+The research/review revision adds no foreign keys. Cross-contract FKs remain
+deferred until write ordering, correction, replay, and backfill behavior are
+designed. Research note self-links can arrive out of order during imports or
+historical backfills, and `review_events` is polymorphic by `subject_type` and
+`subject_id`.
+
+The revision still does not add repositories, DAOs, DB write paths, FastAPI
+endpoints, backtest integration, artifact IO, data ingestion, storage IO, file
+existence checks, hash verification, markdown rendering, report rendering,
+search/indexing, JSONB GIN indexes, embeddings, semantic memory, knowledge
+graph behavior, LLM summarization, agent workflow execution, broker
+integration, live trading, paper trading, a DB driver, or live Postgres tests.
 
 ## Local Commands
 

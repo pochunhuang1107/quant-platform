@@ -60,7 +60,10 @@ referenced IDs, URIs, files, hashes, or snapshots actually exist. Hash fields ar
 declared metadata only in this phase.
 
 See [Experiment Ledger DB Plan](experiment-ledger-db-plan.md) for how
-schema-backed contracts are expected to map to future Postgres tables.
+schema-backed contracts map to current and future Postgres tables.
+As of PR 14, `ResearchNote` is projected into `research_notes`, and
+`ReviewMetadata` is projected into generic `review_events` audit metadata using
+`subject_type`, `subject_id`, and `raw_review`.
 
 ## Current Schema And Fixture Files
 
