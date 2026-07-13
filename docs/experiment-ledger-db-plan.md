@@ -297,6 +297,16 @@ stored contract payload matches the payload being inserted.
 files, csv files, logs, charts, or storage objects. Artifact and data file hash
 verification belongs outside the DB layer.
 
+As of PR 15, canonical contract hashing is implemented before repositories or
+write paths. The hash is computed from compact canonical JSON produced from a
+validated Pydantic contract object's `model_dump(mode="json")` payload with
+stable key ordering. `schema_version` is included when present because it is
+part of contract identity. Database-generated fields such as `inserted_at` are
+excluded because they are not part of the validated contract payload.
+
+See [Persistence Repository Plan](persistence-repository-plan.md) for the
+repository boundary, hashing API, and future write-path responsibilities.
+
 ## Idempotency And Insert/Update Rules
 
 Insert paths should require prior Pydantic contract validation. After
