@@ -27,6 +27,7 @@ Phase 0: Agent-ready foundation.
 - [Experiment Ledger](docs/experiment-ledger.md): ledger fields, artifacts, status lifecycle, and review metadata.
 - [Experiment Ledger DB Plan](docs/experiment-ledger-db-plan.md): planned Postgres/Alembic persistence design for the experiment ledger metadata layer.
 - [Persistence Setup](docs/persistence-setup.md): minimal SQLAlchemy/Alembic setup and local migration command guidance.
+- [Persistence Repository Plan](docs/persistence-repository-plan.md): canonical contract hashing policy and future repository/write-path boundary.
 - [Data Contracts](docs/data-contracts.md): snapshot manifests, point-in-time fields, and research output contracts.
 - [Contract Map](docs/contract-map.md): current Phase 1 contract models, schemas, fixtures, relationships, validation level, and deferred behavior.
 - [Trading Risk Policy](docs/trading-risk-policy.md): approval gates, prohibited work, and risk checks.

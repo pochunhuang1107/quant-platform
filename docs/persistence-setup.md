@@ -153,6 +153,22 @@ search/indexing, JSONB GIN indexes, embeddings, semantic memory, knowledge
 graph behavior, LLM summarization, agent workflow execution, broker
 integration, live trading, paper trading, a DB driver, or live Postgres tests.
 
+## Persistence Hashing Boundary
+
+PR 15 adds canonical contract hashing as the next persistence primitive after
+the table migrations. The hashing helpers compute deterministic canonical JSON
+and SHA-256 `contract_hash` values from validated Pydantic contract objects.
+They are used for future audit and idempotency metadata only.
+
+This hashing step still does not add repositories, DAOs, row mapping helpers,
+DB write paths, sessions, unit-of-work abstractions, FastAPI endpoints, backtest
+integration, artifact IO, storage IO, file existence checks, artifact content
+hash verification, a DB driver, SQLite persistence tests, or live Postgres
+tests.
+
+See [Persistence Repository Plan](persistence-repository-plan.md) for the
+canonical hash policy and future repository boundary.
+
 ## Local Commands
 
 Commands that do not require a live database:
