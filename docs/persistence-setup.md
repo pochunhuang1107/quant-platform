@@ -195,6 +195,19 @@ dependencies, SQLite persistence tests, live Postgres tests, FastAPI endpoints,
 backtest integration, artifact IO, storage IO, file existence checks, artifact
 content hash verification, or approval/trading behavior.
 
+## Persistence Statement Builder Boundary
+
+PR 18 adds SQLAlchemy Core insert statement builders after the protocol
+boundary. These builders accept validated contracts, call the existing row
+mappers, and bind mapper-produced rows to the current SQLAlchemy Core tables.
+They return inert `Insert` objects only.
+
+This statement-builder step still does not add repository implementations, DB
+write paths, statement execution, sessions, unit-of-work abstractions, DB
+driver dependencies, SQLite persistence tests, live Postgres tests, FastAPI
+endpoints, backtest integration, artifact IO, storage IO, file existence
+checks, artifact content hash verification, or approval/trading behavior.
+
 ## Local Commands
 
 Commands that do not require a live database:
@@ -225,7 +238,7 @@ uv run python -m research_sdk.contracts.json_schema --output-dir packages/resear
 uv run alembic -c alembic.ini heads
 uv run alembic -c alembic.ini history
 uv run pytest tests/test_persistence_setup.py
-uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py
+uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py tests/test_persistence_statements.py
 uv run pytest
 ```
 

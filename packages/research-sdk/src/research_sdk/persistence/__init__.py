@@ -20,6 +20,14 @@ from research_sdk.persistence.protocols import (
     ExperimentLedgerRepository,
     PersistedRecordMetadata,
 )
+from research_sdk.persistence.statements import (
+    ArtifactManifestInsertStatements,
+    build_data_snapshot_manifest_insert,
+    build_experiment_run_insert,
+    build_research_note_insert,
+    build_review_event_insert,
+    build_run_artifact_manifest_inserts,
+)
 from research_sdk.persistence.tables import (
     LEDGER_ANCHOR_TABLES,
     data_snapshot_manifests,
@@ -27,11 +35,17 @@ from research_sdk.persistence.tables import (
 )
 
 __all__ = [
+    "ArtifactManifestInsertStatements",
     "ArtifactManifestRows",
     "ExperimentLedgerRepository",
     "LEDGER_ANCHOR_TABLES",
     "PersistedRecordMetadata",
     "ReviewSubjectType",
+    "build_data_snapshot_manifest_insert",
+    "build_experiment_run_insert",
+    "build_research_note_insert",
+    "build_review_event_insert",
+    "build_run_artifact_manifest_inserts",
     "canonical_contract_json",
     "canonical_json_sha256",
     "contract_sha256",
