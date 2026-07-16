@@ -16,6 +16,10 @@ from research_sdk.persistence.mappers import (
     run_artifact_manifest_to_rows,
 )
 from research_sdk.persistence.metadata import metadata
+from research_sdk.persistence.protocols import (
+    ExperimentLedgerRepository,
+    PersistedRecordMetadata,
+)
 from research_sdk.persistence.tables import (
     LEDGER_ANCHOR_TABLES,
     data_snapshot_manifests,
@@ -24,7 +28,9 @@ from research_sdk.persistence.tables import (
 
 __all__ = [
     "ArtifactManifestRows",
+    "ExperimentLedgerRepository",
     "LEDGER_ANCHOR_TABLES",
+    "PersistedRecordMetadata",
     "ReviewSubjectType",
     "canonical_contract_json",
     "canonical_json_sha256",

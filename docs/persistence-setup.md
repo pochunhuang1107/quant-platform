@@ -183,6 +183,18 @@ endpoints, backtest integration, artifact IO, storage IO, file existence
 checks, artifact content hash verification, a DB driver, SQLite persistence
 tests, or live Postgres tests.
 
+## Persistence Repository Protocol Boundary
+
+PR 17 adds the protocol boundary after row mapping. It introduces an aggregate
+`ExperimentLedgerRepository` protocol and `PersistedRecordMetadata` result type
+for future ledger write repositories.
+
+This protocol step still does not add repository implementations, SQLAlchemy
+insert builders, DB write paths, sessions, unit-of-work abstractions, DB driver
+dependencies, SQLite persistence tests, live Postgres tests, FastAPI endpoints,
+backtest integration, artifact IO, storage IO, file existence checks, artifact
+content hash verification, or approval/trading behavior.
+
 ## Local Commands
 
 Commands that do not require a live database:
@@ -213,7 +225,7 @@ uv run python -m research_sdk.contracts.json_schema --output-dir packages/resear
 uv run alembic -c alembic.ini heads
 uv run alembic -c alembic.ini history
 uv run pytest tests/test_persistence_setup.py
-uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py
+uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py
 uv run pytest
 ```
 
