@@ -13,6 +13,12 @@ protocols define the future write boundary shape only. They do not implement
 writes, build SQLAlchemy insert statements, connect to a database, add a DB
 driver, or introduce live Postgres or SQLite persistence tests.
 
+PR 18 adds SQLAlchemy Core insert statement builders. These builders create
+inert `Insert` objects by binding mapper-produced rows to the current table
+metadata. They still do not execute statements, implement repositories, connect
+to a database, add a DB driver, or introduce live Postgres or SQLite
+persistence tests.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -129,6 +135,42 @@ session/unit-of-work abstractions, lifecycle enforcement, idempotency
 enforcement, append-only enforcement, and approval/trading behavior remain
 future design work.
 
+## Statement Builder Boundary
+
+PR 18 adds `research_sdk.persistence.statements` as the SQLAlchemy Core
+statement-building boundary. The module accepts validated Pydantic contracts,
+calls the existing row mappers internally, and binds the resulting row
+dictionaries to the current SQLAlchemy Core table metadata.
+
+The public builders are explicit per current table boundary:
+
+- `build_experiment_run_insert(run)`;
+- `build_data_snapshot_manifest_insert(snapshot)`;
+- `build_run_artifact_manifest_inserts(manifest_id=..., manifest=...)`;
+- `build_research_note_insert(note)`;
+- `build_review_event_insert(review_event_id=..., subject_type=..., subject_id=..., review=...)`.
+
+`build_run_artifact_manifest_inserts()` returns a frozen grouped dataclass with
+one manifest `Insert` and one entry `Insert` per artifact entry. `manifest_id`
+remains caller-provided because `RunArtifactManifest` does not contain that
+identifier. `review_event_id`, `subject_type`, and `subject_id` remain
+caller-provided for `ReviewMetadata` because there is no standalone
+`ReviewEvent` contract. The mapper path validates `subject_type`.
+
+Statement builders do not accept raw row dictionaries as public input and do
+not accept caller-provided `contract_hash` values. The mappers compute
+`contract_hash` from validated contracts where current tables store one.
+
+The returned `Insert` objects are not write paths. They are inert SQLAlchemy
+objects until a future repository explicitly executes them. PR 18 does not
+choose idempotency, upsert, `ON CONFLICT`, duplicate handling, correction,
+append-only, lifecycle, or session/unit-of-work semantics.
+
+The statement module may import SQLAlchemy table metadata because it is the SQL
+binding boundary. It must not import repository protocols, database URL
+helpers, engine/session/connection helpers, Alembic, DB drivers, filesystem
+helpers, storage SDKs, vendor SDKs, or approval/trading workflow code.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
@@ -157,15 +199,16 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 17:
+The following remain deferred after PR 18:
 
 - SQLAlchemy repository implementations;
-- SQLAlchemy insert builders;
 - database write paths;
 - session or unit-of-work abstractions;
 - DB driver dependencies such as `psycopg` or `asyncpg`;
 - live Postgres tests;
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
+- idempotency, upsert, duplicate handling, and `ON CONFLICT` behavior;
+- lifecycle, correction, and append-only enforcement;
 - FastAPI endpoints;
 - backtest integration;
 - artifact IO or storage IO;

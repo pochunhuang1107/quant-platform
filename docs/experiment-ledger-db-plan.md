@@ -324,6 +324,13 @@ writes, sessions, DB drivers, live Postgres tests, or SQLite persistence tests.
 Lifecycle, idempotency, correction, append-only, and session/unit-of-work rules
 remain future design work.
 
+As of PR 18, SQLAlchemy Core statement builders define the inert SQL statement
+boundary. They bind mapper-produced rows to the current table metadata and
+return non-executing `Insert` objects. They do not change table schema, execute
+database writes, create engines/sessions/connections, add DB drivers, or choose
+lifecycle, idempotency, correction, append-only, `ON CONFLICT`, or
+session/unit-of-work rules.
+
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, and future write-path responsibilities.
 
@@ -425,7 +432,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 17:
+This sequence is partially implemented and current through PR 18:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -448,11 +455,13 @@ This sequence is partially implemented and current through PR 17:
 8. Add pure row mapping helpers for current table projections.
 9. Add repository protocols that define the future write boundary shape without
    implementation or execution behavior.
-10. Add stable non-blocking cross-contract foreign keys later where appropriate.
-11. Add contract fixture persistence tests later.
-12. Add repository/write-path code only in a later PR after migrations are
+10. Add SQLAlchemy Core insert statement builders that return inert `Insert`
+   objects without execution behavior.
+11. Add stable non-blocking cross-contract foreign keys later where appropriate.
+12. Add contract fixture persistence tests later.
+13. Add repository/write-path code only in a later PR after migrations are
    reviewed.
-13. Require Pydantic contract validation before persistence.
+14. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -494,7 +503,9 @@ assumptions.
 No APIs or run writers should be added until persistence primitives pass tests.
 Lifecycle transition checks, idempotency enforcement, correction handling, and
 append-only policy remain future service or repository responsibilities. The
-row mapping helpers only shape validated data into projected rows.
+row mapping helpers only shape validated data into projected rows. The
+statement builders only turn those rows into non-executing SQLAlchemy Core
+`Insert` objects for future repositories to execute deliberately.
 
 ## Future DB Test Strategy
 
@@ -515,7 +526,7 @@ When DB work begins, plan tests for:
 
 ## Validation Commands
 
-For persistence row mapping changes, run:
+For persistence statement-builder changes, run:
 
 ```bash
 git diff --check
@@ -525,7 +536,7 @@ uv run mypy packages/research-sdk/src
 uv run python -m research_sdk.contracts.json_schema --output-dir packages/research-sdk/schema --check
 uv run alembic -c alembic.ini heads
 uv run alembic -c alembic.ini history
-uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py
+uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py tests/test_persistence_statements.py
 uv run pytest
 ```
 
