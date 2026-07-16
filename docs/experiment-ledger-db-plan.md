@@ -36,6 +36,12 @@ on `ReviewMetadata`. It does not render markdown, generate reports, enforce
 approval workflows, authorize trading, add search/indexing, add embeddings, or
 introduce write paths.
 
+PR 15 adds canonical contract hashing. PR 16 adds pure row mapping helpers that
+define the column projection boundary from validated contracts to DB-shaped row
+dictionaries before repositories are introduced. The mappers do not execute DB
+writes, build insert statements, connect to a database, verify external
+artifacts, or enforce lifecycle/idempotency policy.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -304,6 +310,12 @@ stable key ordering. `schema_version` is included when present because it is
 part of contract identity. Database-generated fields such as `inserted_at` are
 excluded because they are not part of the validated contract payload.
 
+As of PR 16, row mapping helpers compute `contract_hash` internally and project
+all current table columns except `inserted_at`. They store `raw_contract` from
+`contract.model_dump(mode="json")` and `raw_review` from
+`review.model_dump(mode="json")`. These helpers are pure, non-executing
+projections; they are not a DB write path.
+
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, and future write-path responsibilities.
 
@@ -405,7 +417,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 14:
+This sequence is partially implemented and current through PR 16:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -424,11 +436,13 @@ This sequence is partially implemented and current through PR 14:
 6. Add the research and review metadata migration:
    - `research_notes`.
    - `review_events`.
-7. Add stable non-blocking cross-contract foreign keys later where appropriate.
-8. Add contract fixture persistence tests later.
-9. Add repository/write-path code only in a later PR after migrations are
+7. Add canonical contract hashing helpers.
+8. Add pure row mapping helpers for current table projections.
+9. Add stable non-blocking cross-contract foreign keys later where appropriate.
+10. Add contract fixture persistence tests later.
+11. Add repository/write-path code only in a later PR after migrations are
    reviewed.
-10. Require Pydantic contract validation before persistence.
+12. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -468,6 +482,9 @@ if needed, without introducing vendor, broker, credential, or cloud-specific
 assumptions.
 
 No APIs or run writers should be added until persistence primitives pass tests.
+Lifecycle transition checks, idempotency enforcement, correction handling, and
+append-only policy remain future service or repository responsibilities. The
+row mapping helpers only shape validated data into projected rows.
 
 ## Future DB Test Strategy
 
@@ -488,7 +505,7 @@ When DB work begins, plan tests for:
 
 ## Validation Commands
 
-For this docs-only PR, run:
+For persistence row mapping changes, run:
 
 ```bash
 git diff --check
@@ -496,7 +513,9 @@ uv run ruff format --check .
 uv run ruff check .
 uv run mypy packages/research-sdk/src
 uv run python -m research_sdk.contracts.json_schema --output-dir packages/research-sdk/schema --check
-uv run pytest tests/test_contract_roundtrip_validation.py tests/test_contract_json_schema_export.py
+uv run alembic -c alembic.ini heads
+uv run alembic -c alembic.ini history
+uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py
 uv run pytest
 ```
 
