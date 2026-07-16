@@ -8,6 +8,11 @@ DB-shaped row dictionaries. These helpers still do not add repositories,
 database writes, a DB driver, live Postgres tests, SQLite persistence tests, or
 application integration.
 
+PR 17 adds repository protocol interfaces and a minimal result type. These
+protocols define the future write boundary shape only. They do not implement
+writes, build SQLAlchemy insert statements, connect to a database, add a DB
+driver, or introduce live Postgres or SQLite persistence tests.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -82,6 +87,48 @@ build insert statements, execute writes, create sessions, connect to a
 database, read files, inspect storage, verify artifact hashes, enforce
 lifecycle transitions, or perform review/trading approval behavior.
 
+## Repository Protocol Boundary
+
+PR 17 adds `research_sdk.persistence.protocols` with an aggregate
+`ExperimentLedgerRepository` protocol and `PersistedRecordMetadata` result
+dataclass. The protocol is explicit per current contract/table boundary:
+
+- `record_experiment_run(run)`;
+- `record_data_snapshot_manifest(snapshot)`;
+- `record_run_artifact_manifest(manifest_id=..., manifest=...)`;
+- `record_research_note(note)`;
+- `append_review_event(review_event_id=..., subject_type=..., subject_id=..., review=...)`.
+
+The `record_*` naming communicates ledger intent without implying upsert,
+idempotency, or SQL insert behavior before implementation semantics are
+designed. `append_review_event` remains explicit because `review_events` is
+append-only-oriented metadata.
+
+The protocol accepts validated Pydantic contract objects only. It does not
+accept raw dictionaries, caller-provided `contract_hash` values, sessions, unit
+of work objects, table objects, insert statements, database connections, or
+storage handles. Future implementations should compute `contract_hash`
+internally with the existing hashing and row mapping boundary.
+
+`manifest_id` remains caller-provided for `RunArtifactManifest` persistence
+because the current contract does not contain that ID. `review_event_id`,
+`subject_type`, and `subject_id` remain caller-provided for
+`ReviewMetadata` persistence because there is no standalone `ReviewEvent`
+contract.
+
+`PersistedRecordMetadata` contains `table_name`, `primary_key`, and optional
+`contract_hash`. `contract_hash` is optional because `review_events` currently
+has no `event_hash` or `contract_hash`. Database-generated `inserted_at`,
+created/idempotent flags, row counts, and artifact entry counts are deferred
+until a repository implementation and DB-returned state exist.
+
+The protocols do not import SQLAlchemy, Alembic, table metadata, database
+helpers, row mapper functions, hashing helpers, filesystem helpers, storage
+SDKs, or vendor SDKs. They are synchronous only; async protocols, exceptions,
+session/unit-of-work abstractions, lifecycle enforcement, idempotency
+enforcement, append-only enforcement, and approval/trading behavior remain
+future design work.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
@@ -110,9 +157,8 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 16:
+The following remain deferred after PR 17:
 
-- repository protocols;
 - SQLAlchemy repository implementations;
 - SQLAlchemy insert builders;
 - database write paths;

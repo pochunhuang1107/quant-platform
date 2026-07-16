@@ -316,6 +316,14 @@ all current table columns except `inserted_at`. They store `raw_contract` from
 `review.model_dump(mode="json")`. These helpers are pure, non-executing
 projections; they are not a DB write path.
 
+As of PR 17, repository protocols define the future write boundary shape with
+explicit methods for current ledger contracts and review events. These
+protocols are non-executing, do not change table schemas, do not import
+SQLAlchemy table metadata, and do not add insert builders, repositories, DB
+writes, sessions, DB drivers, live Postgres tests, or SQLite persistence tests.
+Lifecycle, idempotency, correction, append-only, and session/unit-of-work rules
+remain future design work.
+
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, and future write-path responsibilities.
 
@@ -417,7 +425,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 16:
+This sequence is partially implemented and current through PR 17:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -438,11 +446,13 @@ This sequence is partially implemented and current through PR 16:
    - `review_events`.
 7. Add canonical contract hashing helpers.
 8. Add pure row mapping helpers for current table projections.
-9. Add stable non-blocking cross-contract foreign keys later where appropriate.
-10. Add contract fixture persistence tests later.
-11. Add repository/write-path code only in a later PR after migrations are
+9. Add repository protocols that define the future write boundary shape without
+   implementation or execution behavior.
+10. Add stable non-blocking cross-contract foreign keys later where appropriate.
+11. Add contract fixture persistence tests later.
+12. Add repository/write-path code only in a later PR after migrations are
    reviewed.
-12. Require Pydantic contract validation before persistence.
+13. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
