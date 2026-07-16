@@ -160,14 +160,28 @@ the table migrations. The hashing helpers compute deterministic canonical JSON
 and SHA-256 `contract_hash` values from validated Pydantic contract objects.
 They are used for future audit and idempotency metadata only.
 
-This hashing step still does not add repositories, DAOs, row mapping helpers,
-DB write paths, sessions, unit-of-work abstractions, FastAPI endpoints, backtest
+The PR 15 hashing step did not add repositories, DAOs, row mapping helpers, DB
+write paths, sessions, unit-of-work abstractions, FastAPI endpoints, backtest
 integration, artifact IO, storage IO, file existence checks, artifact content
 hash verification, a DB driver, SQLite persistence tests, or live Postgres
 tests.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 canonical hash policy and future repository boundary.
+
+## Persistence Row Mapping Boundary
+
+PR 16 adds pure row mapping helpers after the hashing boundary. These helpers
+accept validated Pydantic contracts and return DB-shaped row dictionaries for
+the current ledger tables. They compute `contract_hash` internally, store
+`raw_contract` or `raw_review` JSON-compatible payloads, and omit
+`inserted_at` because it is database-generated.
+
+This row mapping step still does not add repositories, SQLAlchemy insert
+builders, DB write paths, sessions, unit-of-work abstractions, FastAPI
+endpoints, backtest integration, artifact IO, storage IO, file existence
+checks, artifact content hash verification, a DB driver, SQLite persistence
+tests, or live Postgres tests.
 
 ## Local Commands
 
@@ -199,6 +213,7 @@ uv run python -m research_sdk.contracts.json_schema --output-dir packages/resear
 uv run alembic -c alembic.ini heads
 uv run alembic -c alembic.ini history
 uv run pytest tests/test_persistence_setup.py
+uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py
 uv run pytest
 ```
 

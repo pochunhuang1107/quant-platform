@@ -2,9 +2,11 @@
 
 ## Purpose
 
-PR 15 adds canonical identity primitives for future persistence write paths. It
-does not add repositories, row mapping helpers, database writes, a DB driver,
-live Postgres tests, SQLite persistence tests, or application integration.
+PR 15 added canonical identity primitives for future persistence write paths.
+PR 16 adds pure row mapping helpers that project validated contracts into
+DB-shaped row dictionaries. These helpers still do not add repositories,
+database writes, a DB driver, live Postgres tests, SQLite persistence tests, or
+application integration.
 
 The immediate boundary is contract hashing:
 
@@ -48,8 +50,37 @@ database/repository layer must not verify artifact files.
 
 `canonical_json_sha256(payload)` is a low-level deterministic helper for
 JSON-compatible mappings. It exists for direct dict-order determinism tests and
-future row-mapping support, but it is still not artifact content hashing and it
-does not read or verify files.
+row-mapping support, but it is still not artifact content hashing and it does
+not read or verify files.
+
+## Row Mapping Boundary
+
+PR 16 adds pure row mapping helpers in `research_sdk.persistence.mappers`.
+These helpers are the column projection boundary between validated Pydantic
+contracts and the current persistence tables. They return row dictionaries
+whose keys match the current table columns except for `inserted_at`, which is
+omitted because it is filled by the database.
+
+The mappers accept validated `ExperimentRunRecord`, `DataSnapshotManifest`,
+`RunArtifactManifest`, `ResearchNote`, and `ReviewMetadata` objects. They
+compute `contract_hash` internally with `contract_sha256()` for contract-backed
+rows and store the full validated contract payload as `raw_contract` using
+`contract.model_dump(mode="json")`. Review event rows store `raw_review` from
+`review.model_dump(mode="json")`; they do not add `event_hash` or
+`schema_version` because there is no standalone review event contract yet.
+
+The artifact manifest mapper requires a caller-provided `manifest_id` because
+the current `RunArtifactManifest` contract does not contain one. ID generation
+policy belongs to future application or repository code. The review event
+mapper likewise requires caller-provided `review_event_id`, `subject_type`, and
+`subject_id`. The mapper validates `subject_type` against the current
+persistence-local review subject values, because that field is supplied outside
+the current contracts.
+
+Row mappers are not repositories. They do not import SQLAlchemy table metadata,
+build insert statements, execute writes, create sessions, connect to a
+database, read files, inspect storage, verify artifact hashes, enforce
+lifecycle transitions, or perform review/trading approval behavior.
 
 ## Future Repository Responsibilities
 
@@ -79,11 +110,11 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 15:
+The following remain deferred after PR 16:
 
 - repository protocols;
-- row mapping helpers;
 - SQLAlchemy repository implementations;
+- SQLAlchemy insert builders;
 - database write paths;
 - session or unit-of-work abstractions;
 - DB driver dependencies such as `psycopg` or `asyncpg`;
