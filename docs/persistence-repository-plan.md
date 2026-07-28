@@ -24,6 +24,14 @@ any repository skeleton, SQLAlchemy repository implementation, database write
 execution, DB driver, live Postgres test harness, SQLite persistence test, or
 application integration exists.
 
+PR 20 is documentation-only. It defines the future live Postgres test harness
+boundary before adding a DB driver, Docker Compose service, CI Postgres service,
+or executable live DB tests. That harness design does not change repository
+execution status: repository skeletons, SQLAlchemy repository implementations,
+database write paths, statement execution, DB drivers, live Postgres tests,
+SQLite persistence tests, FastAPI/backtest integration, and experiment run
+writing from backtests remain deferred.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -246,6 +254,13 @@ semantics. Avoid false confidence. A live Postgres test harness should be added
 only after DB driver and execution semantics are approved. SQLite persistence
 tests remain avoided because JSONB and Postgres behavior differ.
 
+PR 20 documents that the first future executable live harness should be
+migration-only. Future live DB migration tests may run Alembic `upgrade head`
+against disposable Postgres and inspect catalog state, but they are not
+repository tests. They must not insert contract fixtures, execute statement
+builders, execute repository writes, test idempotency or conflict behavior, test
+correction or lifecycle behavior, or imply that a DB write path exists.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
@@ -280,7 +295,7 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 19:
+The following remain deferred after PR 20:
 
 - repository skeletons;
 - SQLAlchemy repository implementations;
