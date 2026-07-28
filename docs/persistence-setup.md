@@ -208,6 +208,28 @@ driver dependencies, SQLite persistence tests, live Postgres tests, FastAPI
 endpoints, backtest integration, artifact IO, storage IO, file existence
 checks, artifact content hash verification, or approval/trading behavior.
 
+## Repository Execution Semantics Boundary
+
+PR 19 is documentation-only. It documents repository execution semantics before
+any repository skeleton, SQLAlchemy repository implementation, statement
+execution, database write path, DB driver, live Postgres test harness, SQLite
+persistence test, FastAPI integration, backtest integration, or experiment run
+writer exists.
+
+Future repository implementation should use an injected SQLAlchemy `Connection`
+and caller-owned transaction scope. It should not accept an `Engine`, `Session`,
+DB URL, raw rows, raw SQLAlchemy statements, storage handles, or
+caller-provided `contract_hash`. It should not create engines, own database URL
+lookup, silently create or commit transactions, duplicate mapper projection
+logic, or bypass the existing statement builders.
+
+DB driver dependencies remain deferred, including `psycopg` and `asyncpg`. Live
+Postgres tests remain deferred until DB driver and execution semantics are
+approved. SQLite persistence tests remain avoided because JSONB and Postgres
+behavior differ. Repository execution also remains separate from broker
+integration, paper trading, live trading, approval workflow execution, artifact
+IO, and artifact `content_hash` verification.
+
 ## Local Commands
 
 Commands that do not require a live database:
@@ -247,8 +269,8 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 12, future persistence PRs should keep table design, constraints,
-indexes, and tests reviewable and should still avoid repositories, DB write
-paths, API endpoints, backtest integration, artifact IO, data ingestion, broker
-integration, live trading, and paper trading execution unless separately
-approved.
+After PR 19, future persistence PRs should keep table design, constraints,
+indexes, semantics, and tests reviewable. They should still avoid repository
+implementations, DB write paths, API endpoints, backtest integration, artifact
+IO, data ingestion, broker integration, live trading, and paper trading
+execution unless separately approved.

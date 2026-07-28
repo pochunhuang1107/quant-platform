@@ -19,6 +19,11 @@ metadata. They still do not execute statements, implement repositories, connect
 to a database, add a DB driver, or introduce live Postgres or SQLite
 persistence tests.
 
+PR 19 is documentation-only. It hardens repository execution semantics before
+any repository skeleton, SQLAlchemy repository implementation, database write
+execution, DB driver, live Postgres test harness, SQLite persistence test, or
+application integration exists.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -171,23 +176,99 @@ binding boundary. It must not import repository protocols, database URL
 helpers, engine/session/connection helpers, Alembic, DB drivers, filesystem
 helpers, storage SDKs, vendor SDKs, or approval/trading workflow code.
 
+## Repository Execution Semantics
+
+PR 19 intentionally does not add a repository skeleton, repository
+implementation, database execution path, DB driver, live Postgres test harness,
+SQLite persistence test, FastAPI integration, backtest integration, experiment
+run writer, session abstraction, or unit-of-work abstraction. It records the
+execution semantics required before any future write implementation is added.
+
+Future repository implementations should accept an injected SQLAlchemy
+`Connection`. They should not accept an `Engine`, `Session`, DB URL, raw row
+dictionary, raw SQLAlchemy statement, storage handle, or caller-provided
+`contract_hash`. They should not create engines, look up database URLs, or own
+database configuration. Repository methods should continue to accept validated
+Pydantic contracts, plus caller-provided identifiers only where current
+contracts do not contain them, such as `manifest_id`, `review_event_id`,
+`subject_type`, and `subject_id`.
+
+Transaction scope should be caller-owned. Repository implementations should not
+silently create, commit, or roll back transactions. Future application or
+service layers should decide transaction boundaries and call repositories
+inside an already-managed connection and transaction context.
+
+Future repository methods should call the existing statement builders. The
+statement builders remain the SQL construction boundary, and repository
+implementations should not duplicate mapper projection logic or expose raw row
+dictionaries as public input.
+
+Artifact manifest persistence must be atomic across one
+`run_artifact_manifests` row and all corresponding `run_artifact_entries` rows.
+Those statements must execute in one caller-owned transaction. Partial artifact
+manifest persistence is invalid. Repository code must not perform artifact file
+IO, object storage IO, file existence checks, or artifact `content_hash`
+verification.
+
+The target duplicate policy is documented but not implemented in PR 19. The
+same primary key plus the same `contract_hash` may be idempotent in a future
+write path. The same primary key plus a different `contract_hash` should reject
+unless the caller uses an explicit correction or supersession flow. Silent
+overwrite is prohibited. Generic `INSERT` execution without an approved
+conflict policy is not enough. `ON CONFLICT`, upsert behavior, duplicate
+handling, and the choice between pre-read checks, `ON CONFLICT`, or
+service-layer replay workflows remain deferred.
+
+`review_events` remain append-only by `review_event_id`. They currently have no
+`event_hash`, `contract_hash`, or `schema_version`. Idempotent replay for
+review events remains deferred until event identity is designed. A duplicate
+`review_event_id` should reject by primary key for now. `ReviewMetadata`
+persistence must not imply trading approval, risk authorization, paper trading
+approval, or live trading approval. A standalone `ReviewEvent` contract remains
+a future consideration.
+
+`PersistedRecordMetadata` remains minimal: `table_name`, `primary_key`, and
+optional `contract_hash`. Database-generated `inserted_at`, created flags,
+idempotent flags, affected row counts, artifact entry counts, and other
+DB-returned metadata remain deferred because they require real DB execution
+semantics and likely DB-returned state.
+
+Lifecycle transition enforcement remains future service-layer work.
+Completed-run append-only enforcement remains future service-layer or
+repository-design work. Correction and supersession enforcement remain future
+service-layer work. Repository writes must not become hidden trading approval,
+risk approval, paper trading, or live trading gates.
+
+Do not add fake or mock `Connection` execution tests yet. Such tests can prove
+statement calls and ordering, but they cannot validate Postgres JSONB behavior,
+server defaults, uniqueness behavior, transaction rollback, or conflict
+semantics. Avoid false confidence. A live Postgres test harness should be added
+only after DB driver and execution semantics are approved. SQLite persistence
+tests remain avoided because JSONB and Postgres behavior differ.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
 
 - accept validated Pydantic contract objects;
 - compute `contract_hash` internally;
-- project stable query columns from validated contract objects;
+- accept an injected SQLAlchemy `Connection`;
+- operate inside caller-owned transaction scope;
+- call existing statement builders for SQL construction;
 - store raw validated contract JSON for audit and replay;
 - keep artifact and data hashes as declared metadata only;
+- write artifact manifest and entry rows atomically when execution is approved;
 - avoid file IO, object storage IO, vendor calls, and hash verification;
+- avoid accepting `Engine`, `Session`, DB URLs, raw rows, raw statements,
+  storage handles, or caller-provided `contract_hash` values;
 - avoid becoming an approval gate for research or trading decisions.
 
 Future duplicate handling should follow this policy:
 
-- the same primary key plus the same `contract_hash` can be idempotent;
+- the same primary key plus the same `contract_hash` may be idempotent;
 - the same primary key plus a different `contract_hash` should reject unless an
-  explicit correction or supersession path is used.
+  explicit correction or supersession path is used;
+- silent overwrite is prohibited.
 
 Completed-run append-only rules and lifecycle transition rules remain future
 service-layer validation. They should not be hidden inside low-level row
@@ -199,11 +280,13 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 18:
+The following remain deferred after PR 19:
 
+- repository skeletons;
 - SQLAlchemy repository implementations;
 - database write paths;
-- session or unit-of-work abstractions;
+- statement execution;
+- sessions or unit-of-work abstractions except as future design;
 - DB driver dependencies such as `psycopg` or `asyncpg`;
 - live Postgres tests;
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
