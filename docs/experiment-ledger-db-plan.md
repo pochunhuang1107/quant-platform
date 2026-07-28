@@ -43,10 +43,12 @@ writes, build insert statements, connect to a database, verify external
 artifacts, or enforce lifecycle/idempotency policy.
 
 PR 17 adds repository protocols, PR 18 adds inert SQLAlchemy Core insert
-statement builders, and PR 19 documents repository execution semantics. PR 19
-is documentation-only: it adds no schema, table, migration, repository
+statement builders, PR 19 documents repository execution semantics, and PR 20
+documents the live Postgres test harness boundary. PR 20 is documentation-only:
+it adds no schema, table, migration, repository skeleton, repository
 implementation, database write path, DB driver, live Postgres test, SQLite
-persistence test, or application integration.
+persistence test, dependency, workflow, Docker Compose service, devcontainer, or
+application integration.
 
 ## Non-Goals
 
@@ -457,7 +459,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 19:
+This sequence is partially implemented and current through PR 20:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -491,11 +493,19 @@ This sequence is partially implemented and current through PR 19:
      session/unit-of-work, and DB-returned metadata remain deferred;
    - DB drivers, live Postgres tests, and SQLite persistence tests remain
      deferred.
-12. Add stable non-blocking cross-contract foreign keys later where appropriate.
-13. Add contract fixture persistence tests later.
-14. Add repository/write-path code only in a later PR after semantics, conflict
+12. Add live Postgres test harness boundary documentation before adding a driver
+    or executable live DB tests:
+   - future live DB tests should use `QUANT_TEST_DATABASE_URL`, not
+     `DATABASE_URL`;
+   - future tests should be local opt-in before CI;
+   - the DB driver, Docker Compose, CI Postgres service, and live tests remain
+     deferred;
+   - the first future executable harness should be migration-only.
+13. Add stable non-blocking cross-contract foreign keys later where appropriate.
+14. Add contract fixture persistence tests later.
+15. Add repository/write-path code only in a later PR after semantics, conflict
    behavior, and test harness design are approved.
-15. Require Pydantic contract validation before persistence.
+16. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -528,7 +538,8 @@ anchors. PR 13 adds the `0003_artifact_tables` Alembic revision for artifact
 manifest metadata and artifact entry projections. PR 14 adds the
 `0004_research_review_tables` Alembic revision for research note metadata and
 generic review/audit events. PR 19 adds no schema, table, migration, or
-metadata changes.
+metadata changes. PR 20 adds no schema, table, migration, metadata, code, test,
+dependency, workflow, Docker Compose, or devcontainer changes.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -545,19 +556,38 @@ execution remains intentionally blocked until idempotency, duplicate handling,
 transaction behavior, correction semantics, and the live DB test harness are
 approved.
 
+The PR 20 live Postgres harness design keeps execution deferred. Future live DB
+tests should start as local opt-in migration smoke tests that run Alembic
+`upgrade head` against a disposable Postgres database or schema and then inspect
+PostgreSQL catalogs. The first executable harness should verify the Alembic
+version table/state, table existence, `JSONB` columns, primary keys, important
+unique constraints, check constraints, indexes, and the
+`run_artifact_entries.manifest_id` foreign key to `run_artifact_manifests`.
+
+That first harness should not insert data, execute statement builders, execute
+repository writes, test idempotency or conflict behavior, test correction or
+lifecycle behavior, use SQLite as a substitute, require CI secrets, add a CI
+Postgres service, add Docker Compose, run FastAPI/backtest integration, or write
+experiment runs from backtests. Downgrade testing remains deferred.
+
 ## Future DB Test Strategy
 
 When DB work begins, plan tests for:
 
-- Migration upgrade/downgrade smoke tests.
-- Schema creation tests.
-- Insert fixture for each top-level contract.
-- Idempotent re-insert with the same hash.
-- Rejecting the same ID with a different `contract_hash` unless using a
-  correction path.
-- Querying by common indexes.
-- `review_events` append-only behavior.
-- `run_artifact_entries` projection from manifest.
+- Migration upgrade smoke tests against live Postgres.
+- Catalog inspection for table creation, `JSONB` columns, primary keys,
+  important unique constraints, check constraints, indexes, and the
+  artifact-entry foreign key.
+- Later downgrade smoke tests, only after downgrade policy is approved.
+- Later insert fixture tests for each top-level contract, only after repository
+  or insert execution semantics are approved.
+- Later idempotent re-insert with the same hash, only after duplicate/conflict
+  behavior is approved.
+- Later rejection of the same ID with a different `contract_hash` unless using
+  a correction path, only after correction semantics are approved.
+- Later querying by common indexes.
+- Later `review_events` append-only behavior.
+- Later `run_artifact_entries` projection from manifest.
 - No artifact file existence checks.
 - No hash verification side effects.
 - No broker, live trading, or paper trading behavior.
@@ -567,7 +597,9 @@ is approved. They can prove statement calls and ordering, but they cannot
 validate Postgres JSONB behavior, server defaults, uniqueness behavior,
 transaction rollback, or conflict semantics. SQLite persistence tests remain
 avoided because JSONB and Postgres behavior differ. Live Postgres tests should
-start only when DB driver and execution semantics are approved.
+start only when DB driver and execution scope are approved. Live migration tests
+are not repository tests and must not execute statement builders or write
+contract fixtures.
 
 ## Validation Commands
 

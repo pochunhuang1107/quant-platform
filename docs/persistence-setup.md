@@ -230,6 +230,77 @@ behavior differ. Repository execution also remains separate from broker
 integration, paper trading, live trading, approval workflow execution, artifact
 IO, and artifact `content_hash` verification.
 
+## Live Postgres Test Harness Boundary
+
+PR 20 is documentation-only. It defines the future live Postgres test harness
+boundary before adding a DB driver, Docker Compose service, CI Postgres service,
+or executable live DB tests. It adds no code files, tests, dependencies,
+workflows, migrations, table definitions, contracts, schemas, row mappers,
+hashing helpers, protocols, statement builders, repository skeletons, repository
+implementations, or DB write paths.
+
+DB driver dependencies remain deferred. When a driver is approved later, prefer
+sync `psycopg` v3 through SQLAlchemy. The likely future test dependency is
+dev-only `psycopg[binary]>=3,<4` for local and CI test ergonomics. Avoid
+`psycopg2` as legacy. Avoid `asyncpg` because the current persistence protocols
+and planned repository boundary are synchronous.
+
+Future live DB tests should use `QUANT_TEST_DATABASE_URL`, not `DATABASE_URL`.
+`DATABASE_URL` may remain the manual Alembic/online migration configuration
+variable, but tests should use the safer test-specific variable. Future tests
+should skip when `QUANT_TEST_DATABASE_URL` is absent, must never read
+`DATABASE_URL`, and must never log credentials or the full DB URL.
+
+Future live DB tests must refuse unsafe URLs:
+
+- non-Postgres URLs;
+- production-looking hosts;
+- production-looking database names;
+- production-looking users.
+
+By default, live tests should allow only local/test hosts such as `localhost`,
+`127.0.0.1`, and `::1`. They should require database names containing `test`,
+preferably `quant_platform_test`, and require disposable database or schema
+access only. CI secrets must not be required.
+
+Future live DB tests should use an explicit pytest marker such as `live_db` or
+`postgres`. Because pytest uses strict markers, the marker must be registered
+when tests are actually added. Default `pytest` should remain fast and non-live;
+live DB tests should be opt-in and skipped or excluded by default.
+
+Live Postgres tests should start as local opt-in. A CI Postgres service remains
+deferred until the harness, driver, and execution scope are approved. Docker
+Compose also remains deferred. If a local Compose service is approved later,
+prefer `infra/db/docker-compose.yml` over a root `compose.yml` so Postgres does
+not look like a default project runtime requirement.
+
+The first future executable live harness should be migration-only:
+
+- run Alembic `upgrade head` against live Postgres;
+- verify the Alembic version table/state;
+- verify table existence;
+- verify PostgreSQL `JSONB` columns;
+- verify primary keys;
+- verify important unique constraints;
+- verify check constraints;
+- verify indexes;
+- verify the artifact-entry foreign key.
+
+The first live harness should not insert data, execute statement builders,
+execute repository writes, test idempotency or conflict behavior, test
+correction or lifecycle behavior, run FastAPI/backtest integration, or write
+experiment runs from backtests. Downgrade testing remains deferred.
+
+SQLite persistence tests remain avoided because current schemas use
+PostgreSQL-specific `JSONB` and constraints. SQLite must not be used as a
+substitute for persistence correctness.
+
+Statement builders remain inert only. Live DB migration tests must not become
+repository tests or insert execution tests. Repository skeletons, repository
+implementations, DB writes, insert execution, FastAPI/backtest integration,
+experiment run writing from backtests, broker behavior, paper trading, and live
+trading remain deferred.
+
 ## Local Commands
 
 Commands that do not require a live database:
@@ -269,7 +340,7 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 19, future persistence PRs should keep table design, constraints,
+After PR 20, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. They should still avoid repository
 implementations, DB write paths, API endpoints, backtest integration, artifact
 IO, data ingestion, broker integration, live trading, and paper trading
