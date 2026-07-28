@@ -42,6 +42,12 @@ dictionaries before repositories are introduced. The mappers do not execute DB
 writes, build insert statements, connect to a database, verify external
 artifacts, or enforce lifecycle/idempotency policy.
 
+PR 17 adds repository protocols, PR 18 adds inert SQLAlchemy Core insert
+statement builders, and PR 19 documents repository execution semantics. PR 19
+is documentation-only: it adds no schema, table, migration, repository
+implementation, database write path, DB driver, live Postgres test, SQLite
+persistence test, or application integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -331,6 +337,14 @@ database writes, create engines/sessions/connections, add DB drivers, or choose
 lifecycle, idempotency, correction, append-only, `ON CONFLICT`, or
 session/unit-of-work rules.
 
+As of PR 19, repository execution semantics are documented before code.
+Repository skeletons, SQLAlchemy repository implementations, database writes,
+statement execution, DB drivers, live Postgres tests, SQLite persistence tests,
+FastAPI/backtest integration, and experiment run writing from backtests remain
+deferred. Future implementation should use an injected SQLAlchemy `Connection`
+and caller-owned transaction scope, but repository execution is intentionally
+blocked until conflict semantics and a test harness are approved.
+
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, and future write-path responsibilities.
 
@@ -338,11 +352,16 @@ repository boundary, hashing API, and future write-path responsibilities.
 
 Insert paths should require prior Pydantic contract validation. After
 validation, the write path should canonicalize the contract payload and compute
-`contract_hash`.
+`contract_hash`. Future repositories should compute this internally and must not
+accept caller-provided `contract_hash` values.
 
-The same primary key plus the same `contract_hash` should be idempotent. The
-same primary key plus a different `contract_hash` should be rejected unless the
-caller uses an explicit correction or supersession path.
+The same primary key plus the same `contract_hash` may be idempotent in a future
+write path. The same primary key plus a different `contract_hash` should be
+rejected unless the caller uses an explicit correction or supersession path.
+Silent overwrite is prohibited. Generic `INSERT` execution without an approved
+conflict policy is not enough. `ON CONFLICT`, upsert behavior, duplicate
+handling, and the choice between pre-read checks, `ON CONFLICT`, or
+service-layer replay workflows remain deferred.
 
 Mutable operational fields should be minimal. Status and review updates should
 produce `review_events` or another audit record when they change review or
@@ -356,6 +375,12 @@ changes must be auditable.
 
 Review events are append-only. Research notes can use `parent_note_id` and
 `supersedes_note_id` to model corrections or replacement notes.
+
+`review_events` are append-only by `review_event_id` for now. They currently
+have no `event_hash`, `contract_hash`, or `schema_version`, so idempotent replay
+for review events remains deferred until event identity is designed. A duplicate
+`review_event_id` should reject by primary key. A standalone `ReviewEvent`
+contract remains a future consideration.
 
 Artifact manifests are immutable once recorded. Corrections should insert new
 manifest records instead of mutating prior manifest payloads. Data snapshot
@@ -432,7 +457,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 18:
+This sequence is partially implemented and current through PR 19:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -457,11 +482,20 @@ This sequence is partially implemented and current through PR 18:
    implementation or execution behavior.
 10. Add SQLAlchemy Core insert statement builders that return inert `Insert`
    objects without execution behavior.
-11. Add stable non-blocking cross-contract foreign keys later where appropriate.
-12. Add contract fixture persistence tests later.
-13. Add repository/write-path code only in a later PR after migrations are
-   reviewed.
-14. Require Pydantic contract validation before persistence.
+11. Add repository execution semantics documentation before implementation:
+   - future repositories should accept an injected SQLAlchemy `Connection`;
+   - transaction scope should be caller-owned;
+   - repository methods should call existing statement builders;
+   - artifact manifest rows and entry rows must be atomic when writes exist;
+   - idempotency, duplicate handling, `ON CONFLICT`, correction, lifecycle,
+     session/unit-of-work, and DB-returned metadata remain deferred;
+   - DB drivers, live Postgres tests, and SQLite persistence tests remain
+     deferred.
+12. Add stable non-blocking cross-contract foreign keys later where appropriate.
+13. Add contract fixture persistence tests later.
+14. Add repository/write-path code only in a later PR after semantics, conflict
+   behavior, and test harness design are approved.
+15. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -493,7 +527,8 @@ PR 12 adds the first actual SQLAlchemy Core table definitions and the
 anchors. PR 13 adds the `0003_artifact_tables` Alembic revision for artifact
 manifest metadata and artifact entry projections. PR 14 adds the
 `0004_research_review_tables` Alembic revision for research note metadata and
-generic review/audit events.
+generic review/audit events. PR 19 adds no schema, table, migration, or
+metadata changes.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -505,7 +540,10 @@ Lifecycle transition checks, idempotency enforcement, correction handling, and
 append-only policy remain future service or repository responsibilities. The
 row mapping helpers only shape validated data into projected rows. The
 statement builders only turn those rows into non-executing SQLAlchemy Core
-`Insert` objects for future repositories to execute deliberately.
+`Insert` objects for future repositories to execute deliberately. Repository
+execution remains intentionally blocked until idempotency, duplicate handling,
+transaction behavior, correction semantics, and the live DB test harness are
+approved.
 
 ## Future DB Test Strategy
 
@@ -523,6 +561,13 @@ When DB work begins, plan tests for:
 - No artifact file existence checks.
 - No hash verification side effects.
 - No broker, live trading, or paper trading behavior.
+
+Do not add fake or mock `Connection` execution tests before repository execution
+is approved. They can prove statement calls and ordering, but they cannot
+validate Postgres JSONB behavior, server defaults, uniqueness behavior,
+transaction rollback, or conflict semantics. SQLite persistence tests remain
+avoided because JSONB and Postgres behavior differ. Live Postgres tests should
+start only when DB driver and execution semantics are approved.
 
 ## Validation Commands
 
