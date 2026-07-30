@@ -55,6 +55,12 @@ It does not add or change Python dependencies, lockfiles, package code, tests,
 migrations, Docker Compose configuration, repository code, statement execution,
 or application runtime services.
 
+PR 25 is documentation-only. It defines the idempotency, replay, conflict, and
+retry policy in [Persistence Repository Plan](persistence-repository-plan.md).
+It does not add or change dependencies, lockfiles, package code, tests,
+migrations, Docker Compose configuration, repository code, statement execution,
+or application runtime services.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -250,6 +256,14 @@ behavior differ. Repository execution also remains separate from broker
 integration, paper trading, live trading, approval workflow execution, artifact
 IO, and artifact `content_hash` verification.
 
+PR 25 documents the policy for future idempotent replay, duplicate rejection,
+conflict handling, transaction ownership, result/disposition requirements, and
+error mapping. The policy remains documentation-only. Live insert/conflict tests
+remain deferred until policy, schema requirements, result/disposition model, and
+error mapping are separately approved for implementation. Artifact-manifest
+execution is blocked until either `run_id` uniqueness or explicit
+version/supersession behavior is approved.
+
 ## Live Postgres Test Harness Boundary
 
 PR 20 documented the boundary before executable live DB tests. PR 21 implements
@@ -308,6 +322,10 @@ repository tests or insert execution tests. Repository skeletons, repository
 implementations, DB writes, insert execution, FastAPI/backtest integration,
 experiment run writing from backtests, broker behavior, paper trading, and live
 trading remain deferred.
+
+The PR 25 policy does not change the live harness boundary. Local Compose and CI
+Postgres harnesses remain migration-only. They do not execute inserts, statement
+builders, repositories, fixture persistence, replay logic, or conflict handling.
 
 ## Local Live Postgres Migration Harness Runbook
 
@@ -529,6 +547,8 @@ The CI migration smoke job does not check or execute:
 - Statement builder execution.
 - Repository writes.
 - Contract fixture inserts.
+- Replay logic.
+- Conflict handling.
 - Idempotency.
 - `ON CONFLICT` or upsert behavior.
 - Duplicate behavior.
@@ -613,10 +633,12 @@ Before repository implementation:
 
 Before idempotency/`ON CONFLICT` behavior:
 
-- Approve duplicate/conflict policy explicitly.
-- Define same-primary-key/same-hash replay behavior.
-- Define same-primary-key/different-hash rejection behavior.
-- Define correction, supersession, and lifecycle boundaries.
+- Keep the PR 25 policy as the authoritative documentation baseline.
+- Approve schema requirements, especially artifact-manifest `run_id` uniqueness
+  or explicit version/supersession behavior.
+- Approve result/disposition model code.
+- Approve error taxonomy and conflict mapping code.
+- Approve live insert/conflict tests separately.
 - Avoid silent overwrites.
 
 Before any backtest/FastAPI integration:
@@ -680,8 +702,10 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 24, future persistence PRs should keep table design, constraints,
+After PR 25, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. They should still avoid repository
 implementations, DB write paths, API endpoints, backtest integration, artifact
 IO, data ingestion, broker integration, live trading, and paper trading
-execution unless separately approved.
+execution unless separately approved. Live insert/conflict tests remain deferred
+until policy, schema requirements, result/disposition model, and error mapping
+are separately approved.

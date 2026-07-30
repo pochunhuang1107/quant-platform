@@ -80,6 +80,13 @@ Compose configuration, repository skeleton, repository implementation, insert
 execution, SQLite persistence test, FastAPI/backtest integration, or experiment
 run writer.
 
+PR 25 is documentation-only. It defines the idempotency, replay, uniqueness,
+concurrency, retry, and conflict policy in
+[Persistence Repository Plan](persistence-repository-plan.md), but it adds no
+code, tests, migrations, schema/table definitions, contracts, generated schemas,
+dependencies, workflows, Docker Compose, package exports, repository
+implementation, or execution paths.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -377,8 +384,16 @@ deferred. Future implementation should use an injected SQLAlchemy `Connection`
 and caller-owned transaction scope, but repository execution is intentionally
 blocked until conflict semantics and a test harness are approved.
 
+As of PR 25, the idempotency, replay, and conflict policy is documented before
+execution code. Hash-backed entities may replay only when logical identity and
+canonical hash match. The same identity with a different hash rejects.
+`review_events` duplicate IDs reject until a standalone hashable `ReviewEvent`
+contract exists. Artifact-manifest execution remains blocked because the
+one-manifest-per-run policy is not fully enforced by the current schema.
+
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
-repository boundary, hashing API, and future write-path responsibilities.
+repository boundary, hashing API, future write-path responsibilities, and the
+authoritative idempotency, replay, and conflict policy.
 
 ## Idempotency And Insert/Update Rules
 
@@ -394,6 +409,20 @@ Silent overwrite is prohibited. Generic `INSERT` execution without an approved
 conflict policy is not enough. `ON CONFLICT`, upsert behavior, duplicate
 handling, and the choice between pre-read checks, `ON CONFLICT`, or
 service-layer replay workflows remain deferred.
+
+PR 25 makes that deferred policy explicit without implementing it. Initial write
+paths are insert-only. Hash-backed entities may replay only when logical
+identity and canonical hash match. The same identity with a different canonical
+hash must reject. New primary keys that collide with non-primary uniqueness or
+policy-level natural identity are natural-key conflicts or duplicate aliases,
+not replay.
+
+For `run_artifact_manifests`, the initial policy permits exactly one artifact
+manifest aggregate per `run_id`. Current `UNIQUE(run_id, contract_hash)` prevents
+one duplicate-alias case, but the schema still permits the same `run_id` with
+different hashes. Artifact-manifest execution must remain blocked until a later
+migration adds appropriate `run_id` uniqueness or an explicit artifact-manifest
+version/supersession model is approved. PR 25 does not modify migrations.
 
 Mutable operational fields should be minimal. Status and review updates should
 produce `review_events` or another audit record when they change review or
@@ -489,7 +518,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 24:
+This sequence is partially implemented and current through PR 25:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -558,11 +587,24 @@ This sequence is partially implemented and current through PR 24:
    - do not use secrets, `DATABASE_URL`, external databases, insert execution,
      repository writes, package changes, dependency changes, migration changes,
      or schema changes.
-17. Add stable non-blocking cross-contract foreign keys later where appropriate.
-18. Add contract fixture persistence tests later.
-19. Add repository/write-path code only in a later PR after semantics, conflict
-   behavior, and test harness design are approved.
-20. Require Pydantic contract validation before persistence.
+17. Add documentation-only idempotency, replay, uniqueness, concurrency, retry,
+   and conflict policy before execution code:
+   - hash-backed entities may replay only when logical identity and canonical
+     hash match;
+   - same logical identity plus different canonical hash rejects;
+   - `review_events` duplicate IDs reject until a standalone hashable
+     `ReviewEvent` contract exists;
+   - artifact-manifest execution remains blocked until `run_id` uniqueness or
+     explicit version/supersession fields are approved;
+   - insert execution, `ON CONFLICT` code, repository skeletons and
+     implementations, live conflict tests, result model code, and error
+     taxonomy code remain deferred.
+18. Add stable non-blocking cross-contract foreign keys later where appropriate.
+19. Add contract fixture persistence tests later.
+20. Add repository/write-path code only in a later PR after semantics, conflict
+   behavior, schema requirements, result/disposition behavior, error taxonomy,
+   and test harness design are approved.
+21. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -585,6 +627,13 @@ order during imports or historical backfills. `review_events` is polymorphic by
 `subject_type` and `subject_id`, so FK enforcement is not practical in this
 migration.
 
+PR 25 adds no constraints. It records that the current artifact-manifest
+constraints are insufficient for one-manifest-per-run execution because
+`UNIQUE(run_id, contract_hash)` does not prevent the same `run_id` from being
+stored with a different manifest hash. A later decision must either add unique
+`run_id` enforcement or introduce explicit artifact-manifest version or
+supersession fields before artifact-manifest execution is approved.
+
 ## Future SQLAlchemy/Alembic Integration Steps
 
 The dedicated persistence setup PR added dependencies, the Alembic environment,
@@ -604,7 +653,11 @@ no migrations, tests, package code, dependencies, workflows, CI services,
 repository boundaries, package exports, or lockfiles. PR 24 adds only an
 isolated GitHub Actions Postgres migration smoke job and documentation; it
 changes no migrations, tests, package code, dependencies, Docker Compose
-configuration, repository boundaries, package exports, or lockfiles.
+configuration, repository boundaries, package exports, or lockfiles. PR 25 adds
+only idempotency, replay, uniqueness, concurrency, retry, and conflict policy
+documentation; it changes no code, tests, migrations, schema/table definitions,
+contracts, generated schemas, dependencies, workflows, Docker Compose, package
+exports, repository implementation, or execution paths.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -618,8 +671,9 @@ row mapping helpers only shape validated data into projected rows. The
 statement builders only turn those rows into non-executing SQLAlchemy Core
 `Insert` objects for future repositories to execute deliberately. Repository
 execution remains intentionally blocked until idempotency, duplicate handling,
-transaction behavior, correction semantics, and the live DB test harness are
-approved.
+transaction behavior, correction semantics, artifact-manifest uniqueness or
+versioning, result/disposition behavior, error taxonomy, and the live DB test
+harness are approved.
 
 The PR 21 live Postgres harness keeps write-path execution deferred. The live
 test is local opt-in and migration-only: it runs Alembic `upgrade head` against
@@ -654,10 +708,12 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 24, the next expansion gates remain insert execution, repository
-implementation, conflict/idempotency policy, and SQLite persistence policy if
-it is ever reconsidered. Each gate requires separate approval before it changes
-code, tests, dependencies, workflows, or infrastructure.
+After PR 25, the next expansion gates remain artifact-manifest uniqueness or
+versioning, result/disposition model code, error taxonomy code, insert
+execution, repository implementation, live conflict tests, and SQLite
+persistence policy if it is ever reconsidered. Each gate requires separate
+approval before it changes code, tests, dependencies, workflows, infrastructure,
+or migrations.
 
 ## Future DB Test Strategy
 
