@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17.10
+    environment:
+      POSTGRES_DB: quant_platform_test
+      POSTGRES_USER: quant_test
+      POSTGRES_PASSWORD: quant_test
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant_test -d quant_platform_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - quant_platform_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  quant_platform_postgres_data:

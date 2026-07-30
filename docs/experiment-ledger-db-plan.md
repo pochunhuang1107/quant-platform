@@ -60,6 +60,14 @@ code, test, dependency, workflow, Docker Compose service, devcontainer,
 repository skeleton, repository implementation, insert execution, SQLite
 persistence test, or application integration.
 
+PR 23 is the approved local Docker Compose expansion gate. It adds
+`infra/db/docker-compose.yml` for an optional local disposable Postgres service
+and updates documentation for using that service with the existing live
+migration smoke harness. PR 23 adds no schema, table, migration revision, code,
+test, dependency, workflow, CI Postgres service, devcontainer, repository
+skeleton, repository implementation, insert execution, SQLite persistence test,
+or application integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -469,7 +477,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 22:
+This sequence is partially implemented and current through PR 23:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -523,11 +531,17 @@ This sequence is partially implemented and current through PR 22:
 14. Add a documentation-only runbook and review checklist for the local live
    Postgres migration harness. This keeps the harness migration-only and records
    that the PR 21 review found no required safety-code or test change.
-15. Add stable non-blocking cross-contract foreign keys later where appropriate.
-16. Add contract fixture persistence tests later.
-17. Add repository/write-path code only in a later PR after semantics, conflict
+15. Add optional local Docker Compose infrastructure for a disposable Postgres
+   instance under `infra/db/docker-compose.yml`:
+   - keep it local-only and outside the repo root;
+   - use it only with the existing double opt-in live migration harness;
+   - do not add app services, migration runners, admin UIs, CI services,
+     dependencies, package code, migrations, or test changes.
+16. Add stable non-blocking cross-contract foreign keys later where appropriate.
+17. Add contract fixture persistence tests later.
+18. Add repository/write-path code only in a later PR after semantics, conflict
    behavior, and test harness design are approved.
-18. Require Pydantic contract validation before persistence.
+19. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -563,7 +577,10 @@ generic review/audit events. PR 19 adds no schema, table, migration, or
 metadata changes. PR 20 adds no schema, table, migration, metadata, code, test,
 dependency, workflow, Docker Compose, or devcontainer changes. PR 22 adds no
 schema, table, migration, metadata, code, test, dependency, workflow, Docker
-Compose, devcontainer, package export, or lockfile changes.
+Compose, devcontainer, package export, or lockfile changes. PR 23 adds only
+optional local disposable Postgres Compose infrastructure and docs; it changes
+no migrations, tests, package code, dependencies, workflows, CI services,
+repository boundaries, package exports, or lockfiles.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -591,13 +608,18 @@ and the `run_artifact_entries.manifest_id` foreign key to
 The harness does not insert data, execute statement builders, execute
 repository writes, test idempotency or conflict behavior, test correction or
 lifecycle behavior, use SQLite as a substitute, require CI secrets, add a CI
-Postgres service, add Docker Compose, run FastAPI/backtest integration, or write
-experiment runs from backtests. Downgrade testing remains deferred.
+Postgres service, run FastAPI/backtest integration, or write experiment runs
+from backtests. Downgrade testing remains deferred.
 
-PR 22 keeps the live harness migration-only. The next expansion gates remain
-Docker Compose, CI Postgres, insert execution, repository implementation, and
-conflict/idempotency policy. Each gate requires separate approval before it
-changes code, tests, dependencies, workflows, or local infrastructure.
+PR 23 adds optional local Docker Compose infrastructure for that harness, but it
+does not change the harness behavior. The live migration test remains
+migration-only and double opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and
+`QUANT_TEST_DATABASE_URL`.
+
+After PR 23, the next expansion gates remain CI Postgres, insert execution,
+repository implementation, conflict/idempotency policy, and SQLite persistence
+policy if it is ever reconsidered. Each gate requires separate approval before
+it changes code, tests, dependencies, workflows, or infrastructure.
 
 ## Future DB Test Strategy
 
