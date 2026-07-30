@@ -19,6 +19,7 @@ build-backend = "setuptools.build_meta"
 dev = [
     "alembic>=1,<2",
     "mypy>=1.18.2",
+    "psycopg[binary]>=3,<4",
     "pytest>=8.4.2",
     "ruff>=0.14.5",
 ]
@@ -28,6 +29,9 @@ minversion = "8.0"
 addopts = [
     "--strict-config",
     "--strict-markers",
+]
+markers = [
+    "live_db: opt-in tests requiring QUANT_RUN_LIVE_DB_TESTS=1, QUANT_TEST_DATABASE_URL, and local live Postgres",
 ]
 pythonpath = [
     "packages/research-sdk/src",

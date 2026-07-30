@@ -38,9 +38,11 @@ schema metadata will use SQLAlchemy Core.
 Development dependencies include `alembic>=1,<2` because Alembic is migration
 tooling and is not needed by basic contract consumers.
 
-No DB driver is added in this PR. `psycopg` and `asyncpg` are deferred until a
-future PR intentionally adds connection behavior or live Postgres migration
-tests.
+PR 21 adds dev-only `psycopg[binary]>=3,<4` for local opt-in live Postgres
+migration smoke tests. The driver is not a runtime dependency, and normal
+contract consumers still do not need a DB driver. Persistence remains
+synchronous. `asyncpg`, `psycopg2`, and runtime DB driver dependencies remain
+out of scope.
 
 ## Alembic Layout
 
@@ -69,6 +71,11 @@ DATABASE_URL="<postgresql-url>" uv run alembic -c alembic.ini upgrade head
 
 The helper that reads `DATABASE_URL` does not create engines, sessions, or
 connections by itself, and it does not log the URL value.
+
+Programmatic Alembic runs may explicitly override `sqlalchemy.url` in an
+`alembic.config.Config` object. PR 21 uses that path for the local live migration
+smoke test so the test can use `QUANT_TEST_DATABASE_URL` without changing the
+manual `DATABASE_URL` migration command.
 
 ## Baseline Revision
 
@@ -223,35 +230,30 @@ caller-provided `contract_hash`. It should not create engines, own database URL
 lookup, silently create or commit transactions, duplicate mapper projection
 logic, or bypass the existing statement builders.
 
-DB driver dependencies remain deferred, including `psycopg` and `asyncpg`. Live
-Postgres tests remain deferred until DB driver and execution semantics are
-approved. SQLite persistence tests remain avoided because JSONB and Postgres
+Runtime and repository DB driver dependencies remain deferred. PR 21 adds
+dev-only `psycopg` for the local migration smoke harness only; it does not
+approve repository execution or write paths. `asyncpg` remains avoided because
+the current persistence protocols and planned repository boundary are
+synchronous. SQLite persistence tests remain avoided because JSONB and Postgres
 behavior differ. Repository execution also remains separate from broker
 integration, paper trading, live trading, approval workflow execution, artifact
 IO, and artifact `content_hash` verification.
 
 ## Live Postgres Test Harness Boundary
 
-PR 20 is documentation-only. It defines the future live Postgres test harness
-boundary before adding a DB driver, Docker Compose service, CI Postgres service,
-or executable live DB tests. It adds no code files, tests, dependencies,
-workflows, migrations, table definitions, contracts, schemas, row mappers,
-hashing helpers, protocols, statement builders, repository skeletons, repository
-implementations, or DB write paths.
+PR 20 documented the boundary before executable live DB tests. PR 21 implements
+the first local opt-in live Postgres migration harness. It adds a dev-only sync
+`psycopg` v3 driver and a pytest `live_db` marker, but it does not add Docker
+Compose, a CI Postgres service, repository code, statement execution, insert
+tests, or application integration.
 
-DB driver dependencies remain deferred. When a driver is approved later, prefer
-sync `psycopg` v3 through SQLAlchemy. The likely future test dependency is
-dev-only `psycopg[binary]>=3,<4` for local and CI test ergonomics. Avoid
-`psycopg2` as legacy. Avoid `asyncpg` because the current persistence protocols
-and planned repository boundary are synchronous.
+Live DB tests use `QUANT_TEST_DATABASE_URL`, not `DATABASE_URL`. They also
+require `QUANT_RUN_LIVE_DB_TESTS=1`, so default pytest remains non-live even if
+a developer shell happens to have `QUANT_TEST_DATABASE_URL` set. The tests skip
+when either opt-in value is absent, fail clearly when a provided URL is unsafe,
+and must never log credentials or the full DB URL.
 
-Future live DB tests should use `QUANT_TEST_DATABASE_URL`, not `DATABASE_URL`.
-`DATABASE_URL` may remain the manual Alembic/online migration configuration
-variable, but tests should use the safer test-specific variable. Future tests
-should skip when `QUANT_TEST_DATABASE_URL` is absent, must never read
-`DATABASE_URL`, and must never log credentials or the full DB URL.
-
-Future live DB tests must refuse unsafe URLs:
+Live DB tests refuse unsafe URLs:
 
 - non-Postgres URLs;
 - production-looking hosts;
@@ -263,18 +265,13 @@ By default, live tests should allow only local/test hosts such as `localhost`,
 preferably `quant_platform_test`, and require disposable database or schema
 access only. CI secrets must not be required.
 
-Future live DB tests should use an explicit pytest marker such as `live_db` or
-`postgres`. Because pytest uses strict markers, the marker must be registered
-when tests are actually added. Default `pytest` should remain fast and non-live;
-live DB tests should be opt-in and skipped or excluded by default.
+The `live_db` marker is registered in `pyproject.toml`. Live Postgres tests are
+local opt-in only. A CI Postgres service remains deferred. Docker Compose also
+remains deferred. If a local Compose service is approved later, prefer
+`infra/db/docker-compose.yml` over a root `compose.yml` so Postgres does not
+look like a default project runtime requirement.
 
-Live Postgres tests should start as local opt-in. A CI Postgres service remains
-deferred until the harness, driver, and execution scope are approved. Docker
-Compose also remains deferred. If a local Compose service is approved later,
-prefer `infra/db/docker-compose.yml` over a root `compose.yml` so Postgres does
-not look like a default project runtime requirement.
-
-The first future executable live harness should be migration-only:
+The first executable live harness is migration-only:
 
 - run Alembic `upgrade head` against live Postgres;
 - verify the Alembic version table/state;
@@ -286,10 +283,10 @@ The first future executable live harness should be migration-only:
 - verify indexes;
 - verify the artifact-entry foreign key.
 
-The first live harness should not insert data, execute statement builders,
-execute repository writes, test idempotency or conflict behavior, test
-correction or lifecycle behavior, run FastAPI/backtest integration, or write
-experiment runs from backtests. Downgrade testing remains deferred.
+The first live harness does not insert data, execute statement builders, execute
+repository writes, test idempotency or conflict behavior, test correction or
+lifecycle behavior, run FastAPI/backtest integration, or write experiment runs
+from backtests. Downgrade testing remains deferred.
 
 SQLite persistence tests remain avoided because current schemas use
 PostgreSQL-specific `JSONB` and constraints. SQLite must not be used as a
@@ -316,6 +313,18 @@ Online migration command shape:
 DATABASE_URL="<postgresql-url>" uv run alembic -c alembic.ini upgrade head
 ```
 
+Local opt-in live migration smoke test command:
+
+```bash
+QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test' uv run pytest -m live_db tests/test_live_postgres_migrations.py
+```
+
+This command requires a disposable local Postgres database. Do not use a
+production, shared, vendor, or cloud database. The test runs Alembic
+`upgrade head` and inspects catalog metadata only. It does not insert contract
+fixtures, execute statement builders, execute repositories, create or drop
+databases, create or drop schemas, or clean up user-provided database objects.
+
 ## Validation Commands
 
 Run:
@@ -330,6 +339,7 @@ uv run mypy packages/research-sdk/src
 uv run python -m research_sdk.contracts.json_schema --output-dir packages/research-sdk/schema --check
 uv run alembic -c alembic.ini heads
 uv run alembic -c alembic.ini history
+uv run pytest tests/test_live_postgres_url_safety.py
 uv run pytest tests/test_persistence_setup.py
 uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py tests/test_persistence_statements.py
 uv run pytest
