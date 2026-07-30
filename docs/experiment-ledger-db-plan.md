@@ -43,12 +43,14 @@ writes, build insert statements, connect to a database, verify external
 artifacts, or enforce lifecycle/idempotency policy.
 
 PR 17 adds repository protocols, PR 18 adds inert SQLAlchemy Core insert
-statement builders, PR 19 documents repository execution semantics, and PR 20
-documents the live Postgres test harness boundary. PR 20 is documentation-only:
-it adds no schema, table, migration, repository skeleton, repository
-implementation, database write path, DB driver, live Postgres test, SQLite
-persistence test, dependency, workflow, Docker Compose service, devcontainer, or
-application integration.
+statement builders, PR 19 documents repository execution semantics, PR 20
+documents the live Postgres test harness boundary, and PR 21 implements the
+first local opt-in live Postgres migration harness. PR 21 adds a dev-only sync
+`psycopg` v3 driver, pytest marker registration, URL safety tests, and a live
+Alembic `upgrade head` plus catalog inspection smoke test. It adds no schema,
+table, migration revision, repository skeleton, repository implementation,
+database write path, insert execution, SQLite persistence test, workflow,
+Docker Compose service, devcontainer, or application integration.
 
 ## Non-Goals
 
@@ -459,7 +461,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 20:
+This sequence is partially implemented and current through PR 21:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -501,11 +503,20 @@ This sequence is partially implemented and current through PR 20:
    - the DB driver, Docker Compose, CI Postgres service, and live tests remain
      deferred;
    - the first future executable harness should be migration-only.
-13. Add stable non-blocking cross-contract foreign keys later where appropriate.
-14. Add contract fixture persistence tests later.
-15. Add repository/write-path code only in a later PR after semantics, conflict
+13. Add the first local opt-in live Postgres migration harness:
+   - dev-only sync `psycopg[binary]>=3,<4`;
+   - pytest `live_db` marker;
+   - `QUANT_RUN_LIVE_DB_TESTS=1` plus `QUANT_TEST_DATABASE_URL` opt-in;
+   - URL safety validation for local disposable test databases;
+   - Alembic `upgrade head` only;
+   - catalog inspection for version state, expected tables, JSONB columns,
+     primary keys, unique constraints, check constraints, indexes, and the
+     artifact-entry foreign key.
+14. Add stable non-blocking cross-contract foreign keys later where appropriate.
+15. Add contract fixture persistence tests later.
+16. Add repository/write-path code only in a later PR after semantics, conflict
    behavior, and test harness design are approved.
-16. Require Pydantic contract validation before persistence.
+17. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -556,15 +567,15 @@ execution remains intentionally blocked until idempotency, duplicate handling,
 transaction behavior, correction semantics, and the live DB test harness are
 approved.
 
-The PR 20 live Postgres harness design keeps execution deferred. Future live DB
-tests should start as local opt-in migration smoke tests that run Alembic
-`upgrade head` against a disposable Postgres database or schema and then inspect
-PostgreSQL catalogs. The first executable harness should verify the Alembic
-version table/state, table existence, `JSONB` columns, primary keys, important
-unique constraints, check constraints, indexes, and the
-`run_artifact_entries.manifest_id` foreign key to `run_artifact_manifests`.
+The PR 21 live Postgres harness keeps write-path execution deferred. The live
+test is local opt-in and migration-only: it runs Alembic `upgrade head` against
+a disposable local Postgres database and then inspects PostgreSQL catalogs. The
+harness verifies the Alembic version table/state, table existence, `JSONB`
+columns, primary keys, important unique constraints, check constraints, indexes,
+and the `run_artifact_entries.manifest_id` foreign key to
+`run_artifact_manifests`.
 
-That first harness should not insert data, execute statement builders, execute
+The harness does not insert data, execute statement builders, execute
 repository writes, test idempotency or conflict behavior, test correction or
 lifecycle behavior, use SQLite as a substitute, require CI secrets, add a CI
 Postgres service, add Docker Compose, run FastAPI/backtest integration, or write
@@ -613,6 +624,7 @@ uv run mypy packages/research-sdk/src
 uv run python -m research_sdk.contracts.json_schema --output-dir packages/research-sdk/schema --check
 uv run alembic -c alembic.ini heads
 uv run alembic -c alembic.ini history
+uv run pytest tests/test_live_postgres_url_safety.py
 uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py tests/test_persistence_statements.py
 uv run pytest
 ```

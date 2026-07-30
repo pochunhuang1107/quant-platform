@@ -32,6 +32,14 @@ database write paths, statement execution, DB drivers, live Postgres tests,
 SQLite persistence tests, FastAPI/backtest integration, and experiment run
 writing from backtests remain deferred.
 
+PR 21 adds the first local opt-in live Postgres migration harness. It adds a
+dev-only sync `psycopg` v3 driver, `live_db` marker registration, URL safety
+tests, and an Alembic `upgrade head` plus catalog inspection smoke test. This is
+not repository coverage. It does not add repository skeletons, repository
+implementations, DB write paths, statement execution, contract fixture insert
+tests, idempotency/conflict tests, SQLite persistence tests, FastAPI/backtest
+integration, or experiment run writing from backtests.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -191,6 +199,8 @@ implementation, database execution path, DB driver, live Postgres test harness,
 SQLite persistence test, FastAPI integration, backtest integration, experiment
 run writer, session abstraction, or unit-of-work abstraction. It records the
 execution semantics required before any future write implementation is added.
+PR 21 adds only a migration smoke harness; repository execution remains
+deferred.
 
 Future repository implementations should accept an injected SQLAlchemy
 `Connection`. They should not accept an `Engine`, `Session`, DB URL, raw row
@@ -254,12 +264,12 @@ semantics. Avoid false confidence. A live Postgres test harness should be added
 only after DB driver and execution semantics are approved. SQLite persistence
 tests remain avoided because JSONB and Postgres behavior differ.
 
-PR 20 documents that the first future executable live harness should be
-migration-only. Future live DB migration tests may run Alembic `upgrade head`
-against disposable Postgres and inspect catalog state, but they are not
-repository tests. They must not insert contract fixtures, execute statement
-builders, execute repository writes, test idempotency or conflict behavior, test
-correction or lifecycle behavior, or imply that a DB write path exists.
+PR 21 implements the first executable live harness as migration-only. Live DB
+migration tests may run Alembic `upgrade head` against disposable local Postgres
+and inspect catalog state, but they are not repository tests. They must not
+insert contract fixtures, execute statement builders, execute repository writes,
+test idempotency or conflict behavior, test correction or lifecycle behavior, or
+imply that a DB write path exists.
 
 ## Future Repository Responsibilities
 
@@ -295,15 +305,15 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 20:
+The following remain deferred after PR 21:
 
 - repository skeletons;
 - SQLAlchemy repository implementations;
 - database write paths;
 - statement execution;
 - sessions or unit-of-work abstractions except as future design;
-- DB driver dependencies such as `psycopg` or `asyncpg`;
-- live Postgres tests;
+- runtime DB driver dependencies and async drivers such as `asyncpg`;
+- live Postgres repository/write-path tests;
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
 - idempotency, upsert, duplicate handling, and `ON CONFLICT` behavior;
 - lifecycle, correction, and append-only enforcement;

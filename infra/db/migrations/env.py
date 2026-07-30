@@ -18,9 +18,15 @@ if config.config_file_name is not None:
 
 target_metadata = metadata
 
+ALEMBIC_PLACEHOLDER_DATABASE_URL = "driver://user:pass@localhost/dbname"
+
 
 def _database_url() -> str:
     """Read the migration database URL without logging the secret value."""
+
+    configured_url = (config.get_main_option("sqlalchemy.url") or "").strip()
+    if configured_url and configured_url != ALEMBIC_PLACEHOLDER_DATABASE_URL:
+        return configured_url
 
     return get_database_url()
 
