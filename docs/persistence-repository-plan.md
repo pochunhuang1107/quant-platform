@@ -63,6 +63,16 @@ fixtures, execute repository writes, add repository skeletons, add repository
 implementations, choose transaction semantics, choose duplicate/conflict
 behavior, add SQLite persistence tests, or integrate with FastAPI/backtests.
 
+PR 25 is documentation-only. It defines the approved idempotency, replay,
+uniqueness, concurrency, retry, and conflict policy before any persistence
+execution code exists. It does not add or change package code, package exports,
+tests, migrations, schema/table definitions, contracts, generated schemas,
+dependencies, workflows, Docker Compose, repository skeletons, repository
+implementations, SQLAlchemy execution, `ON CONFLICT` builders, insert execution,
+fixture persistence, live insert/conflict tests, FastAPI/backtest integration,
+artifact or object-storage IO, data ingestion, broker integration, paper
+trading, live trading, credentials, or secrets.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -315,6 +325,297 @@ does not make live migration tests repository tests, does not approve statement
 execution, and does not change transaction, idempotency, duplicate, correction,
 or lifecycle semantics.
 
+## Idempotency, Replay, and Conflict Policy
+
+PR 25 is documentation-only. It defines the policy that must be approved before
+any persistence execution code is introduced, but it does not implement database
+execution, repository code, `ON CONFLICT` builders, insert tests, live conflict
+tests, migrations, contracts, package exports, or application integration.
+
+### Definitions
+
+Logical identity is the durable entity identity used to determine whether an
+attempted write addresses an existing record.
+
+Exact replay means the attempted write has the same logical identity and the
+same canonical contract payload/hash as an already-persisted record.
+
+Idempotent replay is an accepted exact replay that returns a replay disposition
+without inserting, updating, or mutating stored state.
+
+Duplicate alias means a different supplied primary identity attempts to
+represent an already-recorded natural or logical entity.
+
+Hash conflict means the attempted write has the same logical identity as an
+existing record but a different canonical contract hash.
+
+Primary-key conflict means a collision on the entity's database primary key.
+
+Natural-key conflict means a collision on a non-primary uniqueness rule or
+policy-level natural identity.
+
+Correction means a future explicit flow that records a corrected replacement
+while preserving the original record.
+
+Supersession means a future explicit relationship where a new immutable record
+replaces an older immutable version.
+
+Lifecycle update means an explicit state transition outside the initial
+insert-only persistence path.
+
+Append-only event means an event record that is never silently updated or
+overwritten.
+
+### Global Invariants
+
+- Same logical identity plus same canonical hash is an idempotent replay, but
+  only when the stored entity supports hash verification.
+- Same logical identity plus different canonical hash is a conflict and must
+  reject.
+- Different logical identity plus same canonical hash is generally allowed
+  unless a table-specific natural-key or alias policy forbids it.
+- A new primary key plus a conflicting natural or unique key is a natural-key
+  conflict or duplicate alias, not replay.
+- The initial persistence path is insert-only.
+- The initial persistence path must never update, overwrite, repair, merge,
+  mutate, perform lifecycle transitions, or silently replace stored state.
+- Corrections and supersessions require explicit future flows using new
+  identities and explicit relationships.
+
+### Canonical Payload Rules
+
+- Canonical hashes come only from the existing `contract_sha256()` helper.
+- Callers must never provide a trusted `contract_hash`.
+- `raw_contract` and `raw_review` originate from `model_dump(mode="json")`.
+- `inserted_at` is DB-generated and excluded from canonical payloads.
+- `schema_version` remains part of the hash when present.
+- Repository implementations must not reproduce or fork canonicalization logic.
+- Raw payloads must not appear in conflict logs or exceptions.
+
+### Per-Entity Policy Matrix
+
+| Entity/table | Logical identity | Replay behavior | Conflict behavior | Boundary notes |
+| --- | --- | --- | --- | --- |
+| `experiment_runs` | `run_id` | Same `run_id` and same `contract_hash` is replay. | Same `run_id` and different `contract_hash` is conflict. | `experiment_id` is reference/context, not replay identity. Persisted run records are immutable in the initial path. Status transitions remain outside the initial persistence path. |
+| `data_snapshot_manifests` | `snapshot_id` | Same `snapshot_id` and same `contract_hash` is replay. | Same `snapshot_id` and different `contract_hash` is conflict. | Initial persisted manifests are immutable. Snapshot replacement or correction requires a future explicit flow. |
+| `run_artifact_manifests` | Primary identity: `manifest_id`. Natural aggregate identity for the initial platform: `run_id`. | Same `manifest_id`, same `contract_hash`, and matching complete entry projection is replay. | Same `manifest_id` and different `contract_hash` is conflict. Different `manifest_id` for the same `run_id` is conflict, regardless of whether the hash matches. Same `run_id` and same `contract_hash` under another `manifest_id` is duplicate alias, not replay. Same `run_id` and different `contract_hash` is unsupported manifest versioning and must reject. | Initial policy permits exactly one artifact-manifest aggregate per `run_id`. Multiple manifest versions are not permitted until an explicit version or supersession model is approved. |
+| `run_artifact_entries` | `(manifest_id, artifact_id)`, only inside the parent aggregate. | Entries have no independent replay path. Parent replay requires the same manifest hash and the exact complete projected entry set. | Missing entries, extra entries, or differing entry values indicate aggregate integrity failure. | Entries must never be written independently. No automatic repair, partial upsert, best-effort entry insertion, or independent entry mutation is allowed. |
+| `research_notes` | `note_id` | Same `note_id` and same `contract_hash` is replay. | Same `note_id` and different `contract_hash` is conflict. | Persisted note versions are immutable. `updated_at` and `updated_by` are values inside one immutable note version; they are not authorization to mutate the stored row. Revisions require a new `note_id` using `parent_note_id` or `supersedes_note_id`. No silent note editing is allowed. |
+| `review_events` | `review_event_id` | No idempotent replay claim exists for now. | Duplicate `review_event_id` always rejects for now. | Events remain append-only. Do not compare `raw_review` directly to infer replay. A future standalone `ReviewEvent` contract with `schema_version` and `event_hash` is required before replay semantics can be approved. `ReviewMetadata` is audit/review metadata and is not trading or risk authorization. |
+
+Current artifact-manifest constraints are not sufficient for execution approval.
+`UNIQUE(run_id, contract_hash)` prevents one duplicate-alias case: a different
+`manifest_id` cannot reuse the exact same manifest hash for the same `run_id`.
+The current schema still permits the same `run_id` with different manifest
+hashes. Therefore one-manifest-per-run is currently a repository/service policy
+and is not concurrency-safe through DB constraints alone. Artifact-manifest
+execution must not be approved until either a later migration adds appropriate
+`run_id` uniqueness or an explicit manifest version/supersession model is
+approved. PR 25 does not modify migrations.
+
+### Artifact Aggregate Atomicity
+
+Artifact manifest persistence must be atomic across the parent
+`run_artifact_manifests` row and all projected `run_artifact_entries` rows.
+Those rows must be written in one caller-owned transaction when execution is
+approved. Entries must never be written independently.
+
+Replay requires the same manifest hash and the exact complete projected entry
+set. Missing entries, extra entries, or differing entry values indicate
+aggregate integrity failure. Partial aggregate state should be treated as
+corruption or interrupted external transaction state, not as replay. The initial
+implementation must not automatically repair partial state, perform partial
+upserts, or make best-effort entry insertions.
+
+### Concurrency Policy
+
+For concurrent identical hash-backed writes, one insert may succeed and the
+other must deterministically resolve as replay. Neither write may overwrite or
+mutate stored state.
+
+For concurrent conflicting writes, one insert may succeed first and the other
+must deterministically receive a conflict. Last-write-wins behavior, silent
+updates, and silent replacement are prohibited.
+
+Future execution must avoid:
+
+- pre-read as the only concurrency mechanism;
+- last-write-wins behavior;
+- `ON CONFLICT DO UPDATE`;
+- broad untargeted `ON CONFLICT DO NOTHING` that can hide which constraint
+  fired.
+
+### Future PostgreSQL Execution Algorithm
+
+This algorithm is a future recommendation only and is not implemented in PR 25:
+
+1. Accept a validated contract through the repository protocol.
+2. Produce rows through existing mapper and statement-builder boundaries.
+3. Execute targeted `INSERT ... ON CONFLICT ON CONSTRAINT <primary-key> DO
+   NOTHING RETURNING ...`.
+4. If a row is returned, disposition is `CREATED`.
+5. If no row is returned, select the existing row by logical identity inside the
+   same caller-owned transaction.
+6. Compare the stored `contract_hash`.
+7. Same hash means `REPLAYED`.
+8. Different hash raises a contract-hash conflict.
+9. Translate non-primary unique constraint failures separately as natural-key
+   conflict or duplicate alias.
+10. Never use `ON CONFLICT DO UPDATE` in the initial write path.
+
+This algorithm is not sufficient for one-manifest-per-run concurrency because
+the current schema lacks unique `run_id` enforcement on
+`run_artifact_manifests`. Artifact manifests require a schema/versioning
+decision before execution.
+
+### Transaction Ownership
+
+- Repository implementations receive an injected SQLAlchemy `Connection`.
+- Caller owns transaction scope.
+- Repositories do not create, commit, or roll back transactions.
+- Repositories may raise; callers decide rollback.
+- Artifact manifests and entries use one caller-owned transaction.
+- Repositories do not own an `Engine`.
+- Repositories do not own a `Session`.
+- Repositories do not own DB URL lookup or configuration.
+- Repositories do not create hidden nested transactions.
+- No unit-of-work abstraction exists yet.
+
+### Future Result and Disposition Requirements
+
+`PersistedRecordMetadata` remains unchanged in PR 25. Before execution is
+implemented, a result model or protocol-compatible extension must define:
+
+- disposition: `CREATED` or `REPLAYED`;
+- table/entity name;
+- primary/logical identity;
+- contract hash where applicable;
+- `inserted_at` if returned by the DB;
+- row count where meaningful;
+- aggregate entry count for artifact manifests.
+
+Result surfaces must not expose raw contracts, raw reviews, credentials, full DB
+URLs, or sensitive payloads. PR 25 does not implement this result model.
+
+### Future Error Taxonomy
+
+Future implementations should define domain errors before repository execution.
+Conceptual errors include:
+
+- `PersistenceConflictError`;
+- `ContractHashConflictError`;
+- `NaturalKeyConflictError`;
+- `AggregateIntegrityError`;
+- `DuplicateReviewEventError`;
+- `UnsupportedVersioningConflict`, or an equivalent concept, for a second
+  artifact manifest under one `run_id` before versioning exists.
+
+Safe error details include table/entity name, logical identity, operation type,
+constraint name when available, and short hash prefixes.
+
+Unsafe error details include full payloads, passwords, credentials, secrets, and
+full database URLs.
+
+This PR does not lock the exact Python class hierarchy. Error names and
+inheritance remain subject to approval before implementation.
+
+### Retry Policy
+
+- Exact replay is safely retryable.
+- Contract hash conflict is non-retryable without caller, code, or human
+  correction.
+- Natural-key conflict is non-retryable unless identity or policy is corrected.
+- Unsupported artifact-manifest version conflict is non-retryable.
+- Duplicate `review_event_id` is rejected and non-idempotent until event hashing
+  exists.
+- Transient database errors may be retried only by caller/service policy.
+- Repository methods must not hide retry loops.
+
+### Audit and Logging Policy
+
+Future execution may log:
+
+- operation type;
+- entity/table;
+- safe logical identity;
+- `CREATED`, `REPLAYED`, or `REJECTED`;
+- short hash prefix where applicable;
+- caller-supplied correlation or transaction ID.
+
+Future execution must not log:
+
+- raw payload;
+- raw contract or review JSON;
+- credentials;
+- secrets;
+- full DB URL;
+- financial decision semantics;
+- trading authorization semantics.
+
+### Lifecycle and Correction Boundaries
+
+The following remain outside the initial idempotent insert path:
+
+- experiment-run status transitions;
+- note edits;
+- review or approval changes;
+- correction;
+- supersession;
+- artifact replacement or versioning;
+- snapshot replacement;
+- deletes;
+- mutable updates;
+- trading or risk authorization.
+
+### Current DB Constraint Assessment
+
+Current constraints are sufficient for the existing migration-only foundation:
+
+- current primary keys;
+- `contract_hash` columns on hash-backed parent tables;
+- `JSONB` payload columns;
+- artifact-entry foreign key;
+- `UNIQUE(run_id, contract_hash)`;
+- current checks and query indexes.
+
+The following remain missing or unresolved before future execution:
+
+- unique one-manifest-per-run enforcement or explicit artifact manifest
+  versioning;
+- `ReviewEvent` `schema_version` and `event_hash` for replay;
+- aggregate completeness enforcement;
+- future result/disposition model;
+- domain conflict/error mapping;
+- correction/supersession model;
+- possible future cross-contract foreign keys after ordering/backfill design.
+
+Do not add these in PR 25:
+
+- unique constraints;
+- migrations;
+- global `contract_hash` uniqueness;
+- lifecycle DB constraints;
+- polymorphic review-event foreign keys;
+- event hash columns.
+
+### Approval Gates Before Execution
+
+Separate approval is required before:
+
+- result/disposition model code;
+- error taxonomy code;
+- `ON CONFLICT` statement builders;
+- live insert tests;
+- artifact-manifest uniqueness/versioning migration;
+- standalone `ReviewEvent` contract;
+- repository skeleton;
+- repository implementation;
+- transaction execution;
+- fixture persistence;
+- idempotency/conflict integration tests;
+- correction/lifecycle flows;
+- application/backtest integration.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
@@ -334,9 +635,10 @@ Future repositories should:
 
 Future duplicate handling should follow this policy:
 
-- the same primary key plus the same `contract_hash` may be idempotent;
-- the same primary key plus a different `contract_hash` should reject unless an
-  explicit correction or supersession path is used;
+- the detailed idempotency, replay, and conflict policy above is authoritative;
+- hash-backed entities may replay only when logical identity and canonical hash
+  match;
+- conflicting identities, hashes, natural keys, and aggregate state must reject;
 - silent overwrite is prohibited.
 
 Completed-run append-only rules and lifecycle transition rules remain future
@@ -349,7 +651,7 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 24:
+The following remain deferred after PR 25:
 
 - repository skeletons;
 - SQLAlchemy repository implementations;
@@ -359,8 +661,9 @@ The following remain deferred after PR 24:
 - runtime DB driver dependencies and async drivers such as `asyncpg`;
 - live Postgres repository/write-path tests;
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
-- idempotency, upsert, duplicate handling, and `ON CONFLICT` behavior;
-- lifecycle, correction, and append-only enforcement;
+- idempotency, replay, duplicate handling, conflict handling, and `ON CONFLICT`
+  implementation;
+- lifecycle, correction, supersession, and append-only enforcement;
 - FastAPI endpoints;
 - backtest integration;
 - artifact IO or storage IO;
