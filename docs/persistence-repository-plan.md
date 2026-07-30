@@ -40,6 +40,13 @@ implementations, DB write paths, statement execution, contract fixture insert
 tests, idempotency/conflict tests, SQLite persistence tests, FastAPI/backtest
 integration, or experiment run writing from backtests.
 
+PR 22 is documentation-only. It adds the local live Postgres migration harness
+runbook in [Persistence Setup](persistence-setup.md) and records that the PR 21
+harness review found no required safety-code or test change. It does not add or
+change repository code, repository skeletons, DB execution, tests, dependencies,
+workflows, Docker Compose, devcontainer configuration, schemas, migrations,
+contracts, package exports, or lockfiles.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -270,6 +277,13 @@ and inspect catalog state, but they are not repository tests. They must not
 insert contract fixtures, execute statement builders, execute repository writes,
 test idempotency or conflict behavior, test correction or lifecycle behavior, or
 imply that a DB write path exists.
+
+See the local live Postgres migration harness runbook in
+[Persistence Setup](persistence-setup.md) for the exact command, safety
+checklist, troubleshooting notes, and expansion gates. The runbook does not
+change the repository boundary: live migration tests remain separate from
+repository execution, statement builders remain inert, and repository
+implementation remains deferred.
 
 ## Future Repository Responsibilities
 

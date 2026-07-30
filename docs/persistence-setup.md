@@ -298,6 +298,188 @@ implementations, DB writes, insert execution, FastAPI/backtest integration,
 experiment run writing from backtests, broker behavior, paper trading, and live
 trading remain deferred.
 
+## Local Live Postgres Migration Harness Runbook
+
+PR 22 is documentation-only. It reviews the PR 21 local opt-in live Postgres
+migration harness and records its operating runbook. No concrete PR 21
+safety/test gap was found during review, so PR 22 does not change code, tests,
+dependencies, migrations, table definitions, workflows, Docker Compose,
+devcontainers, contracts, schemas, row mappers, hashing helpers, protocols,
+statement builders, repository code, or live DB test code.
+
+### Purpose
+
+The harness is a local disposable Postgres migration smoke test only. It
+validates that Alembic can apply the current metadata ledger migrations to
+Postgres and that the resulting catalog shape matches the expected Phase 1
+schema.
+
+It does not validate repository writes, statement execution, strategy execution,
+backtest execution, FastAPI integration, artifact IO, experiment run writing,
+broker behavior, paper trading, or live trading.
+
+### Required Env Vars
+
+The live migration test requires both explicit opt-in values:
+
+- `QUANT_RUN_LIVE_DB_TESTS=1`.
+- `QUANT_TEST_DATABASE_URL`.
+
+Default pytest remains non-live. The live test skips when either env var is
+absent. The live migration test must use `QUANT_TEST_DATABASE_URL` and must not
+read `DATABASE_URL`. Manual Alembic commands continue to use `DATABASE_URL` as
+documented above.
+
+URL safety helpers are test-only. They live under `tests/` and are not package
+code or a runtime persistence API.
+
+### Safe Example URL
+
+Use a disposable local test database, for example:
+
+```text
+postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test
+```
+
+### Exact Command
+
+Run the live migration smoke test with both opt-in env vars:
+
+```bash
+QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
+```
+
+### Expected Default Behavior
+
+Normal test and safety-check behavior should stay non-live:
+
+```bash
+python -m uv run pytest
+python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
+python -m uv run pytest tests/test_live_postgres_url_safety.py
+```
+
+Expected outcomes:
+
+- `python -m uv run pytest` should pass with the live DB test skipped.
+- `python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py`
+  should skip when opt-in env vars are absent.
+- URL safety tests should run without a database.
+
+### What The Live Test Checks
+
+The live migration test checks:
+
+- Alembic `upgrade head`.
+- Alembic version table/state.
+- Expected tables.
+- PostgreSQL `JSONB` columns.
+- Primary keys.
+- Key unique constraints.
+- Check constraints.
+- Indexes.
+- `run_artifact_entries.manifest_id` foreign key to
+  `run_artifact_manifests`.
+
+### What The Live Test Does Not Check
+
+The live migration test does not check:
+
+- Data inserts.
+- Statement builder execution.
+- Repository writes.
+- Contract fixture inserts.
+- Idempotency.
+- `ON CONFLICT` or upsert behavior.
+- Duplicate behavior.
+- Correction or lifecycle behavior.
+- FastAPI/backtest integration.
+- Experiment run writing from backtests.
+- Broker, paper trading, or live trading.
+
+### Safety Checklist Before Running
+
+Before running the live migration smoke test:
+
+- Use `localhost`, `127.0.0.1`, or `::1` only.
+- Use a disposable local test database.
+- Confirm the database name contains `test`.
+- Prefer `quant_platform_test`.
+- Do not use a production, shared, vendor, cloud, or externally hosted DB.
+- Do not use privileged users such as `postgres`, `root`, `admin`, or `prod`.
+- Do not commit or log secrets.
+- Do not paste real credentials into docs, issues, PRs, logs, or screenshots.
+- Confirm the database can be discarded and recreated.
+
+### Troubleshooting
+
+- `uv` is not on `PATH`: use `python -m uv`.
+- `psycopg` is missing: run `python -m uv sync --locked`.
+- URL refused by safety helper: use `postgresql+psycopg`, a local host, a
+  database name containing `test`, and a non-privileged/non-production-looking
+  user.
+- Postgres is not running: start the local Postgres service outside the repo.
+- Database does not exist: create the disposable local test database outside the
+  repo before running the harness.
+- Permission denied: grant the local test user permission to create tables,
+  indexes, constraints, and the Alembic version table in the disposable DB.
+- Alembic version mismatch: confirm the test database is disposable and either
+  already at the current head or safe to recreate.
+- Database already migrated: this is acceptable if the version is current and
+  catalog assertions pass; recreate the disposable DB when in doubt.
+- Connection refused: verify host, port, local server status, and credentials.
+- `JSONB` or catalog assertion failure: inspect the migration history and table
+  definitions before expanding the harness; do not paper over catalog failures
+  with insert or repository tests.
+
+### Review Gates Before Expansion
+
+Before Docker Compose:
+
+- Decide whether local Postgres should be repo-managed at all.
+- Prefer `infra/db/docker-compose.yml` over a root Compose file if approved.
+- Keep production, cloud, broker, and credential assumptions out of Compose.
+- Document lifecycle, ports, volumes, cleanup, and disposable DB expectations.
+
+Before CI Postgres:
+
+- Approve the need for CI database coverage separately.
+- Avoid CI secrets and external database dependencies.
+- Confirm live DB tests remain opt-in or isolated from normal unit tests.
+- Define cleanup, failure diagnostics, and migration drift expectations.
+
+Before insert execution tests:
+
+- Approve that executing SQLAlchemy statements is in scope.
+- Define transaction ownership and rollback behavior.
+- Keep contract fixture inserts separate from repository semantics.
+- Keep artifact IO and content hash verification out of DB tests.
+
+Before repository implementation:
+
+- Approve repository skeletons and implementations explicitly.
+- Keep repositories on injected SQLAlchemy `Connection` objects.
+- Keep transaction scope caller-owned.
+- Require repositories to call existing statement builders.
+- Do not add `Engine`, `Session`, DB URL, or storage-handle ownership.
+
+Before idempotency/`ON CONFLICT` behavior:
+
+- Approve duplicate/conflict policy explicitly.
+- Define same-primary-key/same-hash replay behavior.
+- Define same-primary-key/different-hash rejection behavior.
+- Define correction, supersession, and lifecycle boundaries.
+- Avoid silent overwrites.
+
+Before any backtest/FastAPI integration:
+
+- Approve application integration separately.
+- Keep experiment run writing from backtests deferred until the ledger write
+  path is approved.
+- Preserve benchmark, costs, slippage, lookback, lag, leakage, and artifact
+  contract documentation requirements.
+- Keep broker, paper trading, and live trading out of scope.
+
 ## Local Commands
 
 Commands that do not require a live database:
@@ -316,7 +498,7 @@ DATABASE_URL="<postgresql-url>" uv run alembic -c alembic.ini upgrade head
 Local opt-in live migration smoke test command:
 
 ```bash
-QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test' uv run pytest -m live_db tests/test_live_postgres_migrations.py
+QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
 ```
 
 This command requires a disposable local Postgres database. Do not use a
@@ -350,7 +532,7 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 20, future persistence PRs should keep table design, constraints,
+After PR 22, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. They should still avoid repository
 implementations, DB write paths, API endpoints, backtest integration, artifact
 IO, data ingestion, broker integration, live trading, and paper trading
