@@ -47,6 +47,14 @@ change repository code, repository skeletons, DB execution, tests, dependencies,
 workflows, Docker Compose, devcontainer configuration, schemas, migrations,
 contracts, package exports, or lockfiles.
 
+PR 23 adds optional local Docker Compose infrastructure for disposable Postgres
+under `infra/db/docker-compose.yml` and documentation for using it with the
+existing migration smoke harness. This does not change repository boundaries:
+Compose does not add repository skeletons, repository implementations, insert
+execution, statement builder execution, contract fixture inserts, DB write
+paths, SQLite persistence tests, FastAPI/backtest integration, CI Postgres, or
+application runtime services.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -206,7 +214,8 @@ implementation, database execution path, DB driver, live Postgres test harness,
 SQLite persistence test, FastAPI integration, backtest integration, experiment
 run writer, session abstraction, or unit-of-work abstraction. It records the
 execution semantics required before any future write implementation is added.
-PR 21 adds only a migration smoke harness; repository execution remains
+PR 21 adds only a migration smoke harness, and PR 23 adds only optional local
+Postgres Compose infrastructure for that harness. Repository execution remains
 deferred.
 
 Future repository implementations should accept an injected SQLAlchemy
@@ -285,6 +294,12 @@ change the repository boundary: live migration tests remain separate from
 repository execution, statement builders remain inert, and repository
 implementation remains deferred.
 
+The local Docker Compose service documented there is only infrastructure for a
+disposable Postgres instance used by the same migration smoke harness. Compose
+does not make live migration tests repository tests, does not approve statement
+execution, and does not change transaction, idempotency, duplicate, correction,
+or lifecycle semantics.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
@@ -319,7 +334,7 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 21:
+The following remain deferred after PR 23:
 
 - repository skeletons;
 - SQLAlchemy repository implementations;

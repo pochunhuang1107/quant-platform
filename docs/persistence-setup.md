@@ -44,6 +44,11 @@ contract consumers still do not need a DB driver. Persistence remains
 synchronous. `asyncpg`, `psycopg2`, and runtime DB driver dependencies remain
 out of scope.
 
+PR 23 adds `infra/db/docker-compose.yml` as optional local-only disposable
+Postgres infrastructure for the existing migration smoke harness. It does not
+add or change Python dependencies, lockfiles, package code, tests, migrations,
+workflows, CI services, repository code, or application runtime services.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -338,7 +343,75 @@ code or a runtime persistence API.
 Use a disposable local test database, for example:
 
 ```text
-postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test
+postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test
+```
+
+## Local Docker Compose Postgres
+
+PR 23 adds an optional local Docker Compose file for developers who want a
+repo-provided disposable Postgres instance for the existing live migration smoke
+harness.
+
+This Compose file is optional local infrastructure only. It is not a project
+runtime, app stack, CI service, production DB, shared DB, cloud DB, vendor DB,
+or broker-related service. It does not run migrations automatically, run app
+code, run repository writes, enable insert execution, enable statement builder
+execution, or enable paper/live trading.
+
+The Compose service uses `postgres:17.10`, creates the local database
+`quant_platform_test`, and creates the local user `quant_test` with password
+`quant_test`. The password is intentionally trivial because the database is
+local and disposable. Do not reuse it anywhere else.
+
+Start the local Postgres service from the repository root:
+
+```bash
+docker compose -f infra/db/docker-compose.yml up -d
+```
+
+Inspect the service:
+
+```bash
+docker compose -f infra/db/docker-compose.yml ps
+```
+
+Run the existing local opt-in migration smoke test:
+
+```bash
+QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
+```
+
+Use the `python -m uv` form because `uv` may not be on `PATH`.
+
+Stop the service and remove the disposable database volume:
+
+```bash
+docker compose -f infra/db/docker-compose.yml down -v
+```
+
+Use `docker compose down -v` whenever the local migration state becomes
+confusing or the disposable DB should be recreated.
+
+Default pytest remains non-live. The live DB test remains double opt-in and
+requires both `QUANT_RUN_LIVE_DB_TESTS=1` and `QUANT_TEST_DATABASE_URL`.
+`QUANT_TEST_DATABASE_URL` must be passed at command time and must not be checked
+into a file. Do not paste real credentials into docs, issues, PRs, logs, or
+screenshots. Do not point `QUANT_TEST_DATABASE_URL` at a production, shared,
+cloud, vendor, or externally hosted DB.
+
+The Compose file binds Postgres only to `127.0.0.1:5432`. If a local Postgres
+server already uses port `5432`, change the host-side port in
+`infra/db/docker-compose.yml`, for example:
+
+```yaml
+ports:
+  - "127.0.0.1:15432:5432"
+```
+
+Then update the test URL port:
+
+```text
+postgresql+psycopg://quant_test:quant_test@127.0.0.1:15432/quant_platform_test
 ```
 
 ### Exact Command
@@ -346,7 +419,7 @@ postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test
 Run the live migration smoke test with both opt-in env vars:
 
 ```bash
-QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
+QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
 ```
 
 ### Expected Default Behavior
@@ -418,15 +491,17 @@ Before running the live migration smoke test:
 - URL refused by safety helper: use `postgresql+psycopg`, a local host, a
   database name containing `test`, and a non-privileged/non-production-looking
   user.
-- Postgres is not running: start the local Postgres service outside the repo.
+- Postgres is not running: start a disposable local Postgres service, optionally
+  with `docker compose -f infra/db/docker-compose.yml up -d`.
 - Database does not exist: create the disposable local test database outside the
-  repo before running the harness.
+  repo before running the harness, or use the provided Compose service.
 - Permission denied: grant the local test user permission to create tables,
   indexes, constraints, and the Alembic version table in the disposable DB.
 - Alembic version mismatch: confirm the test database is disposable and either
   already at the current head or safe to recreate.
 - Database already migrated: this is acceptable if the version is current and
-  catalog assertions pass; recreate the disposable DB when in doubt.
+  catalog assertions pass; recreate the disposable DB with
+  `docker compose -f infra/db/docker-compose.yml down -v` when in doubt.
 - Connection refused: verify host, port, local server status, and credentials.
 - `JSONB` or catalog assertion failure: inspect the migration history and table
   definitions before expanding the harness; do not paper over catalog failures
@@ -434,12 +509,13 @@ Before running the live migration smoke test:
 
 ### Review Gates Before Expansion
 
-Before Docker Compose:
+After local Docker Compose:
 
-- Decide whether local Postgres should be repo-managed at all.
-- Prefer `infra/db/docker-compose.yml` over a root Compose file if approved.
-- Keep production, cloud, broker, and credential assumptions out of Compose.
-- Document lifecycle, ports, volumes, cleanup, and disposable DB expectations.
+- Keep `infra/db/docker-compose.yml` local-only and optional.
+- Do not add a root Compose file unless separately approved.
+- Keep production, cloud, broker, credential, app-runtime, migration-runner, and
+  admin-UI assumptions out of Compose.
+- Keep cleanup and disposable DB expectations documented.
 
 Before CI Postgres:
 
@@ -498,7 +574,7 @@ DATABASE_URL="<postgresql-url>" uv run alembic -c alembic.ini upgrade head
 Local opt-in live migration smoke test command:
 
 ```bash
-QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@localhost:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
+QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
 ```
 
 This command requires a disposable local Postgres database. Do not use a
@@ -532,7 +608,7 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 22, future persistence PRs should keep table design, constraints,
+After PR 23, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. They should still avoid repository
 implementations, DB write paths, API endpoints, backtest integration, artifact
 IO, data ingestion, broker integration, live trading, and paper trading
