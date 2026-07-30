@@ -68,6 +68,18 @@ test, dependency, workflow, CI Postgres service, devcontainer, repository
 skeleton, repository implementation, insert execution, SQLite persistence test,
 or application integration.
 
+PR 24 is the isolated CI Postgres migration gate. It records the successful
+local Compose validation with `postgres:17.10` and adds a separate GitHub
+Actions `postgres-migrations` job named `Postgres migration smoke`. The CI job
+uses a disposable `postgres:17.10` service container and runs only the existing
+live migration smoke test. It is independent from the normal tooling CI job,
+uses test-only hard-coded local credentials, uses no secrets, does not set
+`DATABASE_URL`, and does not run Docker Compose. PR 24 adds no schema, table,
+migration revision, package code, dependency, lockfile, test code, Docker
+Compose configuration, repository skeleton, repository implementation, insert
+execution, SQLite persistence test, FastAPI/backtest integration, or experiment
+run writer.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -477,7 +489,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 23:
+This sequence is partially implemented and current through PR 24:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -537,11 +549,20 @@ This sequence is partially implemented and current through PR 23:
    - use it only with the existing double opt-in live migration harness;
    - do not add app services, migration runners, admin UIs, CI services,
      dependencies, package code, migrations, or test changes.
-16. Add stable non-blocking cross-contract foreign keys later where appropriate.
-17. Add contract fixture persistence tests later.
-18. Add repository/write-path code only in a later PR after semantics, conflict
+16. Add an isolated CI Postgres migration smoke job:
+   - use a GitHub Actions service container, not Docker Compose;
+   - keep the normal tooling CI job unchanged and independent from Postgres;
+   - use `postgres:17.10` with the disposable `quant_platform_test` database;
+   - run only the existing `live_db` Alembic upgrade-head/catalog inspection
+     test;
+   - do not use secrets, `DATABASE_URL`, external databases, insert execution,
+     repository writes, package changes, dependency changes, migration changes,
+     or schema changes.
+17. Add stable non-blocking cross-contract foreign keys later where appropriate.
+18. Add contract fixture persistence tests later.
+19. Add repository/write-path code only in a later PR after semantics, conflict
    behavior, and test harness design are approved.
-19. Require Pydantic contract validation before persistence.
+20. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -580,7 +601,10 @@ schema, table, migration, metadata, code, test, dependency, workflow, Docker
 Compose, devcontainer, package export, or lockfile changes. PR 23 adds only
 optional local disposable Postgres Compose infrastructure and docs; it changes
 no migrations, tests, package code, dependencies, workflows, CI services,
-repository boundaries, package exports, or lockfiles.
+repository boundaries, package exports, or lockfiles. PR 24 adds only an
+isolated GitHub Actions Postgres migration smoke job and documentation; it
+changes no migrations, tests, package code, dependencies, Docker Compose
+configuration, repository boundaries, package exports, or lockfiles.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -616,10 +640,24 @@ does not change the harness behavior. The live migration test remains
 migration-only and double opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and
 `QUANT_TEST_DATABASE_URL`.
 
-After PR 23, the next expansion gates remain CI Postgres, insert execution,
-repository implementation, conflict/idempotency policy, and SQLite persistence
-policy if it is ever reconsidered. Each gate requires separate approval before
-it changes code, tests, dependencies, workflows, or infrastructure.
+Before PR 24, the PR 23 Compose path was manually validated with Docker:
+`postgres:17.10` pulled successfully, the container started, the live migration
+smoke test passed with `1 passed`, and `docker compose down -v` removed the
+container, network, and named volume so no persistent local test DB state
+remained.
+
+PR 24 adds CI Postgres only for migration validation. The CI job uses a
+GitHub Actions `postgres:17.10` service container with
+`quant_platform_test`/`quant_test` test-only values, maps the service to
+localhost for the existing URL safety helper, and runs only
+`uv run pytest -m live_db tests/test_live_postgres_migrations.py`. The normal
+tooling CI job remains unchanged and does not depend on Postgres. The CI
+migration smoke remains Alembic upgrade-head and catalog-inspection only.
+
+After PR 24, the next expansion gates remain insert execution, repository
+implementation, conflict/idempotency policy, and SQLite persistence policy if
+it is ever reconsidered. Each gate requires separate approval before it changes
+code, tests, dependencies, workflows, or infrastructure.
 
 ## Future DB Test Strategy
 

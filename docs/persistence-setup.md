@@ -49,6 +49,12 @@ Postgres infrastructure for the existing migration smoke harness. It does not
 add or change Python dependencies, lockfiles, package code, tests, migrations,
 workflows, CI services, repository code, or application runtime services.
 
+PR 24 adds an isolated GitHub Actions Postgres migration smoke job that runs
+the existing live migration harness against a disposable CI service container.
+It does not add or change Python dependencies, lockfiles, package code, tests,
+migrations, Docker Compose configuration, repository code, statement execution,
+or application runtime services.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -414,6 +420,17 @@ Then update the test URL port:
 postgresql+psycopg://quant_test:quant_test@127.0.0.1:15432/quant_platform_test
 ```
 
+### Local Compose Validation Record
+
+Before PR 24, the local Compose path was validated manually with Docker:
+
+- `postgres:17.10` pulled successfully.
+- The local Postgres container started successfully.
+- The live migration smoke test passed with `1 passed`.
+- `docker compose -f infra/db/docker-compose.yml down -v` removed the
+  container, network, and named volume.
+- No persistent local test DB state remained after teardown.
+
 ### Exact Command
 
 Run the live migration smoke test with both opt-in env vars:
@@ -470,6 +487,60 @@ The live migration test does not check:
 - Experiment run writing from backtests.
 - Broker, paper trading, or live trading.
 
+## CI Postgres Migration Smoke
+
+PR 24 adds a separate GitHub Actions job named `postgres-migrations` with the
+display name `Postgres migration smoke`. This job is isolated from the existing
+fast `tooling` job and does not make normal unit CI depend on Postgres.
+
+CI uses a GitHub Actions service container, not Docker Compose. Docker Compose
+remains optional local infrastructure only. The CI service uses the same
+`postgres:17.10` image and the same disposable test database shape:
+
+- `POSTGRES_DB=quant_platform_test`.
+- `POSTGRES_USER=quant_test`.
+- `POSTGRES_PASSWORD=quant_test`.
+
+The CI job sets only test-specific live harness variables:
+
+- `QUANT_RUN_LIVE_DB_TESTS=1`.
+- `QUANT_TEST_DATABASE_URL` pointing at the localhost-mapped disposable service
+  database.
+
+The CI job does not set `DATABASE_URL`, does not use GitHub secrets, and must
+not echo the full test URL or credentials. The hard-coded test credentials are
+acceptable only because the database is an isolated disposable service
+container created for the job.
+
+The CI job runs only:
+
+```bash
+uv run pytest -m live_db tests/test_live_postgres_migrations.py
+```
+
+It does not rerun the full test suite, linting, type checking, or schema export
+checks. Those remain owned by the existing `tooling` job. Both local Compose
+and CI use the same migration-only test path: Alembic `upgrade head` followed
+by PostgreSQL catalog inspection.
+
+The CI migration smoke job does not check or execute:
+
+- Data inserts.
+- Statement builder execution.
+- Repository writes.
+- Contract fixture inserts.
+- Idempotency.
+- `ON CONFLICT` or upsert behavior.
+- Duplicate behavior.
+- Correction or lifecycle behavior.
+- FastAPI/backtest integration.
+- Backtest execution or experiment-run writing from backtests.
+- Artifact IO or object storage IO.
+- Broker, paper trading, or live trading.
+
+Default local `pytest` remains non-live. The local live DB test still skips
+unless both `QUANT_RUN_LIVE_DB_TESTS=1` and `QUANT_TEST_DATABASE_URL` are set.
+
 ### Safety Checklist Before Running
 
 Before running the live migration smoke test:
@@ -517,12 +588,13 @@ After local Docker Compose:
   admin-UI assumptions out of Compose.
 - Keep cleanup and disposable DB expectations documented.
 
-Before CI Postgres:
+After CI Postgres:
 
-- Approve the need for CI database coverage separately.
+- Keep the CI database coverage migration-only and isolated.
+- Keep the existing `tooling` job independent from Postgres.
 - Avoid CI secrets and external database dependencies.
-- Confirm live DB tests remain opt-in or isolated from normal unit tests.
-- Define cleanup, failure diagnostics, and migration drift expectations.
+- Do not run Docker Compose in CI.
+- Treat branch protection changes as a separate repository setting decision.
 
 Before insert execution tests:
 
@@ -608,7 +680,7 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 23, future persistence PRs should keep table design, constraints,
+After PR 24, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. They should still avoid repository
 implementations, DB write paths, API endpoints, backtest integration, artifact
 IO, data ingestion, broker integration, live trading, and paper trading

@@ -55,6 +55,14 @@ execution, statement builder execution, contract fixture inserts, DB write
 paths, SQLite persistence tests, FastAPI/backtest integration, CI Postgres, or
 application runtime services.
 
+PR 24 adds an isolated GitHub Actions Postgres migration smoke job. This does
+not change repository boundaries: the CI job runs only the existing Alembic
+upgrade-head and catalog-inspection live migration test against a disposable
+service container. It does not execute statement builders, insert contract
+fixtures, execute repository writes, add repository skeletons, add repository
+implementations, choose transaction semantics, choose duplicate/conflict
+behavior, add SQLite persistence tests, or integrate with FastAPI/backtests.
+
 The immediate boundary is contract hashing:
 
 - `canonical_contract_json(contract)`
@@ -215,8 +223,9 @@ SQLite persistence test, FastAPI integration, backtest integration, experiment
 run writer, session abstraction, or unit-of-work abstraction. It records the
 execution semantics required before any future write implementation is added.
 PR 21 adds only a migration smoke harness, and PR 23 adds only optional local
-Postgres Compose infrastructure for that harness. Repository execution remains
-deferred.
+Postgres Compose infrastructure for that harness. PR 24 adds only an isolated
+CI service-container job that runs that same migration smoke harness.
+Repository execution remains deferred.
 
 Future repository implementations should accept an injected SQLAlchemy
 `Connection`. They should not accept an `Engine`, `Session`, DB URL, raw row
@@ -300,6 +309,12 @@ does not make live migration tests repository tests, does not approve statement
 execution, and does not change transaction, idempotency, duplicate, correction,
 or lifecycle semantics.
 
+The PR 24 GitHub Actions Postgres job is also only infrastructure for the same
+migration smoke harness. It uses an isolated disposable CI service container and
+does not make live migration tests repository tests, does not approve statement
+execution, and does not change transaction, idempotency, duplicate, correction,
+or lifecycle semantics.
+
 ## Future Repository Responsibilities
 
 Future repositories should:
@@ -334,7 +349,7 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 23:
+The following remain deferred after PR 24:
 
 - repository skeletons;
 - SQLAlchemy repository implementations;
