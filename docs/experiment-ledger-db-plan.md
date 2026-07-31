@@ -87,6 +87,18 @@ code, tests, migrations, schema/table definitions, contracts, generated schemas,
 dependencies, workflows, Docker Compose, package exports, repository
 implementation, or execution paths.
 
+PR 26 enforces artifact-manifest run identity at the database layer. It adds
+`0005_artifact_run_identity`, creates
+`uq_run_artifact_manifests_run_id`, drops the older
+`uq_run_artifact_manifests_run_id_contract_hash`, and removes the redundant
+non-unique `ix_run_artifact_manifests_run_id` index because the unique
+constraint provides the `run_id` index path. `manifest_id` remains the primary
+key, and `run_id` is now the enforced natural aggregate identity. PR 26 adds no
+artifact-manifest versioning, supersession, repository execution, insert
+execution, `ON CONFLICT` behavior, data cleanup, contract changes, generated
+schema changes, dependency changes, workflow changes, Docker Compose changes,
+or application/backtest integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -388,8 +400,12 @@ As of PR 25, the idempotency, replay, and conflict policy is documented before
 execution code. Hash-backed entities may replay only when logical identity and
 canonical hash match. The same identity with a different hash rejects.
 `review_events` duplicate IDs reject until a standalone hashable `ReviewEvent`
-contract exists. Artifact-manifest execution remains blocked because the
-one-manifest-per-run policy is not fully enforced by the current schema.
+contract exists. As of PR 26, artifact-manifest `run_id` uniqueness is enforced
+by the database, resolving the PR 25 artifact identity schema blocker.
+Artifact-manifest execution still remains blocked on result/disposition
+modeling, domain error taxonomy, targeted `ON CONFLICT` statement design,
+repository skeleton and implementation, aggregate replay/integrity tests, live
+conflict tests, and application/backtest integration.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -418,11 +434,16 @@ policy-level natural identity are natural-key conflicts or duplicate aliases,
 not replay.
 
 For `run_artifact_manifests`, the initial policy permits exactly one artifact
-manifest aggregate per `run_id`. Current `UNIQUE(run_id, contract_hash)` prevents
-one duplicate-alias case, but the schema still permits the same `run_id` with
-different hashes. Artifact-manifest execution must remain blocked until a later
-migration adds appropriate `run_id` uniqueness or an explicit artifact-manifest
-version/supersession model is approved. PR 25 does not modify migrations.
+manifest aggregate per `run_id`. PR 26 enforces this policy with
+`UNIQUE(run_id)` through `uq_run_artifact_manifests_run_id`. The prior
+`UNIQUE(run_id, contract_hash)` constraint is removed because it is redundant
+once `run_id` is unique, and the prior non-unique `run_id` index is removed
+because the unique constraint supplies the `run_id` index path. If duplicate
+`run_id` rows already exist, PostgreSQL constraint creation fails safely; the
+migration does not delete, merge, repair, rewrite, or silently deduplicate data.
+Artifact-manifest versioning and supersession remain unsupported and require a
+separate contract, schema, replay, lineage, API, and migration design before
+they can be introduced.
 
 Mutable operational fields should be minimal. Status and review updates should
 produce `review_events` or another audit record when they change review or
@@ -484,7 +505,7 @@ Planned indexes:
 - `experiment_runs(supersedes_run_id)`.
 - `data_snapshot_manifests(snapshot_kind, status, created_at)`.
 - `data_snapshot_manifests(asset_class, source_dataset, created_at)`.
-- `run_artifact_manifests(run_id)`.
+- `run_artifact_manifests(run_id)` through the unique constraint backing index.
 - `run_artifact_entries(run_id, artifact_kind)`.
 - `run_artifact_entries(status)`.
 - `research_notes(status, updated_at)`.
@@ -493,7 +514,7 @@ Planned indexes:
 Avoid broad JSONB GIN indexes in the first migration unless a concrete query
 requires them.
 
-PR 13 adds the artifact indexes:
+PR 13 originally adds the artifact indexes:
 
 - `run_artifact_manifests(run_id)`.
 - `run_artifact_manifests(experiment_id, created_at)`.
@@ -501,8 +522,10 @@ PR 13 adds the artifact indexes:
 - `run_artifact_entries(status)`.
 - `run_artifact_entries(manifest_id)`.
 
-It intentionally does not add a `content_hash` index until a concrete lookup
-workflow requires it.
+PR 26 removes the non-unique `run_artifact_manifests(run_id)` index because
+`uq_run_artifact_manifests_run_id` supplies the final `run_id` index path. The
+artifact table design intentionally does not add a `content_hash` index until a
+concrete lookup workflow requires it.
 
 PR 14 adds the research/review indexes:
 
@@ -630,9 +653,18 @@ migration.
 PR 25 adds no constraints. It records that the current artifact-manifest
 constraints are insufficient for one-manifest-per-run execution because
 `UNIQUE(run_id, contract_hash)` does not prevent the same `run_id` from being
-stored with a different manifest hash. A later decision must either add unique
-`run_id` enforcement or introduce explicit artifact-manifest version or
-supersession fields before artifact-manifest execution is approved.
+stored with a different manifest hash.
+
+PR 26 adds the `0005_artifact_run_identity` revision. The migration
+creates `uq_run_artifact_manifests_run_id`, drops
+`uq_run_artifact_manifests_run_id_contract_hash`, and drops
+`ix_run_artifact_manifests_run_id`. This resolves the artifact identity schema
+blocker without adding manifest versions, `manifest_version`,
+`supersedes_manifest_id`, current/active flags, lifecycle states, soft deletes,
+mutable replacement, repository code, SQL execution, `ON CONFLICT` builders,
+fixture persistence, live insert/conflict tests, result models, error classes,
+cross-contract foreign keys, contract/schema changes, or app/backtest
+integration.
 
 ## Future SQLAlchemy/Alembic Integration Steps
 
@@ -658,6 +690,11 @@ only idempotency, replay, uniqueness, concurrency, retry, and conflict policy
 documentation; it changes no code, tests, migrations, schema/table definitions,
 contracts, generated schemas, dependencies, workflows, Docker Compose, package
 exports, repository implementation, or execution paths.
+PR 26 adds only the artifact-manifest run identity migration and matching
+metadata/catalog documentation and tests; it changes no contracts, generated
+schemas, mappers, hashing, protocols, statements, dependencies, workflows,
+Docker Compose configuration, repository implementation, insert execution, or
+application integration.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -708,12 +745,13 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 25, the next expansion gates remain artifact-manifest uniqueness or
-versioning, result/disposition model code, error taxonomy code, insert
-execution, repository implementation, live conflict tests, and SQLite
-persistence policy if it is ever reconsidered. Each gate requires separate
-approval before it changes code, tests, dependencies, workflows, infrastructure,
-or migrations.
+After PR 26, the artifact-manifest identity schema blocker is resolved. The
+next expansion gates remain result/disposition model code, domain error
+taxonomy code, targeted `ON CONFLICT` statement design, repository skeleton and
+implementation, aggregate replay/integrity tests, live conflict tests,
+application/backtest integration, and SQLite persistence policy if it is ever
+reconsidered. Each gate requires separate approval before it changes code,
+tests, dependencies, workflows, infrastructure, or migrations.
 
 ## Future DB Test Strategy
 

@@ -16,6 +16,7 @@ BASELINE_REVISION = "0001_persistence_baseline"
 LEDGER_ANCHOR_REVISION = "0002_ledger_anchor_tables"
 ARTIFACT_REVISION = "0003_artifact_tables"
 RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
+ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION = "0005_artifact_run_identity"
 
 
 def test_persistence_metadata_is_sqlalchemy_metadata() -> None:
@@ -60,12 +61,12 @@ def test_alembic_config_points_to_migration_directory() -> None:
     assert config.get_main_option("script_location") == "infra/db/migrations"
 
 
-def test_alembic_script_directory_has_research_review_table_head() -> None:
+def test_alembic_script_directory_has_artifact_manifest_run_identity_head() -> None:
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
     heads = script.get_heads()
-    assert heads == [RESEARCH_REVIEW_REVISION]
+    assert heads == [ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION]
 
     baseline = script.get_revision(BASELINE_REVISION)
     assert baseline is not None
@@ -82,3 +83,9 @@ def test_alembic_script_directory_has_research_review_table_head() -> None:
     research_review_tables = script.get_revision(RESEARCH_REVIEW_REVISION)
     assert research_review_tables is not None
     assert research_review_tables.down_revision == ARTIFACT_REVISION
+
+    artifact_manifest_run_identity = script.get_revision(
+        ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION
+    )
+    assert artifact_manifest_run_identity is not None
+    assert artifact_manifest_run_identity.down_revision == RESEARCH_REVIEW_REVISION
