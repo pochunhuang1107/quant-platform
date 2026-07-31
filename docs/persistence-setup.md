@@ -70,6 +70,16 @@ configuration, DB services, repository code, statement execution, inserts,
 replay lookups, conflict handling, transaction behavior, or application runtime
 services.
 
+PR 28 adds pure persistence-domain error/context types. See
+[Persistence Repository Plan](persistence-repository-plan.md) for the
+authoritative hierarchy, safe context fields, deterministic message semantics,
+and retry-policy boundary. These error classes do not add or change
+dependencies, lockfiles, migrations, table metadata, constraints, indexes,
+Docker Compose configuration, CI workflows, DB services, repository code,
+statement execution, inserts, replay lookups, database-driver exception
+translation, retry behavior, logging behavior, transaction ownership, or
+application runtime services.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -270,11 +280,14 @@ IO, and artifact `content_hash` verification.
 PR 25 documents the policy for future idempotent replay, duplicate rejection,
 conflict handling, transaction ownership, result/disposition requirements, and
 error mapping. The policy remains documentation-only. PR 27 adds the pure
-result/disposition value objects without repository execution. Live
+result/disposition value objects without repository execution. PR 28 adds pure
+domain error/context types without repository execution, SQL execution,
+constraint inspection, SQLAlchemy/psycopg exception translation, retry
+behavior, logging behavior, or transaction ownership changes. Live
 insert/replay/conflict tests remain deferred until policy, schema requirements,
-error mapping, and repository execution are separately approved for
-implementation. Artifact-manifest execution is blocked until the remaining
-execution gates are approved.
+database/constraint exception translation, and repository execution are
+separately approved for implementation. Artifact-manifest execution is blocked
+until the remaining execution gates are approved.
 
 ## Live Postgres Test Harness Boundary
 
@@ -651,7 +664,8 @@ Before idempotency/`ON CONFLICT` behavior:
 - Approve any artifact-manifest version/supersession behavior separately.
 - Treat PR 27 result/disposition value objects as the approved successful-write
   result vocabulary.
-- Approve error taxonomy and conflict mapping code.
+- Treat PR 28 error/context types as the approved domain error vocabulary.
+- Approve database/constraint exception translation and conflict mapping code.
 - Approve live insert/replay/conflict tests separately.
 - Avoid silent overwrites.
 
@@ -716,12 +730,14 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 27, future persistence PRs should keep table design, constraints,
+After PR 28, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
-migration-only; result types do not cause inserts, replay lookups, conflict
-handling, transaction behavior, or repository execution. Future PRs should still
-avoid repository implementations, DB write paths, API endpoints, backtest
-integration, artifact IO, data ingestion, broker integration, live trading, and
-paper trading execution unless separately approved. Live insert/replay/conflict
-tests remain deferred until error mapping and repository execution are
+migration-only; result and error types do not cause inserts, replay lookups,
+conflict handling, constraint inspection, database-driver exception
+translation, retry behavior, transaction behavior, or repository execution.
+Future PRs should still avoid repository implementations, DB write paths, API
+endpoints, backtest integration, artifact IO, data ingestion, broker
+integration, live trading, and paper trading execution unless separately
+approved. Live insert/replay/conflict tests remain deferred until
+database/constraint exception translation and repository execution are
 separately approved.

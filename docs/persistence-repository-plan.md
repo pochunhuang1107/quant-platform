@@ -82,6 +82,17 @@ migration, table metadata change, transaction implementation, live insert test,
 artifact verification, error taxonomy, dependency, or application/backtest
 integration.
 
+PR 28 adds the pure persistence-domain error taxonomy. It introduces
+`PersistenceErrorContext`, `PersistenceError`, `PersistenceConflictError`,
+`ContractHashConflictError`, `NaturalKeyConflictError`,
+`UnsupportedVersioningConflictError`, `DuplicateReviewEventError`, and
+`AggregateIntegrityError` as deterministic domain interface types. It adds no
+repository skeleton, repository implementation, SQLAlchemy execution,
+`ON CONFLICT` behavior, database-driver exception translation, retry behavior,
+logging behavior, migration, table metadata change, transaction
+implementation, live DB behavior, dependency, or application/backtest
+integration.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -90,11 +101,20 @@ The persistence primitive boundaries now include:
 - `PersistenceDisposition`
 - `PersistedRecordMetadata`
 - `PersistenceWriteResult`
+- `PersistenceErrorContext`
+- `PersistenceError`
+- `PersistenceConflictError`
+- `ContractHashConflictError`
+- `NaturalKeyConflictError`
+- `UnsupportedVersioningConflictError`
+- `DuplicateReviewEventError`
+- `AggregateIntegrityError`
 
-These helpers define how validated contract payloads become stable
-`contract_hash` values for audit and idempotency metadata, and how future
-repository writes will report successful created or replayed outcomes without
-exposing raw payloads or database configuration.
+These primitives define how validated contract payloads become stable
+`contract_hash` values for audit and idempotency metadata, how future
+repository writes will report successful created or replayed outcomes, and how
+deterministic domain failures are classified without exposing raw payloads or
+database configuration.
 
 ## Validation Boundary
 
@@ -465,10 +485,10 @@ the unique constraint provides the `run_id` index path. Duplicate existing
 deletion, or data rewriting is performed.
 
 Artifact-manifest execution is still not approved. Repository and insert
-execution remain blocked on domain error taxonomy code, targeted `ON CONFLICT`
-statement design, repository skeleton and implementation, aggregate
-replay/integrity tests, live insert/replay/conflict tests, and
-application/backtest integration.
+execution remain blocked on targeted `ON CONFLICT` statement design,
+database/constraint exception translation, repository skeleton and
+implementation, aggregate replay/integrity tests, live insert/replay/conflict
+tests, and application/backtest integration.
 
 ### Artifact Aggregate Atomicity
 
@@ -550,8 +570,8 @@ execution. The model is a typed, frozen value-object boundary only:
 
 Only successful outcomes belong in `PersistenceDisposition`. Conflicts,
 rejections, failures, duplicate review events, natural-key collisions, aggregate
-integrity failures, and unsupported artifact-manifest versioning are future
-domain exceptions, not successful result values.
+integrity failures, and unsupported artifact-manifest versioning are domain
+exceptions, not successful result values.
 
 `PersistedRecordMetadata` describes the durable record. `PersistenceWriteResult`
 describes the outcome of a successful write operation. `inserted_at` is
@@ -567,37 +587,99 @@ artifact aggregate verification is implemented in PR 27.
 PR 27 adds no repository execution, no SQL or `ON CONFLICT` behavior, no
 transaction implementation, and no live insert, replay, or conflict testing.
 
-### Future Error Taxonomy
+### Persistence Error Taxonomy
 
-Future implementations should define domain errors before repository execution.
-Conceptual errors include:
+PR 28 implements the pure domain exception vocabulary before repository
+execution. The hierarchy is:
 
-- `PersistenceConflictError`;
-- `ContractHashConflictError`;
-- `NaturalKeyConflictError`;
-- `AggregateIntegrityError`;
-- `DuplicateReviewEventError`;
-- `UnsupportedVersioningConflict`, or an equivalent concept, for a second
-  artifact manifest under one `run_id` before versioning exists.
+```text
+PersistenceError
+├── PersistenceConflictError
+│   ├── ContractHashConflictError
+│   ├── NaturalKeyConflictError
+│   │   └── UnsupportedVersioningConflictError
+│   └── DuplicateReviewEventError
+└── AggregateIntegrityError
+```
 
-Safe error details include table/entity name, logical identity, operation type,
-constraint name when available, and short hash prefixes.
+`PersistenceError` is the root catch point for deterministic
+persistence-domain failures. It does not automatically wrap infrastructure,
+connection, timeout, pool, serialization, deadlock, or other transient database
+failures. Those remain outside the taxonomy until a separate translation and
+retry policy is approved.
 
-Unsafe error details include full payloads, passwords, credentials, secrets, and
-full database URLs.
+`PersistenceConflictError` is the base for deterministic conflicts with
+existing durable state or uniqueness policy. `ContractHashConflictError`
+represents the same logical identity with a different canonical contract hash.
+Exact same identity plus same hash remains `PersistenceDisposition.REPLAYED`
+and is not an error.
 
-This PR does not lock the exact Python class hierarchy. Error names and
-inheritance remain subject to approval before implementation.
+`NaturalKeyConflictError` represents a write that collides with a natural or
+non-primary uniqueness rule, including duplicate-alias behavior.
+`UnsupportedVersioningConflictError` specializes that case for a second
+artifact manifest under one `run_id` while artifact-manifest versioning and
+supersession are unsupported. A future classification candidate is
+`uq_run_artifact_manifests_run_id`, but PR 28 implements no constraint mapping.
+
+`DuplicateReviewEventError` represents a duplicate `review_event_id`. It
+subclasses `PersistenceConflictError` directly because review events currently
+have no approved replay behavior and `review_event_id` is the event identity,
+not a separate natural alias.
+
+`AggregateIntegrityError` represents missing, extra, differing, or partial
+artifact aggregate state. It is not necessarily a caller identity conflict, so
+it subclasses `PersistenceError` directly. It requires investigation and does
+not authorize repair, overwrite, partial upsert, blind retry, or automatic
+aggregate verification.
+
+All domain errors accept only `PersistenceErrorContext`. The context fields are
+`table_name`, `operation`, `logical_identity`, optional `constraint_name`,
+optional `existing_hash_prefix`, and optional `attempted_hash_prefix`.
+`table_name` and `operation` must not be blank, and `logical_identity` must not
+be empty. Hash prefixes, when present, must be one to twelve lowercase
+hexadecimal characters; full 64-character hashes are rejected.
+
+Error messages are generated deterministically from the concrete class name and
+safe context fields. `logical_identity` entries are sorted by key before
+formatting so equivalent mappings produce the same message. Error contexts and
+messages must not contain raw contracts, raw reviews, complete payloads, full
+hashes, credentials, passwords, secrets, SQL, statement objects, database URLs,
+driver exception text, retry state, or logging state. Callers cannot supply
+arbitrary free-form messages or detail mappings.
+
+No SQLAlchemy, Alembic, `psycopg`, DB-driver, or database exception type escapes
+through these domain interfaces. PR 28 adds no database exception translation,
+repository execution, SQL execution, retry implementation, logging
+implementation, or live DB behavior.
+
+Future classification should follow this policy:
+
+- Existing logical identity plus same canonical hash returns
+  `PersistenceWriteResult(REPLAYED)`, not an error.
+- Existing logical identity plus different canonical hash raises
+  `ContractHashConflictError`.
+- New primary identity plus a non-primary uniqueness collision raises
+  `NaturalKeyConflictError`.
+- `uq_run_artifact_manifests_run_id` maps to
+  `UnsupportedVersioningConflictError`.
+- Duplicate `review_event_id` raises `DuplicateReviewEventError`.
+- Matching manifest hash but mismatched stored entry projection raises
+  `AggregateIntegrityError`.
+- SQLAlchemy/psycopg transient operational failures are not generically
+  converted to conflict errors.
 
 ### Retry Policy
 
-- Exact replay is safely retryable.
+- Exact replay is not an error; it is reported as `REPLAYED`.
 - Contract hash conflict is non-retryable without caller, code, or human
   correction.
 - Natural-key conflict is non-retryable unless identity or policy is corrected.
-- Unsupported artifact-manifest version conflict is non-retryable.
+- Unsupported artifact-manifest version conflict is non-retryable until the
+  attempted write changes or versioning is approved.
 - Duplicate `review_event_id` is rejected and non-idempotent until event hashing
   exists.
+- Aggregate integrity failure requires investigation and must not trigger blind
+  retry or automatic repair.
 - Transient database errors may be retried only by caller/service policy.
 - Repository methods must not hide retry loops.
 
@@ -675,7 +757,7 @@ Do not add these in PR 25:
 
 Separate approval is required before:
 
-- error taxonomy code;
+- database/constraint exception translation;
 - `ON CONFLICT` statement builders;
 - live insert tests;
 - artifact-manifest versioning or supersession migration;

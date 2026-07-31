@@ -107,6 +107,15 @@ repository implementations, SQL execution, `ON CONFLICT` behavior, transaction
 behavior, live insert/replay/conflict tests, dependencies, workflows, Docker
 Compose, or application/backtest integration.
 
+PR 28 adds the pure persistence-domain error taxonomy interface gate. It
+defines deterministic domain exception and context types for conflicts and
+aggregate integrity failures, but it does not change migrations, tables,
+SQLAlchemy metadata, constraints, indexes, DB services, Docker Compose, CI
+workflows, live migration behavior, contracts, generated schemas,
+dependencies, repository implementations, SQL execution, `ON CONFLICT`
+behavior, database-driver exception translation, retry behavior, logging
+behavior, or application/backtest integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -411,9 +420,10 @@ canonical hash match. The same identity with a different hash rejects.
 contract exists. As of PR 26, artifact-manifest `run_id` uniqueness is enforced
 by the database, resolving the PR 25 artifact identity schema blocker.
 As of PR 27, successful write result/disposition modeling is implemented as
-pure value objects. Artifact-manifest execution still remains blocked on domain
-error taxonomy, targeted `ON CONFLICT` statement design, repository skeleton
-and implementation, aggregate replay/integrity tests, live
+pure value objects. As of PR 28, the pure domain error taxonomy is implemented.
+Artifact-manifest execution remains blocked on targeted `ON CONFLICT`
+statement design, database/constraint exception translation, repository
+skeleton and implementation, aggregate replay/integrity logic, live
 insert/replay/conflict tests, and application/backtest integration.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
@@ -550,7 +560,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 25:
+This sequence is partially implemented and current through PR 28:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -633,12 +643,20 @@ This sequence is partially implemented and current through PR 25:
      implementations, aggregate replay/integrity logic, live
      insert/replay/conflict tests, application integration, and error taxonomy
      code remain deferred.
-18. Add stable non-blocking cross-contract foreign keys later where appropriate.
-19. Add contract fixture persistence tests later.
-20. Add repository/write-path code only in a later PR after semantics, conflict
-   behavior, schema requirements, error taxonomy, and test harness design are
-   approved.
-21. Require Pydantic contract validation before persistence.
+18. Add pure persistence-domain error taxonomy code:
+   - define safe typed exception/context interfaces for deterministic
+     conflicts and aggregate integrity failures;
+   - keep successful `CREATED` and `REPLAYED` results separate from failures;
+   - add no SQLAlchemy execution, `ON CONFLICT` behavior, repository code,
+     database exception translation, retry behavior, logging behavior,
+     migrations, metadata changes, live DB behavior, dependencies, Compose
+     changes, workflows, contracts, or schemas.
+19. Add stable non-blocking cross-contract foreign keys later where appropriate.
+20. Add contract fixture persistence tests later.
+21. Add repository/write-path code only in a later PR after semantics, conflict
+   behavior, schema requirements, database/constraint exception translation,
+   and test harness design are approved.
+22. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -677,6 +695,11 @@ fixture persistence, live insert/conflict tests, result models, error classes,
 cross-contract foreign keys, contract/schema changes, or app/backtest
 integration.
 
+PR 28 adds no migration revision and changes no database shape. Migrations,
+tables, SQLAlchemy metadata, constraints, indexes, DB services, Docker Compose,
+CI workflows, live migration behavior, contracts, generated schemas, and
+dependencies remain unchanged.
+
 ## Future SQLAlchemy/Alembic Integration Steps
 
 The dedicated persistence setup PR added dependencies, the Alembic environment,
@@ -711,6 +734,12 @@ migrations, table metadata, constraints, DB services, live migration behavior,
 contracts, generated schemas, dependencies, workflows, Docker Compose
 configuration, repository implementation, insert execution, or application
 integration.
+PR 28 adds only pure persistence-domain error/context types, package exports,
+tests, and documentation; it changes no migrations, table metadata,
+constraints, indexes, DB services, live migration behavior, contracts,
+generated schemas, dependencies, workflows, Docker Compose configuration,
+repository implementation, insert execution, database exception translation,
+retry behavior, logging behavior, or application integration.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -725,7 +754,8 @@ statement builders only turn those rows into non-executing SQLAlchemy Core
 `Insert` objects for future repositories to execute deliberately. Repository
 execution remains intentionally blocked until idempotency, duplicate handling,
 transaction behavior, correction semantics, artifact-manifest versioning where
-needed, error taxonomy, and the live DB test harness are approved.
+needed, database/constraint exception translation, and the live DB test harness
+are approved.
 
 The PR 21 live Postgres harness keeps write-path execution deferred. The live
 test is local opt-in and migration-only: it runs Alembic `upgrade head` against
@@ -760,10 +790,11 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 27, the artifact-manifest identity schema blocker is resolved and the
-successful-write result vocabulary exists. The next expansion gates remain
-domain error taxonomy code, targeted `ON CONFLICT` statement design, repository
-skeleton and implementation, aggregate replay/integrity tests, live
+After PR 28, the artifact-manifest identity schema blocker is resolved, the
+successful-write result vocabulary exists, and the pure domain error taxonomy
+exists. The next expansion gates remain targeted `ON CONFLICT` statement
+design, database/constraint exception translation, repository skeleton,
+repository implementation, aggregate replay/integrity logic, live
 insert/replay/conflict tests, application/backtest integration, and SQLite
 persistence policy if it is ever reconsidered. Each gate requires separate
 approval before it changes code, tests, dependencies, workflows,
