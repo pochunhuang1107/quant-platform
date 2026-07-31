@@ -4,6 +4,9 @@ from research_sdk.persistence.constraint_translation import (
     translate_constraint_violation,
 )
 from research_sdk.persistence.database import get_database_url
+from research_sdk.persistence.driver_exception_translation import (
+    translate_sqlalchemy_integrity_error,
+)
 from research_sdk.persistence.errors import (
     AggregateIntegrityError,
     ContractHashConflictError,
@@ -84,4 +87,5 @@ __all__ = [
     "review_metadata_to_row",
     "run_artifact_manifest_to_rows",
     "translate_constraint_violation",
+    "translate_sqlalchemy_integrity_error",
 ]

@@ -142,6 +142,22 @@ constraints, indexes, DB services, Docker Compose, CI workflows, live migration
 behavior, contracts, generated schemas, dependencies, or application/backtest
 integration.
 
+PR 31 adds the narrow SQLAlchemy `IntegrityError` diagnostic adapter. It accepts
+an already-caught `IntegrityError`, recognizes only PostgreSQL unique violation
+SQLSTATE `23505` from `error.orig.sqlstate`, extracts the exact constraint name
+only from `error.orig.diag.constraint_name`, and delegates classification to the
+PR 30 exact constraint-name translator. Unknown constraints, non-unique
+integrity violations, and missing or malformed diagnostics remain untranslated.
+PR 31 does not complete end-to-end database exception handling: repository
+skeletons, repository implementations, SQL execution, repository-boundary
+exception catching, translated exception chaining, replay `SELECT`, canonical
+hash comparison, caller-owned transaction behavior, rollback responsibility,
+aggregate replay/integrity verification, live insert/replay/conflict tests, and
+application/backtest integration remain future gates. PR 31 changes no
+migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
+Docker Compose, CI workflows, live DB behavior, contracts, schemas,
+dependencies, or application/backtest integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -449,13 +465,14 @@ As of PR 27, successful write result/disposition modeling is implemented as
 pure value objects. As of PR 28, the pure domain error taxonomy is implemented.
 As of PR 29, targeted PostgreSQL insert-attempt statement shapes are
 implemented without execution. As of PR 30, pure exact constraint-name
-classification is implemented without driver exception extraction.
-Artifact-manifest execution remains blocked on SQLAlchemy/psycopg exception
-extraction, constraint-name extraction from driver diagnostics, exception
-chaining at the repository boundary, repository skeleton and implementation,
-SQL execution, replay `SELECT` and hash comparison, caller-owned transaction
-behavior, aggregate replay/integrity verification, live insert/replay/conflict
-tests, and application/backtest integration.
+classification is implemented. As of PR 31, narrow SQLAlchemy `IntegrityError`
+diagnostic extraction is implemented for PostgreSQL unique violations only.
+Artifact-manifest execution remains blocked on repository-boundary exception
+catching, translated exception chaining, repository skeleton and implementation,
+SQL execution, replay `SELECT` and canonical hash comparison, caller-owned
+transaction behavior, rollback responsibility, aggregate replay/integrity
+verification, live insert/replay/conflict tests, and application/backtest
+integration.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -591,7 +608,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 30:
+This sequence is partially implemented and current through PR 31:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -704,13 +721,26 @@ This sequence is partially implemented and current through PR 30:
      implementation, transaction behavior, aggregate verification, migrations,
      metadata changes, live DB behavior, dependencies, workflows, contracts, or
      schemas.
-21. Add stable non-blocking cross-contract foreign keys later where appropriate.
-22. Add contract fixture persistence tests later.
-23. Add repository/write-path code only in a later PR after semantics, conflict
-   behavior, schema requirements, SQLAlchemy/psycopg exception extraction,
-   repository-boundary exception chaining, and test harness design are
-   approved.
-24. Require Pydantic contract validation before persistence.
+21. Add narrow SQLAlchemy `IntegrityError` diagnostic translation:
+   - accept an already-caught SQLAlchemy `IntegrityError` only;
+   - recognize only PostgreSQL unique violation SQLSTATE `23505`;
+   - read SQLSTATE only from `error.orig.sqlstate`;
+   - read the constraint name only from `error.orig.diag.constraint_name`;
+   - delegate exact nonblank constraint names unchanged to the PR 30 translator;
+   - return `None` for unknown constraints, non-unique violations, or missing
+     diagnostics;
+   - add no production `psycopg` import, `pgcode` support, `diag.sqlstate`
+     fallback, SQLAlchemy `error.code` fallback, message parsing, SQL execution,
+     translated exception raising, exception chaining, repository implementation,
+     transaction behavior, rollback behavior, retry behavior, migrations,
+     metadata changes, live DB behavior, dependencies, workflows, contracts, or
+     schemas.
+22. Add stable non-blocking cross-contract foreign keys later where appropriate.
+23. Add contract fixture persistence tests later.
+24. Add repository/write-path code only in a later PR after semantics, conflict
+   behavior, schema requirements, repository-boundary exception catching,
+   translated exception chaining, and test harness design are approved.
+25. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -757,6 +787,11 @@ dependencies remain unchanged.
 PR 29 also adds no migration revision and changes no database shape.
 Migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
 Docker Compose, CI workflows, live migration behavior, contracts, generated
+schemas, and dependencies remain unchanged.
+
+PR 31 also adds no migration revision and changes no database shape.
+Migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
+Docker Compose, CI workflows, live DB behavior, contracts, schemas, generated
 schemas, and dependencies remain unchanged.
 
 ## Future SQLAlchemy/Alembic Integration Steps
@@ -828,8 +863,8 @@ statement builders only turn those rows into non-executing SQLAlchemy Core
 `Insert` objects for future repositories to execute deliberately. Repository
 execution remains intentionally blocked until idempotency, duplicate handling,
 transaction behavior, correction semantics, artifact-manifest versioning where
-needed, database/constraint exception translation, and the live DB test harness
-are approved.
+needed, repository-boundary exception catching and chaining, and live DB
+write-path test harness expansion are approved.
 
 The PR 21 live Postgres harness keeps write-path execution deferred. The live
 test is local opt-in and migration-only: it runs Alembic `upgrade head` against
@@ -864,16 +899,17 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 30, the artifact-manifest identity schema blocker is resolved, the
+After PR 31, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
-exists, targeted PostgreSQL insert-attempt statement shapes exist, and pure
-exact constraint-name classification exists. The next expansion gates remain
-SQLAlchemy/psycopg exception extraction, constraint-name extraction from driver
-diagnostics, exception chaining at the repository boundary, repository
-skeleton, repository implementation, SQL execution, replay `SELECT`, hash
-comparison, caller-owned transaction behavior, aggregate replay/integrity
-verification, live insert/replay/conflict tests, application/backtest
-integration, and SQLite persistence policy if it is ever reconsidered. Each
+exists, targeted PostgreSQL insert-attempt statement shapes exist, pure exact
+constraint-name classification exists, and narrow SQLAlchemy `IntegrityError`
+diagnostic extraction exists. The next expansion gates remain exception
+catching and translated exception chaining at the repository boundary,
+repository skeleton, repository implementation, SQL execution, replay `SELECT`,
+hash comparison, caller-owned transaction behavior, rollback responsibility,
+aggregate replay/integrity verification, live insert/replay/conflict tests,
+application/backtest integration, and SQLite persistence policy if it is ever
+reconsidered. Each
 gate requires separate approval before it changes code, tests, dependencies,
 workflows, infrastructure, or migrations.
 

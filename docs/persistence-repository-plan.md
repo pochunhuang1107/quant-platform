@@ -114,6 +114,20 @@ add repository behavior, add retry behavior, or change migrations, metadata,
 constraints, dependencies, Docker Compose, CI workflows, live DB behavior, or
 application/backtest integration.
 
+PR 31 adds a narrow adapter for an already-caught SQLAlchemy `IntegrityError`.
+The adapter accepts `IntegrityError` only, recognizes only PostgreSQL unique
+violation SQLSTATE `23505`, reads SQLSTATE only from `error.orig.sqlstate`, and
+reads the constraint name only from `error.orig.diag.constraint_name`. It
+delegates the exact nonblank constraint name unchanged to the PR 30
+`translate_constraint_violation(...)` function. It has no `diag.sqlstate`,
+`pgcode`, SQLAlchemy `error.code`, message, SQL, params, detail, or hint
+fallback. Unknown constraints, non-unique integrity violations, and missing or
+malformed diagnostics remain untranslated. PR 31 adds no production `psycopg`
+import, raises no translated error, implements no exception chaining, executes
+no SQL, owns no transaction or rollback behavior, adds no retry behavior, and
+changes no migrations, metadata, constraints, dependencies, Docker Compose, CI
+workflows, live DB behavior, or application/backtest integration.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -131,12 +145,14 @@ The persistence primitive boundaries now include:
 - `DuplicateReviewEventError`
 - `AggregateIntegrityError`
 - `translate_constraint_violation(constraint_name=..., context=...)`
+- `translate_sqlalchemy_integrity_error(error=..., context=...)`
 
 These primitives define how validated contract payloads become stable
 `contract_hash` values for audit and idempotency metadata, how future
 repository writes will report successful created or replayed outcomes, and how
-deterministic domain failures are classified without exposing raw payloads or
-database configuration.
+deterministic domain failures are classified from approved exact constraint
+names and narrow SQLAlchemy/driver diagnostics without exposing raw payloads,
+SQL, params, or database configuration.
 
 ## Validation Boundary
 
@@ -739,11 +755,38 @@ if translated is not None:
 raise
 ```
 
-That future adapter is not implemented in PR 30. PR 30 also adds no SQLAlchemy,
-Alembic, `psycopg`, or `asyncpg` imports in the production translator, no
-SQLSTATE inspection, no `orig` or `diag` inspection, no exception chaining
-implementation, no repository execution, no SQL execution, and no retry
-behavior.
+PR 31 adds the narrow adapter that may produce the `constraint_name` input for
+this pure translator. It translates only an already-caught SQLAlchemy
+`IntegrityError`, only when `error.orig.sqlstate` is exactly `23505`, and only
+when `error.orig.diag.constraint_name` is a nonblank string. It delegates that
+exact string unchanged to `translate_constraint_violation(...)`.
+
+The PR 31 adapter does not import `psycopg` in production code. It does not read
+`error.orig.diag.sqlstate`, `error.orig.pgcode`, SQLAlchemy `error.code`,
+exception messages, SQL statements, parameters, driver detail, or hints.
+Unknown constraints, non-unique integrity violations, and missing diagnostics
+remain untranslated by returning `None`. The adapter does not raise the
+translated domain error, chain exceptions, execute SQL, create or roll back a
+transaction, implement repository behavior, or retry.
+
+Future repository code may use the adapter like this:
+
+```python
+try:
+    ...
+except IntegrityError as database_error:
+    translated = translate_sqlalchemy_integrity_error(
+        error=database_error,
+        context=context,
+    )
+    if translated is not None:
+        raise translated from database_error
+    raise
+```
+
+PR 31 does not implement that block. Repository-boundary exception catching,
+translated exception chaining, and transaction rollback responsibility remain
+future repository/service-layer work.
 
 Future repository classification should follow this policy:
 
@@ -852,7 +895,7 @@ Do not add these in PR 25:
 
 Separate approval is required before:
 
-- SQLAlchemy/psycopg exception extraction and repository-boundary chaining;
+- repository-boundary exception catching and translated exception chaining;
 - live insert tests;
 - artifact-manifest versioning or supersession migration;
 - standalone `ReviewEvent` contract;
