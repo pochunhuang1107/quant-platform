@@ -175,6 +175,23 @@ insert/replay/conflict tests, or application/backtest integration. It changes no
 migrations, tables, metadata, constraints, indexes, database services, Docker
 Compose, CI workflows, live DB behavior, dependencies, contracts, or schemas.
 
+PR 33 adds the experiment-run-only repository execution vertical slice. It
+makes only `record_experiment_run(run)` concrete and keeps snapshot, artifact,
+research-note, and review-event repository methods abstract, so the class
+remains abstract. The experiment-run method requires an active caller-owned
+transaction, executes the existing targeted insert builder through
+`Connection.execute`, builds `CREATED` from PostgreSQL `RETURNING`, performs an
+exact replay `SELECT` by `run_id` after targeted primary-key suppression,
+compares the stored hash to `contract_sha256(run)`, returns `REPLAYED` for an
+exact hash match, raises `ContractHashConflictError` for the same `run_id` with
+a different hash, and raises `ReplayLookupError` when a suppressed replay
+candidate cannot be loaded. PR 33 also adds live disposable PostgreSQL coverage
+for created/replayed/conflict/rollback behavior and expands the existing CI
+Postgres job into a persistence smoke job. It changes no migrations, tables,
+metadata, constraints, indexes, contracts, generated schemas, dependencies,
+Docker Compose configuration, application/backtest integration, broker
+integration, paper trading, or live trading.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -486,13 +503,17 @@ classification is implemented. As of PR 31, narrow SQLAlchemy `IntegrityError`
 diagnostic extraction is implemented for PostgreSQL unique violations only.
 As of PR 32, the abstract SQLAlchemy repository structural skeleton, injected
 `Connection` constructor boundary, protocol method-signature parity, and
-non-instantiable safety boundary are implemented. Artifact-manifest execution
-remains blocked on concrete repository implementation, statement-builder
-delegation, repository-boundary exception catching, translated exception
-chaining, SQL execution, replay `SELECT` and canonical hash comparison,
-caller-owned transaction execution, rollback responsibility, aggregate
-atomicity and integrity verification, live insert/replay/conflict tests, and
-application/backtest integration.
+non-instantiable safety boundary are implemented. As of PR 33,
+experiment-run-only repository execution is implemented with active transaction
+enforcement, `Connection.execute`, `CREATED` result construction, replay
+`SELECT`, canonical hash comparison, `REPLAYED` result construction,
+`ContractHashConflictError`, `ReplayLookupError`, live disposable PostgreSQL
+coverage, and CI persistence smoke coverage. Data snapshot, research-note,
+review-event, and artifact aggregate execution remain blocked on future
+repository implementation, repository-boundary exception catching, translated
+exception chaining where needed, natural-key conflict execution, concurrency
+tests, aggregate atomicity and integrity verification, and application/backtest
+integration.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -628,7 +649,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 32:
+This sequence is partially implemented and current through PR 33:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -766,12 +787,23 @@ This sequence is partially implemented and current through PR 32:
      delegation, result construction, exception catching, transaction behavior,
      migrations, metadata changes, live DB behavior, dependencies, workflows,
      contracts, or schemas.
-23. Add stable non-blocking cross-contract foreign keys later where appropriate.
-24. Add contract fixture persistence tests later.
-25. Add repository/write-path code only in a later PR after semantics, conflict
+23. Add the experiment-run-only repository execution vertical slice:
+   - require an active caller-owned transaction;
+   - execute the existing experiment-run insert builder;
+   - construct `CREATED` from PostgreSQL `RETURNING`;
+   - add and use the exact experiment-run replay `SELECT`;
+   - compare stored and attempted canonical hashes;
+   - construct `REPLAYED` only for exact hash matches;
+   - raise `ContractHashConflictError` for same `run_id` with a different hash;
+   - raise `ReplayLookupError` for a missing replay row invariant failure;
+   - add live disposable PostgreSQL repository behavior tests;
+   - expand the existing CI Postgres job to persistence smoke coverage.
+24. Add stable non-blocking cross-contract foreign keys later where appropriate.
+25. Add contract fixture persistence tests later for the remaining entities.
+26. Add repository/write-path code only in later PRs after semantics, conflict
    behavior, schema requirements, repository-boundary exception catching,
    translated exception chaining, and test harness design are approved.
-26. Require Pydantic contract validation before persistence.
+27. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -829,6 +861,12 @@ PR 32 also adds no migration revision and changes no database shape.
 Migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
 Docker Compose, CI workflows, live DB behavior, contracts, schemas, generated
 schemas, and dependencies remain unchanged.
+
+PR 33 also adds no migration revision and changes no database shape.
+Migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
+Docker Compose configuration, contracts, schemas, generated schemas, and
+dependencies remain unchanged. It expands only the existing CI Postgres job's
+test command and display name.
 
 ## Future SQLAlchemy/Alembic Integration Steps
 
@@ -896,11 +934,13 @@ Lifecycle transition checks, idempotency enforcement, correction handling, and
 append-only policy remain future service or repository responsibilities. The
 row mapping helpers only shape validated data into projected rows. The
 statement builders only turn those rows into non-executing SQLAlchemy Core
-`Insert` objects for future repositories to execute deliberately. Repository
-execution remains intentionally blocked until idempotency, duplicate handling,
-transaction behavior, correction semantics, artifact-manifest versioning where
-needed, repository-boundary exception catching and chaining, and live DB
-write-path test harness expansion are approved.
+`Insert` objects for repositories to execute deliberately. As of PR 33, only
+the experiment-run repository path executes its targeted insert and replay
+`SELECT`. Data snapshot, research note, review event, and artifact aggregate
+execution remain intentionally blocked until their idempotency, duplicate
+handling, transaction behavior, correction semantics, artifact-manifest
+versioning where needed, repository-boundary exception catching and chaining,
+and live DB write-path test harness expansion are approved.
 
 The PR 21 live Postgres harness keeps write-path execution deferred. The live
 test is local opt-in and migration-only: it runs Alembic `upgrade head` against
@@ -916,10 +956,10 @@ lifecycle behavior, use SQLite as a substitute, require CI secrets, add a CI
 Postgres service, run FastAPI/backtest integration, or write experiment runs
 from backtests. Downgrade testing remains deferred.
 
-PR 23 adds optional local Docker Compose infrastructure for that harness, but it
-does not change the harness behavior. The live migration test remains
-migration-only and double opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and
-`QUANT_TEST_DATABASE_URL`.
+PR 23 adds optional local Docker Compose infrastructure for that harness. As of
+PR 33, the same disposable local Postgres service may also be used for the
+approved experiment-run repository smoke test. Both live paths remain double
+opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and `QUANT_TEST_DATABASE_URL`.
 
 Before PR 24, the PR 23 Compose path was manually validated with Docker:
 `postgres:17.10` pulled successfully, the container started, the live migration
@@ -927,26 +967,25 @@ smoke test passed with `1 passed`, and `docker compose down -v` removed the
 container, network, and named volume so no persistent local test DB state
 remained.
 
-PR 24 adds CI Postgres only for migration validation. The CI job uses a
+PR 24 adds CI Postgres only for migration validation. PR 33 expands that same
+job to persistence smoke coverage. The CI job uses a
 GitHub Actions `postgres:17.10` service container with
 `quant_platform_test`/`quant_test` test-only values, maps the service to
-localhost for the existing URL safety helper, and runs only
-`uv run pytest -m live_db tests/test_live_postgres_migrations.py`. The normal
-tooling CI job remains unchanged and does not depend on Postgres. The CI
-migration smoke remains Alembic upgrade-head and catalog-inspection only.
+localhost for the existing URL safety helper, and runs the migration smoke test
+plus the experiment-run repository live test. The normal tooling CI job remains
+unchanged and does not depend on Postgres.
 
-After PR 32, the artifact-manifest identity schema blocker is resolved, the
+After PR 33, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
 exists, targeted PostgreSQL insert-attempt statement shapes exist, pure exact
-constraint-name classification exists, and narrow SQLAlchemy `IntegrityError`
-diagnostic extraction exists. The abstract SQLAlchemy repository skeleton also
-exists with injected `Connection` storage and protocol method-signature parity.
-The next expansion gates remain concrete repository implementation,
-statement-builder delegation, `Connection.execute`, result construction,
-exception catching and translated exception chaining at the repository
-boundary, replay `SELECT`, hash comparison, caller-owned transaction execution,
-rollback responsibility, artifact aggregate atomicity and integrity
-verification, live insert/replay/conflict tests, application/backtest
+constraint-name classification exists, narrow SQLAlchemy `IntegrityError`
+diagnostic extraction exists, the abstract SQLAlchemy repository skeleton
+exists, and `record_experiment_run()` has the first concrete execution path.
+The next expansion gates remain data snapshot implementation, research-note
+implementation, review-event implementation, artifact aggregate
+implementation, natural-key conflict execution, repository-boundary exception
+catching and translated exception chaining where needed, concurrency tests,
+artifact aggregate atomicity and integrity verification, application/backtest
 integration, and SQLite persistence policy if it is ever reconsidered. Each
 gate requires separate approval before it changes code, tests, dependencies,
 workflows, infrastructure, or migrations.

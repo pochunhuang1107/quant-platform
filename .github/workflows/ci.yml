@@ -42,7 +42,7 @@ jobs:
         run: uv run pytest
 
   postgres-migrations:
-    name: Postgres migration smoke
+    name: Postgres persistence smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -80,5 +80,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Run live Postgres migration smoke test
-        run: uv run pytest -m live_db tests/test_live_postgres_migrations.py
+      - name: Run live Postgres persistence smoke tests
+        run: >-
+          uv run pytest -m live_db
+          tests/test_live_postgres_migrations.py
+          tests/test_live_postgres_experiment_run_repository.py

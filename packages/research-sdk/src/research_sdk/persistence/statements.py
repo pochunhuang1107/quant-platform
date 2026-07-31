@@ -1,4 +1,4 @@
-"""SQLAlchemy Core insert statement builders for persistence rows."""
+"""SQLAlchemy Core persistence statement builders."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Table, insert
+from sqlalchemy import Table, insert, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.sql.dml import Insert
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import Select
 
 from research_sdk.contracts import (
     DataSnapshotManifest,
@@ -58,6 +59,19 @@ def build_experiment_run_insert(
             experiment_runs.c.inserted_at,
         ),
     )
+
+
+def build_experiment_run_replay_select(
+    *,
+    run_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for an experiment run."""
+
+    return select(
+        experiment_runs.c.run_id,
+        experiment_runs.c.contract_hash,
+        experiment_runs.c.inserted_at,
+    ).where(experiment_runs.c.run_id == run_id)
 
 
 def build_data_snapshot_manifest_insert(
@@ -181,6 +195,7 @@ __all__ = [
     "ArtifactManifestInsertStatements",
     "build_data_snapshot_manifest_insert",
     "build_experiment_run_insert",
+    "build_experiment_run_replay_select",
     "build_research_note_insert",
     "build_review_event_insert",
     "build_run_artifact_manifest_inserts",

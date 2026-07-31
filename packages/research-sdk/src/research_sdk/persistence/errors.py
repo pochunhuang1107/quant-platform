@@ -54,6 +54,10 @@ class ContractHashConflictError(PersistenceConflictError):
     """Raised when a logical identity exists with a different contract hash."""
 
 
+class ReplayLookupError(PersistenceError):
+    """Raised when a suppressed replay candidate cannot be loaded."""
+
+
 class NaturalKeyConflictError(PersistenceConflictError):
     """Raised when a write collides with a natural or non-primary identity."""
 
@@ -112,5 +116,6 @@ __all__ = [
     "PersistenceConflictError",
     "PersistenceError",
     "PersistenceErrorContext",
+    "ReplayLookupError",
     "UnsupportedVersioningConflictError",
 ]

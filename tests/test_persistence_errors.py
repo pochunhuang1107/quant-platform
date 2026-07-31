@@ -27,6 +27,7 @@ from research_sdk.persistence.errors import (
     PersistenceConflictError,
     PersistenceError,
     PersistenceErrorContext,
+    ReplayLookupError,
     UnsupportedVersioningConflictError,
 )
 from research_sdk.persistence.protocols import ExperimentLedgerRepository
@@ -42,6 +43,7 @@ CONCRETE_ERROR_TYPES = (
     UnsupportedVersioningConflictError,
     DuplicateReviewEventError,
     AggregateIntegrityError,
+    ReplayLookupError,
 )
 
 CONFLICT_ERROR_TYPES = (
@@ -220,6 +222,11 @@ def test_error_hierarchy_matches_domain_taxonomy() -> None:
     assert issubclass(DuplicateReviewEventError, PersistenceConflictError)
     assert not issubclass(DuplicateReviewEventError, NaturalKeyConflictError)
     assert not issubclass(DuplicateReviewEventError, ContractHashConflictError)
+    assert issubclass(ReplayLookupError, PersistenceError)
+    assert not issubclass(ReplayLookupError, PersistenceConflictError)
+    assert not issubclass(ReplayLookupError, ContractHashConflictError)
+    assert not issubclass(ReplayLookupError, NaturalKeyConflictError)
+    assert not issubclass(ReplayLookupError, AggregateIntegrityError)
     assert issubclass(AggregateIntegrityError, PersistenceError)
     assert not issubclass(AggregateIntegrityError, PersistenceConflictError)
 
@@ -346,6 +353,28 @@ def test_error_messages_omit_absent_optional_context() -> None:
     assert "attempted_hash_prefix=" not in message
 
 
+def test_replay_lookup_error_uses_safe_deterministic_context() -> None:
+    context = PersistenceErrorContext(
+        table_name="experiment_runs",
+        operation="record_experiment_run",
+        logical_identity={"run_id": "run-001"},
+        constraint_name="pk_experiment_runs",
+        attempted_hash_prefix="0123456789ab",
+    )
+
+    error = ReplayLookupError(context)
+    message = str(error)
+
+    assert error.context is context
+    assert "ReplayLookupError" in message
+    assert "table_name=experiment_runs" in message
+    assert "operation=record_experiment_run" in message
+    assert "logical_identity={run_id=run-001}" in message
+    assert "constraint_name=pk_experiment_runs" in message
+    assert "attempted_hash_prefix=0123456789ab" in message
+    assert "existing_hash_prefix=" not in message
+
+
 def test_error_messages_exclude_unsafe_sentinel_values() -> None:
     full_hash = "0" * 64
     context = PersistenceErrorContext(
@@ -395,6 +424,7 @@ def test_error_types_export_from_errors_module() -> None:
         "PersistenceConflictError": PersistenceConflictError,
         "PersistenceError": PersistenceError,
         "PersistenceErrorContext": PersistenceErrorContext,
+        "ReplayLookupError": ReplayLookupError,
         "UnsupportedVersioningConflictError": UnsupportedVersioningConflictError,
     }
 
