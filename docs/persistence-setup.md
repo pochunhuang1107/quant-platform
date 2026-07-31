@@ -87,6 +87,14 @@ only; they do not execute SQL, introduce runtime insert/replay/conflict
 behavior, own connections or transactions, translate constraint exceptions, or
 change local Compose and CI Postgres migration-only behavior.
 
+PR 30 adds pure exact-name constraint classification. See
+[Persistence Repository Plan](persistence-repository-plan.md) for the
+authoritative mapping. The translator accepts a stable constraint-name string
+and safe persistence error context only. It does not connect to PostgreSQL,
+inspect database exceptions, inspect SQLSTATE or driver diagnostics, execute
+SQL, alter transaction ownership, or change local Compose and CI Postgres
+migration-only behavior.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -296,11 +304,13 @@ error mapping. The policy remains documentation-only. PR 27 adds the pure
 result/disposition value objects without repository execution. PR 28 adds pure
 domain error/context types without repository execution, SQL execution,
 constraint inspection, SQLAlchemy/psycopg exception translation, retry
-behavior, logging behavior, or transaction ownership changes. Live
-insert/replay/conflict tests remain deferred until policy, schema requirements,
-database/constraint exception translation, and repository execution are
-separately approved for implementation. Artifact-manifest execution is blocked
-until the remaining execution gates are approved.
+behavior, logging behavior, or transaction ownership changes. PR 30 adds pure
+exact-name classification for approved constraint names only; it does not
+inspect database exceptions or execute SQL. Live insert/replay/conflict tests
+remain deferred until policy, schema requirements, SQLAlchemy/psycopg exception
+extraction, repository-boundary exception chaining, and repository execution
+are separately approved for implementation. Artifact-manifest execution is
+blocked until the remaining execution gates are approved.
 
 ## Live Postgres Test Harness Boundary
 
@@ -743,15 +753,15 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 29, future persistence PRs should keep table design, constraints,
+After PR 30, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
-migration-only; targeted statement shapes, result types, and error types do not
-cause inserts, replay lookups, conflict handling, constraint inspection,
-database-driver exception translation, retry behavior, transaction behavior, or
-repository execution.
+migration-only; targeted statement shapes, result types, error types, and pure
+constraint-name classification do not cause inserts, replay lookups, database
+exception inspection, database-driver exception translation, retry behavior,
+transaction behavior, or repository execution.
 Future PRs should still avoid repository implementations, DB write paths, API
 endpoints, backtest integration, artifact IO, data ingestion, broker
 integration, live trading, and paper trading execution unless separately
 approved. Live insert/replay/conflict tests remain deferred until
-database/constraint exception translation and repository execution are
-separately approved.
+SQLAlchemy/psycopg exception extraction, repository-boundary exception
+chaining, and repository execution are separately approved.

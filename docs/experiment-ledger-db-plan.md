@@ -129,6 +129,19 @@ comparison, transaction behavior, database exception translation, aggregate
 verification, retry behavior, logging behavior, or application/backtest
 integration.
 
+PR 30 adds the pure exact constraint-name translation gate. It maps only
+approved stable constraint-name strings to existing persistence-domain conflict
+errors and returns `None` for unknown constraints. It completes constraint-name
+classification only; SQLAlchemy/psycopg exception extraction, driver diagnostic
+inspection, SQLSTATE handling, exception chaining at the repository boundary,
+repository skeletons, repository implementations, SQL execution, replay
+`SELECT`, hash comparison, transaction behavior, aggregate verification, live
+insert/replay/conflict tests, and application/backtest integration remain
+future gates. PR 30 changes no migrations, tables, SQLAlchemy metadata,
+constraints, indexes, DB services, Docker Compose, CI workflows, live migration
+behavior, contracts, generated schemas, dependencies, or application/backtest
+integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -435,9 +448,12 @@ by the database, resolving the PR 25 artifact identity schema blocker.
 As of PR 27, successful write result/disposition modeling is implemented as
 pure value objects. As of PR 28, the pure domain error taxonomy is implemented.
 As of PR 29, targeted PostgreSQL insert-attempt statement shapes are
-implemented without execution. Artifact-manifest execution remains blocked on
-database/constraint exception translation, repository skeleton and
-implementation, replay `SELECT` and hash comparison, caller-owned transaction
+implemented without execution. As of PR 30, pure exact constraint-name
+classification is implemented without driver exception extraction.
+Artifact-manifest execution remains blocked on SQLAlchemy/psycopg exception
+extraction, constraint-name extraction from driver diagnostics, exception
+chaining at the repository boundary, repository skeleton and implementation,
+SQL execution, replay `SELECT` and hash comparison, caller-owned transaction
 behavior, aggregate replay/integrity verification, live insert/replay/conflict
 tests, and application/backtest integration.
 
@@ -575,7 +591,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 29:
+This sequence is partially implemented and current through PR 30:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -677,12 +693,24 @@ This sequence is partially implemented and current through PR 29:
      translation, repository implementation, transaction behavior, aggregate
      verification, migrations, metadata changes, live DB behavior,
      dependencies, workflows, contracts, or schemas.
-20. Add stable non-blocking cross-contract foreign keys later where appropriate.
-21. Add contract fixture persistence tests later.
-22. Add repository/write-path code only in a later PR after semantics, conflict
-   behavior, schema requirements, database/constraint exception translation,
-   and test harness design are approved.
-23. Require Pydantic contract validation before persistence.
+20. Add pure exact constraint-name translation:
+   - map only `pk_review_events` to `DuplicateReviewEventError`;
+   - map only `uq_run_artifact_manifests_run_id` to
+     `UnsupportedVersioningConflictError`;
+   - return `None` for unknown constraints;
+   - add no raw database exception handling, SQLAlchemy/psycopg exception
+     extraction, SQLSTATE handling, `orig`/`diag` inspection, exception
+     chaining, SQL execution, replay `SELECT`, hash comparison, repository
+     implementation, transaction behavior, aggregate verification, migrations,
+     metadata changes, live DB behavior, dependencies, workflows, contracts, or
+     schemas.
+21. Add stable non-blocking cross-contract foreign keys later where appropriate.
+22. Add contract fixture persistence tests later.
+23. Add repository/write-path code only in a later PR after semantics, conflict
+   behavior, schema requirements, SQLAlchemy/psycopg exception extraction,
+   repository-boundary exception chaining, and test harness design are
+   approved.
+24. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -778,6 +806,14 @@ dependencies, workflows, Docker Compose configuration, repository
 implementation, insert execution, replay `SELECT`, hash comparison, transaction
 behavior, database exception translation, aggregate verification, retry
 behavior, logging behavior, or application integration.
+PR 30 adds only pure exact constraint-name translation, tests, package export,
+and documentation; it changes no migrations, tables, SQLAlchemy metadata,
+constraints, indexes, DB services, Docker Compose configuration, CI workflows,
+live migration behavior, contracts, generated schemas, dependencies, repository
+implementation, insert execution, replay `SELECT`, hash comparison, transaction
+behavior, SQLAlchemy/psycopg exception extraction, SQLSTATE handling, exception
+chaining, aggregate verification, retry behavior, logging behavior, or
+application integration.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -828,16 +864,18 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 29, the artifact-manifest identity schema blocker is resolved, the
+After PR 30, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
-exists, and targeted PostgreSQL insert-attempt statement shapes exist. The next
-expansion gates remain database/constraint exception translation, repository
-skeleton, repository implementation, replay `SELECT`, hash comparison,
-caller-owned transaction behavior, aggregate replay/integrity verification,
-live insert/replay/conflict tests, application/backtest integration, and SQLite
-persistence policy if it is ever reconsidered. Each gate requires separate
-approval before it changes code, tests, dependencies, workflows,
-infrastructure, or migrations.
+exists, targeted PostgreSQL insert-attempt statement shapes exist, and pure
+exact constraint-name classification exists. The next expansion gates remain
+SQLAlchemy/psycopg exception extraction, constraint-name extraction from driver
+diagnostics, exception chaining at the repository boundary, repository
+skeleton, repository implementation, SQL execution, replay `SELECT`, hash
+comparison, caller-owned transaction behavior, aggregate replay/integrity
+verification, live insert/replay/conflict tests, application/backtest
+integration, and SQLite persistence policy if it is ever reconsidered. Each
+gate requires separate approval before it changes code, tests, dependencies,
+workflows, infrastructure, or migrations.
 
 ## Future DB Test Strategy
 

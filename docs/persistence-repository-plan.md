@@ -105,6 +105,15 @@ verification, repair behavior, live DB insert tests, migrations, metadata
 changes, constraints, dependencies, workflows, Docker Compose changes, or
 application/backtest integration.
 
+PR 30 adds the pure exact constraint-name translation boundary. It maps only
+approved stable constraint names to existing persistence-domain conflict error
+instances and returns `None` for unknown constraints. It does not accept raw
+database exceptions, inspect SQLAlchemy or `psycopg` diagnostics, inspect
+SQLSTATE, inspect `orig` or `diag`, implement exception chaining, execute SQL,
+add repository behavior, add retry behavior, or change migrations, metadata,
+constraints, dependencies, Docker Compose, CI workflows, live DB behavior, or
+application/backtest integration.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -121,6 +130,7 @@ The persistence primitive boundaries now include:
 - `UnsupportedVersioningConflictError`
 - `DuplicateReviewEventError`
 - `AggregateIntegrityError`
+- `translate_constraint_violation(constraint_name=..., context=...)`
 
 These primitives define how validated contract payloads become stable
 `contract_hash` values for audit and idempotency metadata, how future
@@ -314,7 +324,9 @@ columns only. They do not use untargeted `DO NOTHING`, `DO UPDATE`,
 `index_elements`, natural-key constraints, or secondary unique constraints.
 The artifact-manifest statement targets only `pk_run_artifact_manifests`; a
 collision on `uq_run_artifact_manifests_run_id` remains visible for future
-translation to `UnsupportedVersioningConflictError`.
+repository execution and can be translated by the PR 30 exact constraint-name
+translator to `UnsupportedVersioningConflictError` after a future adapter
+extracts that constraint name.
 
 Review events remain strict inserts with `RETURNING review_event_id,
 inserted_at`. Duplicate `review_event_id` is not suppressed. Artifact entries
@@ -690,19 +702,64 @@ through these domain interfaces. PR 28 adds no database exception translation,
 repository execution, SQL execution, retry implementation, logging
 implementation, or live DB behavior.
 
-Future classification should follow this policy:
+PR 30 adds pure exact constraint-name classification for the currently approved
+stable constraints:
+
+| Constraint | Domain error |
+| --- | --- |
+| `pk_review_events` | `DuplicateReviewEventError` |
+| `uq_run_artifact_manifests_run_id` | `UnsupportedVersioningConflictError` |
+
+The translator is `translate_constraint_violation(constraint_name=...,
+context=...)`. It accepts an exact constraint name and a safe
+`PersistenceErrorContext`, not a database exception, SQLSTATE, SQL statement,
+constraint object, connection, session, engine, driver diagnostic, arbitrary
+message, or retry record. Matching is exact only. Unknown constraints remain
+untranslated by returning `None`; there is no prefix-based `pk_*` or `uq_*`
+classification and no generic unique-constraint mapping.
+
+If the supplied context has no `constraint_name`, the translator immutably
+populates an equivalent copied context before constructing the error. If the
+context already has the same `constraint_name`, that exact context object is
+reused. If the context has a different `constraint_name`, translation rejects
+with a deterministic `ValueError` rather than overriding inconsistent
+diagnostics.
+
+The translator returns a domain error instance or `None`; it does not raise the
+translated error. A future repository adapter may use it after extracting an
+approved constraint name from a raw database exception:
+
+```python
+translated = translate_constraint_violation(
+    constraint_name=constraint_name,
+    context=context,
+)
+if translated is not None:
+    raise translated from database_error
+raise
+```
+
+That future adapter is not implemented in PR 30. PR 30 also adds no SQLAlchemy,
+Alembic, `psycopg`, or `asyncpg` imports in the production translator, no
+SQLSTATE inspection, no `orig` or `diag` inspection, no exception chaining
+implementation, no repository execution, no SQL execution, and no retry
+behavior.
+
+Future repository classification should follow this policy:
 
 - Existing logical identity plus same canonical hash returns
   `PersistenceWriteResult(REPLAYED)`, not an error.
 - Existing logical identity plus different canonical hash raises
-  `ContractHashConflictError`.
+  `ContractHashConflictError`. This requires a replay `SELECT` and canonical
+  hash comparison; it is not inferred from a constraint name.
 - New primary identity plus a non-primary uniqueness collision raises
   `NaturalKeyConflictError`.
 - `uq_run_artifact_manifests_run_id` maps to
   `UnsupportedVersioningConflictError`.
 - Duplicate `review_event_id` raises `DuplicateReviewEventError`.
 - Matching manifest hash but mismatched stored entry projection raises
-  `AggregateIntegrityError`.
+  `AggregateIntegrityError`. This requires complete aggregate projection
+  verification; it is not inferred from a constraint name.
 - SQLAlchemy/psycopg transient operational failures are not generically
   converted to conflict errors.
 
@@ -795,7 +852,7 @@ Do not add these in PR 25:
 
 Separate approval is required before:
 
-- database/constraint exception translation;
+- SQLAlchemy/psycopg exception extraction and repository-boundary chaining;
 - live insert tests;
 - artifact-manifest versioning or supersession migration;
 - standalone `ReviewEvent` contract;
