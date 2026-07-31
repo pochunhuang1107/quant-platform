@@ -38,6 +38,9 @@ from research_sdk.persistence.results import (
     PersistenceDisposition,
     PersistenceWriteResult,
 )
+from research_sdk.persistence.sqlalchemy_repository import (
+    SqlAlchemyExperimentLedgerRepository,
+)
 from research_sdk.persistence.statements import (
     ArtifactManifestInsertStatements,
     build_data_snapshot_manifest_insert,
@@ -68,6 +71,7 @@ __all__ = [
     "PersistenceErrorContext",
     "PersistenceWriteResult",
     "ReviewSubjectType",
+    "SqlAlchemyExperimentLedgerRepository",
     "UnsupportedVersioningConflictError",
     "build_data_snapshot_manifest_insert",
     "build_experiment_run_insert",

@@ -158,6 +158,23 @@ migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
 Docker Compose, CI workflows, live DB behavior, contracts, schemas,
 dependencies, or application/backtest integration.
 
+PR 32 adds the SQLAlchemy repository structural skeleton only. It introduces
+the abstract, non-instantiable
+`SqlAlchemyExperimentLedgerRepository`, accepts one injected SQLAlchemy
+`Connection` in the constructor, stores the exact object as protected
+`_connection`, and verifies protocol method-signature parity with
+`ExperimentLedgerRepository`. The skeleton establishes the public SQLAlchemy
+repository type boundary and structural protocol conformance, but it remains
+non-executing and safely unusable as a concrete repository. PR 32 adds no
+concrete repository implementation, statement-builder delegation,
+`Connection.execute`, result construction, repository-boundary `IntegrityError`
+catching, translated exception raising or chaining, replay `SELECT`, canonical
+hash comparison, caller-owned transaction execution, rollback behavior,
+artifact aggregate atomicity or integrity verification, live
+insert/replay/conflict tests, or application/backtest integration. It changes no
+migrations, tables, metadata, constraints, indexes, database services, Docker
+Compose, CI workflows, live DB behavior, dependencies, contracts, or schemas.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -467,12 +484,15 @@ As of PR 29, targeted PostgreSQL insert-attempt statement shapes are
 implemented without execution. As of PR 30, pure exact constraint-name
 classification is implemented. As of PR 31, narrow SQLAlchemy `IntegrityError`
 diagnostic extraction is implemented for PostgreSQL unique violations only.
-Artifact-manifest execution remains blocked on repository-boundary exception
-catching, translated exception chaining, repository skeleton and implementation,
-SQL execution, replay `SELECT` and canonical hash comparison, caller-owned
-transaction behavior, rollback responsibility, aggregate replay/integrity
-verification, live insert/replay/conflict tests, and application/backtest
-integration.
+As of PR 32, the abstract SQLAlchemy repository structural skeleton, injected
+`Connection` constructor boundary, protocol method-signature parity, and
+non-instantiable safety boundary are implemented. Artifact-manifest execution
+remains blocked on concrete repository implementation, statement-builder
+delegation, repository-boundary exception catching, translated exception
+chaining, SQL execution, replay `SELECT` and canonical hash comparison,
+caller-owned transaction execution, rollback responsibility, aggregate
+atomicity and integrity verification, live insert/replay/conflict tests, and
+application/backtest integration.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -608,7 +628,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 31:
+This sequence is partially implemented and current through PR 32:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -735,12 +755,23 @@ This sequence is partially implemented and current through PR 31:
      transaction behavior, rollback behavior, retry behavior, migrations,
      metadata changes, live DB behavior, dependencies, workflows, contracts, or
      schemas.
-22. Add stable non-blocking cross-contract foreign keys later where appropriate.
-23. Add contract fixture persistence tests later.
-24. Add repository/write-path code only in a later PR after semantics, conflict
+22. Add the abstract SQLAlchemy repository structural skeleton:
+   - define `SqlAlchemyExperimentLedgerRepository`;
+   - accept one injected SQLAlchemy `Connection`;
+   - store the exact object in protected `_connection`;
+   - match `ExperimentLedgerRepository` method signatures exactly;
+   - keep the class abstract and non-instantiable;
+   - use structural typing rather than explicit protocol inheritance;
+   - add no concrete method behavior, SQL execution, statement-builder
+     delegation, result construction, exception catching, transaction behavior,
+     migrations, metadata changes, live DB behavior, dependencies, workflows,
+     contracts, or schemas.
+23. Add stable non-blocking cross-contract foreign keys later where appropriate.
+24. Add contract fixture persistence tests later.
+25. Add repository/write-path code only in a later PR after semantics, conflict
    behavior, schema requirements, repository-boundary exception catching,
    translated exception chaining, and test harness design are approved.
-25. Require Pydantic contract validation before persistence.
+26. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -790,6 +821,11 @@ Docker Compose, CI workflows, live migration behavior, contracts, generated
 schemas, and dependencies remain unchanged.
 
 PR 31 also adds no migration revision and changes no database shape.
+Migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
+Docker Compose, CI workflows, live DB behavior, contracts, schemas, generated
+schemas, and dependencies remain unchanged.
+
+PR 32 also adds no migration revision and changes no database shape.
 Migrations, tables, SQLAlchemy metadata, constraints, indexes, DB services,
 Docker Compose, CI workflows, live DB behavior, contracts, schemas, generated
 schemas, and dependencies remain unchanged.
@@ -899,17 +935,19 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 31, the artifact-manifest identity schema blocker is resolved, the
+After PR 32, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
 exists, targeted PostgreSQL insert-attempt statement shapes exist, pure exact
 constraint-name classification exists, and narrow SQLAlchemy `IntegrityError`
-diagnostic extraction exists. The next expansion gates remain exception
-catching and translated exception chaining at the repository boundary,
-repository skeleton, repository implementation, SQL execution, replay `SELECT`,
-hash comparison, caller-owned transaction behavior, rollback responsibility,
-aggregate replay/integrity verification, live insert/replay/conflict tests,
-application/backtest integration, and SQLite persistence policy if it is ever
-reconsidered. Each
+diagnostic extraction exists. The abstract SQLAlchemy repository skeleton also
+exists with injected `Connection` storage and protocol method-signature parity.
+The next expansion gates remain concrete repository implementation,
+statement-builder delegation, `Connection.execute`, result construction,
+exception catching and translated exception chaining at the repository
+boundary, replay `SELECT`, hash comparison, caller-owned transaction execution,
+rollback responsibility, artifact aggregate atomicity and integrity
+verification, live insert/replay/conflict tests, application/backtest
+integration, and SQLite persistence policy if it is ever reconsidered. Each
 gate requires separate approval before it changes code, tests, dependencies,
 workflows, infrastructure, or migrations.
 
