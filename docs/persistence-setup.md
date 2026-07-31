@@ -103,6 +103,16 @@ performs no rollback, and raises or chains no exceptions. Local Compose and CI
 Postgres remain migration-only and are not insert, replay, conflict, or
 repository execution coverage.
 
+PR 32 adds the abstract SQLAlchemy repository skeleton. See
+[Persistence Repository Plan](persistence-repository-plan.md) for the
+authoritative skeleton semantics. The skeleton accepts one injected SQLAlchemy
+`Connection`, stores that exact object as protected `_connection`, and declares
+methods that match `ExperimentLedgerRepository`, but it does not use the
+connection. It does not connect to PostgreSQL, execute SQL, start or end
+transactions, commit, roll back, close, dispose, call statement builders,
+construct persistence results, catch exceptions, translate errors, retry, or
+log. Local Compose and CI Postgres remain migration-only.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -321,6 +331,14 @@ rollback, or implement repository behavior. Live insert/replay/conflict tests
 remain deferred until repository-boundary exception chaining and repository
 execution are separately approved for implementation. Artifact-manifest
 execution is blocked until the remaining execution gates are approved.
+
+PR 32 adds only the abstract repository skeleton for that future implementation
+boundary. The injected `Connection` is stored but unused. The skeleton does not
+connect to PostgreSQL, execute SQL, start transactions, commit, roll back,
+close, dispose, call statement builders, construct `PersistenceWriteResult`,
+catch or translate exceptions, retry, log, or verify artifact aggregates. It
+does not change local Compose or CI Postgres behavior; both remain
+migration-only.
 
 ## Live Postgres Test Harness Boundary
 
@@ -766,15 +784,16 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 31, future persistence PRs should keep table design, constraints,
+After PR 32, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
 migration-only; targeted statement shapes, result types, error types, pure
-constraint-name classification, and narrow SQLAlchemy `IntegrityError`
-diagnostic translation do not cause inserts, replay lookups, repository-boundary
-exception catching, translated exception chaining, retry behavior, transaction
-behavior, or repository execution.
-Future PRs should still avoid repository implementations, DB write paths, API
-endpoints, backtest integration, artifact IO, data ingestion, broker
+constraint-name classification, narrow SQLAlchemy `IntegrityError` diagnostic
+translation, and the abstract SQLAlchemy repository skeleton do not cause
+inserts, replay lookups, repository-boundary exception catching, translated
+exception chaining, retry behavior, transaction behavior, or repository
+execution.
+Future PRs should still avoid concrete repository implementations, DB write
+paths, API endpoints, backtest integration, artifact IO, data ingestion, broker
 integration, live trading, and paper trading execution unless separately
 approved. Live insert/replay/conflict tests remain deferred until
 repository-boundary exception chaining and repository execution are separately

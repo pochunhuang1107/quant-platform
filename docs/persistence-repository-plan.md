@@ -128,6 +128,22 @@ no SQL, owns no transaction or rollback behavior, adds no retry behavior, and
 changes no migrations, metadata, constraints, dependencies, Docker Compose, CI
 workflows, live DB behavior, or application/backtest integration.
 
+PR 32 adds the abstract, non-executing SQLAlchemy repository skeleton. The
+public class is
+`research_sdk.persistence.sqlalchemy_repository.SqlAlchemyExperimentLedgerRepository`,
+and it is also exported from `research_sdk.persistence`. The class accepts one
+injected SQLAlchemy `Connection` in its constructor, stores the exact supplied
+object in protected `_connection`, declares `__slots__ = ("_connection",)`, and
+defines all five methods with exact `ExperimentLedgerRepository` method
+signatures. It is abstract and cannot be directly instantiated. It uses
+structural typing rather than explicitly inheriting the protocol. PR 32 adds no
+concrete method behavior, SQL execution, `Connection.execute`, statement-builder
+calls, result construction, `CREATED` or `REPLAYED` classification, replay
+`SELECT`, hash comparison, exception catching, error translation calls,
+translated exception raising or chaining, transaction creation, commit,
+rollback, close or dispose behavior, `Engine`, `Session`, DB URL handling,
+retry, logging, artifact aggregate writes, or aggregate verification.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -146,6 +162,7 @@ The persistence primitive boundaries now include:
 - `AggregateIntegrityError`
 - `translate_constraint_violation(constraint_name=..., context=...)`
 - `translate_sqlalchemy_integrity_error(error=..., context=...)`
+- `SqlAlchemyExperimentLedgerRepository(connection)`
 
 These primitives define how validated contract payloads become stable
 `contract_hash` values for audit and idempotency metadata, how future
@@ -297,6 +314,54 @@ session/unit-of-work abstractions, lifecycle enforcement, idempotency
 enforcement, append-only enforcement, and approval/trading behavior remain
 future design work.
 
+## SQLAlchemy Repository Skeleton Boundary
+
+PR 32 adds `SqlAlchemyExperimentLedgerRepository` in
+`research_sdk.persistence.sqlalchemy_repository`. This is the first public
+SQLAlchemy-oriented repository type boundary, not a repository implementation.
+
+The skeleton constructor is:
+
+```python
+SqlAlchemyExperimentLedgerRepository(connection: Connection)
+```
+
+The constructor requires a single SQLAlchemy `Connection`, stores that exact
+object in protected `_connection`, and does not validate it by calling methods
+on it. The connection is stored for future subclasses but remains unused in PR
+32. There is no public connection property, setter, lifecycle method, factory,
+transaction argument, optional connection, `Engine`, `Session`, or DB URL.
+
+The class declares the same five public repository methods as
+`ExperimentLedgerRepository`:
+
+- `record_experiment_run(run)`;
+- `record_data_snapshot_manifest(snapshot)`;
+- `record_run_artifact_manifest(manifest_id=..., manifest=...)`;
+- `record_research_note(note)`;
+- `append_review_event(review_event_id=..., subject_type=..., subject_id=..., review=...)`.
+
+Each method is abstract and has the same parameter names, ordering,
+keyword-only behavior, validated contract annotations,
+`ReviewSubjectType | str` behavior, and `PersistenceWriteResult` return
+annotation as the protocol. The class intentionally does not inherit
+`ExperimentLedgerRepository`; structural typing remains the boundary, and tests
+verify protocol conformance and signature parity.
+
+`__slots__ = ("_connection",)` limits the production state surface to the
+protected connection reference. PR 32 does not add context-manager behavior,
+`execute`, `begin`, `commit`, `rollback`, `close`, `dispose`, `connect`, retry,
+or logging methods.
+
+Repository skeleton complete does not mean repository implementation complete.
+PR 32 still executes no SQL, calls no statement builders, constructs no
+`PersistenceWriteResult`, classifies no `CREATED` or `REPLAYED` outcomes,
+performs no replay `SELECT`, compares no hashes, catches no database
+exceptions, calls no translators, raises or chains no translated exceptions,
+starts no transactions, commits nothing, rolls nothing back, and does not close
+or dispose caller-owned resources. Caller-owned transaction policy is unchanged,
+and artifact aggregate atomicity remains future work.
+
 ## Statement Builder Boundary
 
 PR 18 adds `research_sdk.persistence.statements` as the SQLAlchemy Core
@@ -362,11 +427,12 @@ helpers, storage SDKs, vendor SDKs, or approval/trading workflow code.
 
 ## Repository Execution Semantics
 
-PR 19 intentionally does not add a repository skeleton, repository
-implementation, database execution path, DB driver, live Postgres test harness,
-SQLite persistence test, FastAPI integration, backtest integration, experiment
-run writer, session abstraction, or unit-of-work abstraction. It records the
-execution semantics required before any future write implementation is added.
+PR 19 intentionally does not add a repository implementation, database
+execution path, DB driver, live Postgres test harness, SQLite persistence test,
+FastAPI integration, backtest integration, experiment run writer, session
+abstraction, or unit-of-work abstraction. It records the execution semantics
+required before any future write implementation is added. PR 32 later adds only
+the abstract repository skeleton and does not change these execution semantics.
 PR 21 adds only a migration smoke harness, and PR 23 adds only optional local
 Postgres Compose infrastructure for that harness. PR 24 adds only an isolated
 CI service-container job that runs that same migration smoke harness.
@@ -899,7 +965,6 @@ Separate approval is required before:
 - live insert tests;
 - artifact-manifest versioning or supersession migration;
 - standalone `ReviewEvent` contract;
-- repository skeleton;
 - repository implementation;
 - transaction execution;
 - fixture persistence;
@@ -942,9 +1007,8 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 25:
+The following remain deferred after PR 32:
 
-- repository skeletons;
 - SQLAlchemy repository implementations;
 - database write paths;
 - statement execution;
