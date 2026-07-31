@@ -22,7 +22,7 @@ from live_postgres_safety import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
-HEAD_REVISION = "0004_research_review_tables"
+HEAD_REVISION = "0005_artifact_run_identity"
 
 EXPECTED_TABLES = {
     "experiment_runs",
@@ -52,10 +52,13 @@ EXPECTED_PRIMARY_KEYS = {
 
 EXPECTED_UNIQUE_CONSTRAINTS = {
     "run_artifact_manifests": {
-        "uq_run_artifact_manifests_run_id_contract_hash": (
-            "run_id",
-            "contract_hash",
-        ),
+        "uq_run_artifact_manifests_run_id": ("run_id",),
+    },
+}
+
+ABSENT_UNIQUE_CONSTRAINTS = {
+    "run_artifact_manifests": {
+        "uq_run_artifact_manifests_run_id_contract_hash",
     },
 }
 
@@ -111,7 +114,6 @@ EXPECTED_INDEXES = {
         ),
     },
     "run_artifact_manifests": {
-        "ix_run_artifact_manifests_run_id": ("run_id",),
         "ix_run_artifact_manifests_experiment_id_created_at": (
             "experiment_id",
             "created_at",
@@ -153,6 +155,12 @@ EXPECTED_INDEXES = {
             "review_status",
             "inserted_at",
         ),
+    },
+}
+
+ABSENT_INDEXES = {
+    "run_artifact_manifests": {
+        "ix_run_artifact_manifests_run_id",
     },
 }
 
@@ -240,6 +248,9 @@ def _assert_unique_constraints(inspector: object) -> None:
         for constraint_name, expected_columns in expected_constraints.items():
             assert actual_constraints[constraint_name] == expected_columns
 
+        for constraint_name in ABSENT_UNIQUE_CONSTRAINTS.get(table_name, set()):
+            assert constraint_name not in actual_constraints
+
 
 def _assert_check_constraints(inspector: object) -> None:
     for table_name, expected_suffixes in EXPECTED_CHECK_CONSTRAINT_SUFFIXES.items():
@@ -277,6 +288,9 @@ def _assert_indexes(inspector: object) -> None:
 
         for index_name, expected_columns in expected_indexes.items():
             assert actual_indexes[index_name] == expected_columns
+
+        for index_name in ABSENT_INDEXES.get(table_name, set()):
+            assert index_name not in actual_indexes
 
 
 def _assert_artifact_entry_foreign_key(inspector: object) -> None:

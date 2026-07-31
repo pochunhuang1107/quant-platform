@@ -634,8 +634,9 @@ Before repository implementation:
 Before idempotency/`ON CONFLICT` behavior:
 
 - Keep the PR 25 policy as the authoritative documentation baseline.
-- Approve schema requirements, especially artifact-manifest `run_id` uniqueness
-  or explicit version/supersession behavior.
+- Treat PR 26 artifact-manifest `run_id` uniqueness as the approved database
+  identity foundation.
+- Approve any artifact-manifest version/supersession behavior separately.
 - Approve result/disposition model code.
 - Approve error taxonomy and conflict mapping code.
 - Approve live insert/conflict tests separately.

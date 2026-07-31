@@ -76,7 +76,6 @@ EXPECTED_ENTRY_CHECKS = {
 
 EXPECTED_INDEXES = {
     "run_artifact_manifests": {
-        "ix_run_artifact_manifests_run_id": ("run_id",),
         "ix_run_artifact_manifests_experiment_id_created_at": (
             "experiment_id",
             "created_at",
@@ -126,19 +125,15 @@ def test_artifact_table_primary_keys_match_contract_ids() -> None:
     ]
 
 
-def test_artifact_manifest_has_run_contract_hash_unique_constraint() -> None:
+def test_artifact_manifest_has_run_id_unique_constraint() -> None:
     unique_constraints = {
         constraint.name: tuple(column.name for column in constraint.columns)
         for constraint in run_artifact_manifests.constraints
         if isinstance(constraint, UniqueConstraint)
     }
 
-    assert unique_constraints == {
-        "uq_run_artifact_manifests_run_id_contract_hash": (
-            "run_id",
-            "contract_hash",
-        )
-    }
+    assert unique_constraints == {"uq_run_artifact_manifests_run_id": ("run_id",)}
+    assert "uq_run_artifact_manifests_run_id_contract_hash" not in unique_constraints
 
 
 def test_artifact_manifest_raw_contract_uses_postgresql_jsonb() -> None:

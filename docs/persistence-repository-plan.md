@@ -403,15 +403,21 @@ overwritten.
 | `research_notes` | `note_id` | Same `note_id` and same `contract_hash` is replay. | Same `note_id` and different `contract_hash` is conflict. | Persisted note versions are immutable. `updated_at` and `updated_by` are values inside one immutable note version; they are not authorization to mutate the stored row. Revisions require a new `note_id` using `parent_note_id` or `supersedes_note_id`. No silent note editing is allowed. |
 | `review_events` | `review_event_id` | No idempotent replay claim exists for now. | Duplicate `review_event_id` always rejects for now. | Events remain append-only. Do not compare `raw_review` directly to infer replay. A future standalone `ReviewEvent` contract with `schema_version` and `event_hash` is required before replay semantics can be approved. `ReviewMetadata` is audit/review metadata and is not trading or risk authorization. |
 
-Current artifact-manifest constraints are not sufficient for execution approval.
-`UNIQUE(run_id, contract_hash)` prevents one duplicate-alias case: a different
-`manifest_id` cannot reuse the exact same manifest hash for the same `run_id`.
-The current schema still permits the same `run_id` with different manifest
-hashes. Therefore one-manifest-per-run is currently a repository/service policy
-and is not concurrency-safe through DB constraints alone. Artifact-manifest
-execution must not be approved until either a later migration adds appropriate
-`run_id` uniqueness or an explicit manifest version/supersession model is
-approved. PR 25 does not modify migrations.
+PR 26 makes the artifact-manifest one-manifest-per-run policy concurrency-safe
+at the database layer by enforcing `UNIQUE(run_id)` through
+`uq_run_artifact_manifests_run_id`. `manifest_id` remains the primary key, and
+`run_id` is the enforced natural aggregate identity. The former
+`UNIQUE(run_id, contract_hash)` constraint is removed as redundant, and the
+former non-unique `ix_run_artifact_manifests_run_id` index is removed because
+the unique constraint provides the `run_id` index path. Duplicate existing
+`run_id` rows cause migration failure; no automatic cleanup, merge, repair,
+deletion, or data rewriting is performed.
+
+Artifact-manifest execution is still not approved. Repository and insert
+execution remain blocked on result/disposition model code, domain error
+taxonomy code, targeted `ON CONFLICT` statement design, repository skeleton and
+implementation, aggregate replay/integrity tests, live conflict tests, and
+application/backtest integration.
 
 ### Artifact Aggregate Atomicity
 
@@ -575,19 +581,23 @@ Current constraints are sufficient for the existing migration-only foundation:
 - `contract_hash` columns on hash-backed parent tables;
 - `JSONB` payload columns;
 - artifact-entry foreign key;
-- `UNIQUE(run_id, contract_hash)`;
+- `UNIQUE(run_id)` on `run_artifact_manifests`;
 - current checks and query indexes.
 
 The following remain missing or unresolved before future execution:
 
-- unique one-manifest-per-run enforcement or explicit artifact manifest
-  versioning;
 - `ReviewEvent` `schema_version` and `event_hash` for replay;
 - aggregate completeness enforcement;
 - future result/disposition model;
 - domain conflict/error mapping;
 - correction/supersession model;
 - possible future cross-contract foreign keys after ordering/backfill design.
+
+Artifact-manifest versioning remains intentionally unsupported. Do not add
+`manifest_version`, `supersedes_manifest_id`, current/active flags, lifecycle
+states, soft deletes, or mutable replacement without a separate review of
+logical identity, uniqueness constraints, lineage, replay semantics,
+supersession, backfill/migration behavior, and API behavior.
 
 Do not add these in PR 25:
 
@@ -606,7 +616,7 @@ Separate approval is required before:
 - error taxonomy code;
 - `ON CONFLICT` statement builders;
 - live insert tests;
-- artifact-manifest uniqueness/versioning migration;
+- artifact-manifest versioning or supersession migration;
 - standalone `ReviewEvent` contract;
 - repository skeleton;
 - repository implementation;

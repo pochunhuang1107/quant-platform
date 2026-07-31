@@ -17,6 +17,7 @@ MIGRATION_PATH = (
 LEDGER_ANCHOR_REVISION = "0002_ledger_anchor_tables"
 ARTIFACT_REVISION = "0003_artifact_tables"
 RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
+ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION = "0005_artifact_run_identity"
 
 APPROVED_TABLES = {
     "run_artifact_manifests",
@@ -104,7 +105,7 @@ def test_alembic_script_directory_has_single_artifact_table_head() -> None:
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == [RESEARCH_REVIEW_REVISION]
+    assert script.get_heads() == [ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION]
 
     artifact_revision = script.get_revision(ARTIFACT_REVISION)
     assert artifact_revision is not None
@@ -113,6 +114,12 @@ def test_alembic_script_directory_has_single_artifact_table_head() -> None:
     research_review_revision = script.get_revision(RESEARCH_REVIEW_REVISION)
     assert research_review_revision is not None
     assert research_review_revision.down_revision == ARTIFACT_REVISION
+
+    artifact_manifest_run_identity = script.get_revision(
+        ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION
+    )
+    assert artifact_manifest_run_identity is not None
+    assert artifact_manifest_run_identity.down_revision == RESEARCH_REVIEW_REVISION
 
 
 def test_artifact_migration_upgrade_scope(monkeypatch: Any) -> None:

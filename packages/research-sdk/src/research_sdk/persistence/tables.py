@@ -238,12 +238,10 @@ run_artifact_manifests = Table(
     ),
     UniqueConstraint(
         "run_id",
-        "contract_hash",
-        name="uq_run_artifact_manifests_run_id_contract_hash",
+        name="uq_run_artifact_manifests_run_id",
     ),
 )
 
-Index("ix_run_artifact_manifests_run_id", run_artifact_manifests.c.run_id)
 Index(
     "ix_run_artifact_manifests_experiment_id_created_at",
     run_artifact_manifests.c.experiment_id,
