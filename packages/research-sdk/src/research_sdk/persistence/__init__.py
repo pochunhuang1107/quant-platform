@@ -1,5 +1,8 @@
 """Persistence setup primitives for the research SDK."""
 
+from research_sdk.persistence.constraint_translation import (
+    translate_constraint_violation,
+)
 from research_sdk.persistence.database import get_database_url
 from research_sdk.persistence.errors import (
     AggregateIntegrityError,
@@ -80,4 +83,5 @@ __all__ = [
     "research_note_to_row",
     "review_metadata_to_row",
     "run_artifact_manifest_to_rows",
+    "translate_constraint_violation",
 ]
