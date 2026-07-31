@@ -99,6 +99,14 @@ execution, `ON CONFLICT` behavior, data cleanup, contract changes, generated
 schema changes, dependency changes, workflow changes, Docker Compose changes,
 or application/backtest integration.
 
+PR 27 adds the pure persistence result/disposition interface gate. It defines
+successful write result value objects for `CREATED` and `REPLAYED` outcomes and
+updates repository protocol return types, but it does not change migrations,
+tables, SQLAlchemy metadata, constraints, DB services, live migration behavior,
+repository implementations, SQL execution, `ON CONFLICT` behavior, transaction
+behavior, live insert/replay/conflict tests, dependencies, workflows, Docker
+Compose, or application/backtest integration.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -402,10 +410,11 @@ canonical hash match. The same identity with a different hash rejects.
 `review_events` duplicate IDs reject until a standalone hashable `ReviewEvent`
 contract exists. As of PR 26, artifact-manifest `run_id` uniqueness is enforced
 by the database, resolving the PR 25 artifact identity schema blocker.
-Artifact-manifest execution still remains blocked on result/disposition
-modeling, domain error taxonomy, targeted `ON CONFLICT` statement design,
-repository skeleton and implementation, aggregate replay/integrity tests, live
-conflict tests, and application/backtest integration.
+As of PR 27, successful write result/disposition modeling is implemented as
+pure value objects. Artifact-manifest execution still remains blocked on domain
+error taxonomy, targeted `ON CONFLICT` statement design, repository skeleton
+and implementation, aggregate replay/integrity tests, live
+insert/replay/conflict tests, and application/backtest integration.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -617,16 +626,18 @@ This sequence is partially implemented and current through PR 25:
    - same logical identity plus different canonical hash rejects;
    - `review_events` duplicate IDs reject until a standalone hashable
      `ReviewEvent` contract exists;
-   - artifact-manifest execution remains blocked until `run_id` uniqueness or
-     explicit version/supersession fields are approved;
+   - artifact-manifest `run_id` uniqueness is enforced as of PR 26;
+   - artifact-manifest versioning and supersession remain unsupported and
+     require separate approval before introduction;
    - insert execution, `ON CONFLICT` code, repository skeletons and
-     implementations, live conflict tests, result model code, and error
-     taxonomy code remain deferred.
+     implementations, aggregate replay/integrity logic, live
+     insert/replay/conflict tests, application integration, and error taxonomy
+     code remain deferred.
 18. Add stable non-blocking cross-contract foreign keys later where appropriate.
 19. Add contract fixture persistence tests later.
 20. Add repository/write-path code only in a later PR after semantics, conflict
-   behavior, schema requirements, result/disposition behavior, error taxonomy,
-   and test harness design are approved.
+   behavior, schema requirements, error taxonomy, and test harness design are
+   approved.
 21. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
@@ -694,7 +705,12 @@ PR 26 adds only the artifact-manifest run identity migration and matching
 metadata/catalog documentation and tests; it changes no contracts, generated
 schemas, mappers, hashing, protocols, statements, dependencies, workflows,
 Docker Compose configuration, repository implementation, insert execution, or
-application integration.
+application integration. PR 27 adds only pure persistence result/disposition
+types, protocol return-type updates, tests, and documentation; it changes no
+migrations, table metadata, constraints, DB services, live migration behavior,
+contracts, generated schemas, dependencies, workflows, Docker Compose
+configuration, repository implementation, insert execution, or application
+integration.
 
 Add DB model definitions only if intentionally scoped. Keep the DB layer
 separate from backtest execution. Add a local Postgres/devcontainer story later
@@ -708,9 +724,8 @@ row mapping helpers only shape validated data into projected rows. The
 statement builders only turn those rows into non-executing SQLAlchemy Core
 `Insert` objects for future repositories to execute deliberately. Repository
 execution remains intentionally blocked until idempotency, duplicate handling,
-transaction behavior, correction semantics, artifact-manifest uniqueness or
-versioning, result/disposition behavior, error taxonomy, and the live DB test
-harness are approved.
+transaction behavior, correction semantics, artifact-manifest versioning where
+needed, error taxonomy, and the live DB test harness are approved.
 
 The PR 21 live Postgres harness keeps write-path execution deferred. The live
 test is local opt-in and migration-only: it runs Alembic `upgrade head` against
@@ -745,13 +760,14 @@ localhost for the existing URL safety helper, and runs only
 tooling CI job remains unchanged and does not depend on Postgres. The CI
 migration smoke remains Alembic upgrade-head and catalog-inspection only.
 
-After PR 26, the artifact-manifest identity schema blocker is resolved. The
-next expansion gates remain result/disposition model code, domain error
-taxonomy code, targeted `ON CONFLICT` statement design, repository skeleton and
-implementation, aggregate replay/integrity tests, live conflict tests,
-application/backtest integration, and SQLite persistence policy if it is ever
-reconsidered. Each gate requires separate approval before it changes code,
-tests, dependencies, workflows, infrastructure, or migrations.
+After PR 27, the artifact-manifest identity schema blocker is resolved and the
+successful-write result vocabulary exists. The next expansion gates remain
+domain error taxonomy code, targeted `ON CONFLICT` statement design, repository
+skeleton and implementation, aggregate replay/integrity tests, live
+insert/replay/conflict tests, application/backtest integration, and SQLite
+persistence policy if it is ever reconsidered. Each gate requires separate
+approval before it changes code, tests, dependencies, workflows,
+infrastructure, or migrations.
 
 ## Future DB Test Strategy
 

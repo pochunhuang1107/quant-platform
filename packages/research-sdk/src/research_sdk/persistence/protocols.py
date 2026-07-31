@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from research_sdk.contracts import (
@@ -14,15 +12,10 @@ from research_sdk.contracts import (
     RunArtifactManifest,
 )
 from research_sdk.persistence.mappers import ReviewSubjectType
-
-
-@dataclass(frozen=True)
-class PersistedRecordMetadata:
-    """Minimal result returned by future repository implementations."""
-
-    table_name: str
-    primary_key: Mapping[str, str]
-    contract_hash: str | None = None
+from research_sdk.persistence.results import (
+    PersistedRecordMetadata,
+    PersistenceWriteResult,
+)
 
 
 @runtime_checkable
@@ -32,24 +25,24 @@ class ExperimentLedgerRepository(Protocol):
     def record_experiment_run(
         self,
         run: ExperimentRunRecord,
-    ) -> PersistedRecordMetadata: ...
+    ) -> PersistenceWriteResult: ...
 
     def record_data_snapshot_manifest(
         self,
         snapshot: DataSnapshotManifest,
-    ) -> PersistedRecordMetadata: ...
+    ) -> PersistenceWriteResult: ...
 
     def record_run_artifact_manifest(
         self,
         *,
         manifest_id: str,
         manifest: RunArtifactManifest,
-    ) -> PersistedRecordMetadata: ...
+    ) -> PersistenceWriteResult: ...
 
     def record_research_note(
         self,
         note: ResearchNote,
-    ) -> PersistedRecordMetadata: ...
+    ) -> PersistenceWriteResult: ...
 
     def append_review_event(
         self,
@@ -58,10 +51,11 @@ class ExperimentLedgerRepository(Protocol):
         subject_type: ReviewSubjectType | str,
         subject_id: str,
         review: ReviewMetadata,
-    ) -> PersistedRecordMetadata: ...
+    ) -> PersistenceWriteResult: ...
 
 
 __all__ = [
     "ExperimentLedgerRepository",
     "PersistedRecordMetadata",
+    "PersistenceWriteResult",
 ]

@@ -61,6 +61,15 @@ It does not add or change dependencies, lockfiles, package code, tests,
 migrations, Docker Compose configuration, repository code, statement execution,
 or application runtime services.
 
+PR 27 adds pure persistence result/disposition value objects and updates
+repository protocol return types. See
+[Persistence Repository Plan](persistence-repository-plan.md) for the
+authoritative result semantics. These result types do not add or change
+dependencies, lockfiles, migrations, table metadata, Docker Compose
+configuration, DB services, repository code, statement execution, inserts,
+replay lookups, conflict handling, transaction behavior, or application runtime
+services.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -210,8 +219,10 @@ tests, or live Postgres tests.
 ## Persistence Repository Protocol Boundary
 
 PR 17 adds the protocol boundary after row mapping. It introduces an aggregate
-`ExperimentLedgerRepository` protocol and `PersistedRecordMetadata` result type
-for future ledger write repositories.
+`ExperimentLedgerRepository` protocol and `PersistedRecordMetadata` durable
+record metadata for future ledger write repositories. PR 27 adds the
+`PersistenceWriteResult` wrapper and successful `PersistenceDisposition`
+vocabulary.
 
 This protocol step still does not add repository implementations, SQLAlchemy
 insert builders, DB write paths, sessions, unit-of-work abstractions, DB driver
@@ -258,11 +269,12 @@ IO, and artifact `content_hash` verification.
 
 PR 25 documents the policy for future idempotent replay, duplicate rejection,
 conflict handling, transaction ownership, result/disposition requirements, and
-error mapping. The policy remains documentation-only. Live insert/conflict tests
-remain deferred until policy, schema requirements, result/disposition model, and
-error mapping are separately approved for implementation. Artifact-manifest
-execution is blocked until either `run_id` uniqueness or explicit
-version/supersession behavior is approved.
+error mapping. The policy remains documentation-only. PR 27 adds the pure
+result/disposition value objects without repository execution. Live
+insert/replay/conflict tests remain deferred until policy, schema requirements,
+error mapping, and repository execution are separately approved for
+implementation. Artifact-manifest execution is blocked until the remaining
+execution gates are approved.
 
 ## Live Postgres Test Harness Boundary
 
@@ -637,9 +649,10 @@ Before idempotency/`ON CONFLICT` behavior:
 - Treat PR 26 artifact-manifest `run_id` uniqueness as the approved database
   identity foundation.
 - Approve any artifact-manifest version/supersession behavior separately.
-- Approve result/disposition model code.
+- Treat PR 27 result/disposition value objects as the approved successful-write
+  result vocabulary.
 - Approve error taxonomy and conflict mapping code.
-- Approve live insert/conflict tests separately.
+- Approve live insert/replay/conflict tests separately.
 - Avoid silent overwrites.
 
 Before any backtest/FastAPI integration:
@@ -703,10 +716,12 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 25, future persistence PRs should keep table design, constraints,
-indexes, semantics, and tests reviewable. They should still avoid repository
-implementations, DB write paths, API endpoints, backtest integration, artifact
-IO, data ingestion, broker integration, live trading, and paper trading
-execution unless separately approved. Live insert/conflict tests remain deferred
-until policy, schema requirements, result/disposition model, and error mapping
-are separately approved.
+After PR 27, future persistence PRs should keep table design, constraints,
+indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
+migration-only; result types do not cause inserts, replay lookups, conflict
+handling, transaction behavior, or repository execution. Future PRs should still
+avoid repository implementations, DB write paths, API endpoints, backtest
+integration, artifact IO, data ingestion, broker integration, live trading, and
+paper trading execution unless separately approved. Live insert/replay/conflict
+tests remain deferred until error mapping and repository execution are
+separately approved.

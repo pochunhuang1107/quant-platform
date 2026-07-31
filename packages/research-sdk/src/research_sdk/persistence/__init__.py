@@ -16,9 +16,11 @@ from research_sdk.persistence.mappers import (
     run_artifact_manifest_to_rows,
 )
 from research_sdk.persistence.metadata import metadata
-from research_sdk.persistence.protocols import (
-    ExperimentLedgerRepository,
+from research_sdk.persistence.protocols import ExperimentLedgerRepository
+from research_sdk.persistence.results import (
     PersistedRecordMetadata,
+    PersistenceDisposition,
+    PersistenceWriteResult,
 )
 from research_sdk.persistence.statements import (
     ArtifactManifestInsertStatements,
@@ -40,6 +42,8 @@ __all__ = [
     "ExperimentLedgerRepository",
     "LEDGER_ANCHOR_TABLES",
     "PersistedRecordMetadata",
+    "PersistenceDisposition",
+    "PersistenceWriteResult",
     "ReviewSubjectType",
     "build_data_snapshot_manifest_insert",
     "build_experiment_run_insert",
