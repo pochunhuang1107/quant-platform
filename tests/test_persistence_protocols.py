@@ -20,10 +20,18 @@ from research_sdk.persistence import (
 from research_sdk.persistence import (
     PersistedRecordMetadata as ExportedPersistedRecordMetadata,
 )
+from research_sdk.persistence import (
+    PersistenceDisposition as ExportedPersistenceDisposition,
+)
+from research_sdk.persistence import (
+    PersistenceWriteResult as ExportedPersistenceWriteResult,
+)
 from research_sdk.persistence.mappers import ReviewSubjectType
-from research_sdk.persistence.protocols import (
-    ExperimentLedgerRepository,
+from research_sdk.persistence.protocols import ExperimentLedgerRepository
+from research_sdk.persistence.results import (
     PersistedRecordMetadata,
+    PersistenceDisposition,
+    PersistenceWriteResult,
 )
 
 EXPECTED_PROTOCOL_METHODS = {
@@ -39,21 +47,27 @@ class FakeExperimentLedgerRepository:
     def record_experiment_run(
         self,
         run: ExperimentRunRecord,
-    ) -> PersistedRecordMetadata:
-        return PersistedRecordMetadata(
-            table_name="experiment_runs",
-            primary_key={"run_id": run.run_id},
-            contract_hash="0" * 64,
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="experiment_runs",
+                primary_key={"run_id": run.run_id},
+                contract_hash="0" * 64,
+            ),
         )
 
     def record_data_snapshot_manifest(
         self,
         snapshot: DataSnapshotManifest,
-    ) -> PersistedRecordMetadata:
-        return PersistedRecordMetadata(
-            table_name="data_snapshot_manifests",
-            primary_key={"snapshot_id": snapshot.snapshot_id},
-            contract_hash="1" * 64,
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="data_snapshot_manifests",
+                primary_key={"snapshot_id": snapshot.snapshot_id},
+                contract_hash="1" * 64,
+            ),
         )
 
     def record_run_artifact_manifest(
@@ -61,21 +75,28 @@ class FakeExperimentLedgerRepository:
         *,
         manifest_id: str,
         manifest: RunArtifactManifest,
-    ) -> PersistedRecordMetadata:
-        return PersistedRecordMetadata(
-            table_name="run_artifact_manifests",
-            primary_key={"manifest_id": manifest_id},
-            contract_hash="2" * 64,
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="run_artifact_manifests",
+                primary_key={"manifest_id": manifest_id},
+                contract_hash="2" * 64,
+            ),
+            aggregate_entry_count=len(manifest.artifacts),
         )
 
     def record_research_note(
         self,
         note: ResearchNote,
-    ) -> PersistedRecordMetadata:
-        return PersistedRecordMetadata(
-            table_name="research_notes",
-            primary_key={"note_id": note.note_id},
-            contract_hash="3" * 64,
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="research_notes",
+                primary_key={"note_id": note.note_id},
+                contract_hash="3" * 64,
+            ),
         )
 
     def append_review_event(
@@ -85,20 +106,26 @@ class FakeExperimentLedgerRepository:
         subject_type: ReviewSubjectType | str,
         subject_id: str,
         review: ReviewMetadata,
-    ) -> PersistedRecordMetadata:
-        return PersistedRecordMetadata(
-            table_name="review_events",
-            primary_key={"review_event_id": review_event_id},
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="review_events",
+                primary_key={"review_event_id": review_event_id},
+            ),
         )
 
 
 def test_protocols_import_from_protocol_module() -> None:
     assert protocols.PersistedRecordMetadata is PersistedRecordMetadata
+    assert protocols.PersistenceWriteResult is PersistenceWriteResult
     assert protocols.ExperimentLedgerRepository is ExperimentLedgerRepository
 
 
 def test_protocols_export_from_persistence_package() -> None:
     assert ExportedPersistedRecordMetadata is PersistedRecordMetadata
+    assert ExportedPersistenceDisposition is PersistenceDisposition
+    assert ExportedPersistenceWriteResult is PersistenceWriteResult
     assert ExportedExperimentLedgerRepository is ExperimentLedgerRepository
 
 
@@ -123,6 +150,7 @@ def test_persisted_record_metadata_accepts_minimal_fields() -> None:
     assert metadata.table_name == "experiment_runs"
     assert metadata.primary_key == {"run_id": "run-001"}
     assert metadata.contract_hash == "0" * 64
+    assert metadata.inserted_at is None
 
 
 def test_persisted_record_metadata_can_represent_review_events_without_hash() -> None:
@@ -154,6 +182,11 @@ def test_protocol_method_signatures_use_validated_contract_types() -> None:
     )
     assert _type_hints("record_research_note")["note"] is ResearchNote
     assert _type_hints("append_review_event")["review"] is ReviewMetadata
+
+
+def test_protocol_method_return_types_use_persistence_write_result() -> None:
+    for method_name in EXPECTED_PROTOCOL_METHODS:
+        assert _type_hints(method_name)["return"] is PersistenceWriteResult
 
 
 def test_artifact_manifest_signature_requires_keyword_only_fields() -> None:

@@ -73,14 +73,28 @@ fixture persistence, live insert/conflict tests, FastAPI/backtest integration,
 artifact or object-storage IO, data ingestion, broker integration, paper
 trading, live trading, credentials, or secrets.
 
-The immediate boundary is contract hashing:
+PR 27 adds the pure successful-write result vocabulary. It introduces
+`PersistenceDisposition`, `PersistedRecordMetadata`, and
+`PersistenceWriteResult` value objects and updates repository protocol return
+types to expose disposition explicitly. It adds no repository skeleton,
+repository implementation, SQLAlchemy execution, `ON CONFLICT` behavior,
+migration, table metadata change, transaction implementation, live insert test,
+artifact verification, error taxonomy, dependency, or application/backtest
+integration.
+
+The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
 - `contract_sha256(contract)`
 - `canonical_json_sha256(payload)`
+- `PersistenceDisposition`
+- `PersistedRecordMetadata`
+- `PersistenceWriteResult`
 
 These helpers define how validated contract payloads become stable
-`contract_hash` values for audit and idempotency metadata.
+`contract_hash` values for audit and idempotency metadata, and how future
+repository writes will report successful created or replayed outcomes without
+exposing raw payloads or database configuration.
 
 ## Validation Boundary
 
@@ -150,8 +164,10 @@ lifecycle transitions, or perform review/trading approval behavior.
 ## Repository Protocol Boundary
 
 PR 17 adds `research_sdk.persistence.protocols` with an aggregate
-`ExperimentLedgerRepository` protocol and `PersistedRecordMetadata` result
-dataclass. The protocol is explicit per current contract/table boundary:
+`ExperimentLedgerRepository` protocol. PR 27 updates the protocol return type
+to `PersistenceWriteResult`, while keeping `PersistedRecordMetadata` importable
+from the protocol module for compatibility. The protocol is explicit per
+current contract/table boundary:
 
 - `record_experiment_run(run)`;
 - `record_data_snapshot_manifest(snapshot)`;
@@ -176,11 +192,45 @@ because the current contract does not contain that ID. `review_event_id`,
 `ReviewMetadata` persistence because there is no standalone `ReviewEvent`
 contract.
 
-`PersistedRecordMetadata` contains `table_name`, `primary_key`, and optional
-`contract_hash`. `contract_hash` is optional because `review_events` currently
-has no `event_hash` or `contract_hash`. Database-generated `inserted_at`,
-created/idempotent flags, row counts, and artifact entry counts are deferred
-until a repository implementation and DB-returned state exist.
+`PersistedRecordMetadata` describes the durable record with `table_name`,
+`primary_key`, optional `contract_hash`, and optional `inserted_at`.
+`contract_hash` is optional because `review_events` currently has no
+`event_hash` or `contract_hash`. `inserted_at` is optional because no
+repository execution exists yet; future created results should use the
+DB-generated timestamp for the inserted row, and future replayed results should
+use the original timestamp of the stored row. Future DB timestamps are expected
+to be timezone-aware UTC. Python must never generate `inserted_at` for
+persistence results.
+
+`PersistenceWriteResult` describes the successful write-operation outcome with
+`disposition`, `record`, and optional `aggregate_entry_count`. It is the common
+return type for all repository protocol methods. It is not an error surface, a
+retry surface, a SQL execution surface, or a transaction surface.
+
+`PersistenceDisposition` has only `CREATED` and `REPLAYED`. `CREATED` means the
+operation inserted the durable row or aggregate. `REPLAYED` means the operation
+accepted an exact existing row or aggregate without inserting, updating, or
+mutating stored state. Conflict, rejection, and failure are not successful
+dispositions and must be represented by future domain exceptions rather than by
+successful results. Do not replace the disposition enum with a boolean such as
+`created`.
+
+`aggregate_entry_count` is meaningful for artifact-manifest aggregate results
+only. For `CREATED`, it represents the complete entry set persisted atomically
+with the manifest. For `REPLAYED`, it represents the complete stored entry set
+verified during replay. It must never mean attempted entry count, partial
+inserts, affected DB rows, SQLAlchemy rowcount, or a successfully processed
+subset. No aggregate verification or database IO is implemented by the result
+model.
+
+Under the current policy, `append_review_event()` may use the common
+`PersistenceWriteResult` return type, but future review-event implementations
+should return only `CREATED` until a standalone hashable `ReviewEvent` contract
+supports replay semantics.
+
+Result models expose only safe record identity and operation metadata. They do
+not expose raw contracts, raw reviews, secrets, credentials, database URLs,
+SQL, statement objects, exceptions, retry state, or raw payloads.
 
 The protocols do not import SQLAlchemy, Alembic, table metadata, database
 helpers, row mapper functions, hashing helpers, filesystem helpers, storage
@@ -280,10 +330,11 @@ persistence must not imply trading approval, risk authorization, paper trading
 approval, or live trading approval. A standalone `ReviewEvent` contract remains
 a future consideration.
 
-`PersistedRecordMetadata` remains minimal: `table_name`, `primary_key`, and
-optional `contract_hash`. Database-generated `inserted_at`, created flags,
-idempotent flags, affected row counts, artifact entry counts, and other
-DB-returned metadata remain deferred because they require real DB execution
+`PersistedRecordMetadata` remains a safe durable-record descriptor:
+`table_name`, `primary_key`, optional `contract_hash`, and optional
+DB-generated `inserted_at`. Created/replayed outcome and artifact aggregate
+entry count belong to `PersistenceWriteResult`. Affected row counts and other
+execution metadata remain deferred because they require real DB execution
 semantics and likely DB-returned state.
 
 Lifecycle transition enforcement remains future service-layer work.
@@ -414,9 +465,9 @@ the unique constraint provides the `run_id` index path. Duplicate existing
 deletion, or data rewriting is performed.
 
 Artifact-manifest execution is still not approved. Repository and insert
-execution remain blocked on result/disposition model code, domain error
-taxonomy code, targeted `ON CONFLICT` statement design, repository skeleton and
-implementation, aggregate replay/integrity tests, live conflict tests, and
+execution remain blocked on domain error taxonomy code, targeted `ON CONFLICT`
+statement design, repository skeleton and implementation, aggregate
+replay/integrity tests, live insert/replay/conflict tests, and
 application/backtest integration.
 
 ### Artifact Aggregate Atomicity
@@ -487,21 +538,34 @@ decision before execution.
 - Repositories do not create hidden nested transactions.
 - No unit-of-work abstraction exists yet.
 
-### Future Result and Disposition Requirements
+### Result and Disposition Model
 
-`PersistedRecordMetadata` remains unchanged in PR 25. Before execution is
-implemented, a result model or protocol-compatible extension must define:
+PR 27 implements the pure successful-write result model before repository
+execution. The model is a typed, frozen value-object boundary only:
 
-- disposition: `CREATED` or `REPLAYED`;
-- table/entity name;
-- primary/logical identity;
-- contract hash where applicable;
-- `inserted_at` if returned by the DB;
-- row count where meaningful;
-- aggregate entry count for artifact manifests.
+- `PersistenceDisposition.CREATED`;
+- `PersistenceDisposition.REPLAYED`;
+- `PersistedRecordMetadata(table_name, primary_key, contract_hash, inserted_at)`;
+- `PersistenceWriteResult(disposition, record, aggregate_entry_count)`.
 
-Result surfaces must not expose raw contracts, raw reviews, credentials, full DB
-URLs, or sensitive payloads. PR 25 does not implement this result model.
+Only successful outcomes belong in `PersistenceDisposition`. Conflicts,
+rejections, failures, duplicate review events, natural-key collisions, aggregate
+integrity failures, and unsupported artifact-manifest versioning are future
+domain exceptions, not successful result values.
+
+`PersistedRecordMetadata` describes the durable record. `PersistenceWriteResult`
+describes the outcome of a successful write operation. `inserted_at` is
+DB-generated and optional until execution exists: `CREATED` uses the inserted
+row timestamp, and `REPLAYED` uses the original stored-row timestamp. Python
+must not use `datetime.now()` or any other clock to populate this field.
+
+`aggregate_entry_count` represents the complete artifact entry set associated
+with an artifact-manifest aggregate. It does not represent attempted inserts,
+partial inserts, affected rows, SQLAlchemy rowcount, or a processed subset. No
+artifact aggregate verification is implemented in PR 27.
+
+PR 27 adds no repository execution, no SQL or `ON CONFLICT` behavior, no
+transaction implementation, and no live insert, replay, or conflict testing.
 
 ### Future Error Taxonomy
 
@@ -588,7 +652,6 @@ The following remain missing or unresolved before future execution:
 
 - `ReviewEvent` `schema_version` and `event_hash` for replay;
 - aggregate completeness enforcement;
-- future result/disposition model;
 - domain conflict/error mapping;
 - correction/supersession model;
 - possible future cross-contract foreign keys after ordering/backfill design.
@@ -612,7 +675,6 @@ Do not add these in PR 25:
 
 Separate approval is required before:
 
-- result/disposition model code;
 - error taxonomy code;
 - `ON CONFLICT` statement builders;
 - live insert tests;
