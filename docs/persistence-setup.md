@@ -80,6 +80,13 @@ statement execution, inserts, replay lookups, database-driver exception
 translation, retry behavior, logging behavior, transaction ownership, or
 application runtime services.
 
+PR 29 adds inert targeted PostgreSQL statement shapes to the existing statement
+builders. See [Persistence Repository Plan](persistence-repository-plan.md) for
+the authoritative statement semantics. The builders compile PostgreSQL SQL
+only; they do not execute SQL, introduce runtime insert/replay/conflict
+behavior, own connections or transactions, translate constraint exceptions, or
+change local Compose and CI Postgres migration-only behavior.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -246,6 +253,12 @@ PR 18 adds SQLAlchemy Core insert statement builders after the protocol
 boundary. These builders accept validated contracts, call the existing row
 mappers, and bind mapper-produced rows to the current SQLAlchemy Core tables.
 They return inert `Insert` objects only.
+
+PR 29 upgrades those existing builders to compile the approved PostgreSQL
+statement shapes: targeted primary-key `ON CONFLICT DO NOTHING RETURNING` for
+hash-backed replay candidates, strict artifact-entry inserts, and strict
+review-event inserts with safe `RETURNING`. These statements remain
+non-executing SQL objects.
 
 This statement-builder step still does not add repository implementations, DB
 write paths, statement execution, sessions, unit-of-work abstractions, DB
@@ -730,11 +743,12 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 28, future persistence PRs should keep table design, constraints,
+After PR 29, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
-migration-only; result and error types do not cause inserts, replay lookups,
-conflict handling, constraint inspection, database-driver exception
-translation, retry behavior, transaction behavior, or repository execution.
+migration-only; targeted statement shapes, result types, and error types do not
+cause inserts, replay lookups, conflict handling, constraint inspection,
+database-driver exception translation, retry behavior, transaction behavior, or
+repository execution.
 Future PRs should still avoid repository implementations, DB write paths, API
 endpoints, backtest integration, artifact IO, data ingestion, broker
 integration, live trading, and paper trading execution unless separately

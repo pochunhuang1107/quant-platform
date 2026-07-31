@@ -93,6 +93,18 @@ logging behavior, migration, table metadata change, transaction
 implementation, live DB behavior, dependency, or application/backtest
 integration.
 
+PR 29 upgrades the existing public statement builders to produce inert targeted
+PostgreSQL insert-attempt statement shapes for hash-backed top-level records.
+It keeps the public builder names unchanged and adds no parallel public
+builders. Replay-candidate statements target only named primary-key constraints
+with `ON CONFLICT ON CONSTRAINT <primary-key> DO NOTHING RETURNING ...`.
+Review events and artifact entries remain strict inserts. PR 29 still adds no
+SQL execution, repository implementation, existing-row lookup, hash comparison,
+constraint exception translation, transaction behavior, artifact entry
+verification, repair behavior, live DB insert tests, migrations, metadata
+changes, constraints, dependencies, workflows, Docker Compose changes, or
+application/backtest integration.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -285,10 +297,35 @@ Statement builders do not accept raw row dictionaries as public input and do
 not accept caller-provided `contract_hash` values. The mappers compute
 `contract_hash` from validated contracts where current tables store one.
 
+PR 29 changes only the compiled statement shape for the existing builders:
+
+| Builder / statement | Conflict target | `DO NOTHING` | `RETURNING` | Non-target conflicts |
+| --- | --- | --- | --- | --- |
+| experiment run | `pk_experiment_runs` | yes | `run_id`, `contract_hash`, `inserted_at` | unsuppressed |
+| data snapshot | `pk_data_snapshot_manifests` | yes | `snapshot_id`, `contract_hash`, `inserted_at` | unsuppressed |
+| research note | `pk_research_notes` | yes | `note_id`, `contract_hash`, `inserted_at` | unsuppressed |
+| artifact manifest | `pk_run_artifact_manifests` | yes | `manifest_id`, `contract_hash`, `inserted_at` | unsuppressed |
+| artifact entry | none | no | none | unsuppressed |
+| review event | none | no | `review_event_id`, `inserted_at` | unsuppressed |
+
+Replay-candidate top-level statements use PostgreSQL
+`ON CONFLICT ON CONSTRAINT <primary-key> DO NOTHING` and safe `RETURNING`
+columns only. They do not use untargeted `DO NOTHING`, `DO UPDATE`,
+`index_elements`, natural-key constraints, or secondary unique constraints.
+The artifact-manifest statement targets only `pk_run_artifact_manifests`; a
+collision on `uq_run_artifact_manifests_run_id` remains visible for future
+translation to `UnsupportedVersioningConflictError`.
+
+Review events remain strict inserts with `RETURNING review_event_id,
+inserted_at`. Duplicate `review_event_id` is not suppressed. Artifact entries
+remain strict inserts with no `RETURNING` and no independent replay behavior.
+
 The returned `Insert` objects are not write paths. They are inert SQLAlchemy
-objects until a future repository explicitly executes them. PR 18 does not
-choose idempotency, upsert, `ON CONFLICT`, duplicate handling, correction,
-append-only, lifecycle, or session/unit-of-work semantics.
+objects until a future repository explicitly executes them. Statements do not
+return or classify `CREATED` or `REPLAYED` by themselves, do not select
+existing rows, do not compare hashes, do not translate constraint exceptions,
+do not own transactions, do not verify artifact entries, and do not repair
+partial aggregate state.
 
 The statement module may import SQLAlchemy table metadata because it is the SQL
 binding boundary. It must not import repository protocols, database URL
@@ -484,11 +521,11 @@ the unique constraint provides the `run_id` index path. Duplicate existing
 `run_id` rows cause migration failure; no automatic cleanup, merge, repair,
 deletion, or data rewriting is performed.
 
-Artifact-manifest execution is still not approved. Repository and insert
-execution remain blocked on targeted `ON CONFLICT` statement design,
-database/constraint exception translation, repository skeleton and
-implementation, aggregate replay/integrity tests, live insert/replay/conflict
-tests, and application/backtest integration.
+Artifact-manifest execution is still not approved. PR 29 adds only the inert
+targeted manifest insert statement shape. Repository and insert execution
+remain blocked on database/constraint exception translation, repository
+skeleton and implementation, aggregate replay/integrity tests, live
+insert/replay/conflict tests, and application/backtest integration.
 
 ### Artifact Aggregate Atomicity
 
@@ -524,26 +561,27 @@ Future execution must avoid:
 
 ### Future PostgreSQL Execution Algorithm
 
-This algorithm is a future recommendation only and is not implemented in PR 25:
+This algorithm remains a future recommendation only. PR 29 implements the inert
+targeted statement shape, but it does not execute the statements or classify
+outcomes:
 
-1. Accept a validated contract through the repository protocol.
-2. Produce rows through existing mapper and statement-builder boundaries.
-3. Execute targeted `INSERT ... ON CONFLICT ON CONSTRAINT <primary-key> DO
-   NOTHING RETURNING ...`.
-4. If a row is returned, disposition is `CREATED`.
-5. If no row is returned, select the existing row by logical identity inside the
-   same caller-owned transaction.
-6. Compare the stored `contract_hash`.
-7. Same hash means `REPLAYED`.
-8. Different hash raises a contract-hash conflict.
-9. Translate non-primary unique constraint failures separately as natural-key
-   conflict or duplicate alias.
-10. Never use `ON CONFLICT DO UPDATE` in the initial write path.
+1. Execute the targeted top-level insert.
+2. A returned row means insertion occurred.
+3. A future repository builds `CREATED` from the returned safe metadata.
+4. No returned row means a targeted primary-key replay candidate.
+5. Select the existing row by logical identity inside the same caller-owned
+   transaction.
+6. Equal canonical hash means `REPLAYED`.
+7. Different canonical hash raises `ContractHashConflictError`.
+8. Non-target unique failure is translated by exact constraint identity.
+9. Artifact replay additionally verifies the complete stored entry projection.
+10. Missing, extra, or differing entries cause `AggregateIntegrityError`.
 
-This algorithm is not sufficient for one-manifest-per-run concurrency because
-the current schema lacks unique `run_id` enforcement on
-`run_artifact_manifests`. Artifact manifests require a schema/versioning
-decision before execution.
+The manifest-level `ON CONFLICT` clause alone does not make artifact aggregate
+persistence safe. Future entry insertion should occur only after a newly
+inserted manifest. Future replay must verify existing entries and must not
+insert missing entries, repair partial state, or silently accept mismatched
+aggregate projections.
 
 ### Transaction Ownership
 
@@ -758,7 +796,6 @@ Do not add these in PR 25:
 Separate approval is required before:
 
 - database/constraint exception translation;
-- `ON CONFLICT` statement builders;
 - live insert tests;
 - artifact-manifest versioning or supersession migration;
 - standalone `ReviewEvent` contract;
