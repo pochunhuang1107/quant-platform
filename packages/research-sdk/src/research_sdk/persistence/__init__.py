@@ -1,6 +1,16 @@
 """Persistence setup primitives for the research SDK."""
 
 from research_sdk.persistence.database import get_database_url
+from research_sdk.persistence.errors import (
+    AggregateIntegrityError,
+    ContractHashConflictError,
+    DuplicateReviewEventError,
+    NaturalKeyConflictError,
+    PersistenceConflictError,
+    PersistenceError,
+    PersistenceErrorContext,
+    UnsupportedVersioningConflictError,
+)
 from research_sdk.persistence.hashing import (
     canonical_contract_json,
     canonical_json_sha256,
@@ -37,14 +47,22 @@ from research_sdk.persistence.tables import (
 )
 
 __all__ = [
+    "AggregateIntegrityError",
     "ArtifactManifestInsertStatements",
     "ArtifactManifestRows",
+    "ContractHashConflictError",
+    "DuplicateReviewEventError",
     "ExperimentLedgerRepository",
     "LEDGER_ANCHOR_TABLES",
+    "NaturalKeyConflictError",
     "PersistedRecordMetadata",
+    "PersistenceConflictError",
     "PersistenceDisposition",
+    "PersistenceError",
+    "PersistenceErrorContext",
     "PersistenceWriteResult",
     "ReviewSubjectType",
+    "UnsupportedVersioningConflictError",
     "build_data_snapshot_manifest_insert",
     "build_experiment_run_insert",
     "build_research_note_insert",
