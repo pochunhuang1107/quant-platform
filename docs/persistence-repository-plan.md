@@ -144,6 +144,24 @@ translated exception raising or chaining, transaction creation, commit,
 rollback, close or dispose behavior, `Engine`, `Session`, DB URL handling,
 retry, logging, artifact aggregate writes, or aggregate verification.
 
+PR 33 adds the experiment-run-only repository execution vertical slice. It
+makes `record_experiment_run(run)` concrete while keeping
+`record_data_snapshot_manifest()`, `record_run_artifact_manifest()`,
+`record_research_note()`, and `append_review_event()` abstract, so the class
+remains non-instantiable as a complete production repository. The method
+requires an active caller-owned transaction before hashing, statement
+construction, or SQL execution. It reuses the existing experiment-run insert
+builder and a new experiment-run replay `SELECT` builder, executes through the
+injected `Connection`, builds `CREATED` only from `INSERT RETURNING`, and
+builds `REPLAYED` only when the stored `run_id` has the same canonical
+`contract_sha256()` value. Same `run_id` with a different canonical hash raises
+`ContractHashConflictError`; a suppressed replay candidate that cannot be
+loaded raises `ReplayLookupError`. The repository does not begin, commit, roll
+back, close, dispose, update, overwrite, retry, log, catch `IntegrityError`,
+call constraint translators, expose raw contracts, or expose SQL. Snapshot,
+note, review-event, and artifact aggregate execution, repository-boundary
+exception chaining, and concurrency tests remain future work.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -156,6 +174,7 @@ The persistence primitive boundaries now include:
 - `PersistenceError`
 - `PersistenceConflictError`
 - `ContractHashConflictError`
+- `ReplayLookupError`
 - `NaturalKeyConflictError`
 - `UnsupportedVersioningConflictError`
 - `DuplicateReviewEventError`
@@ -163,6 +182,7 @@ The persistence primitive boundaries now include:
 - `translate_constraint_violation(constraint_name=..., context=...)`
 - `translate_sqlalchemy_integrity_error(error=..., context=...)`
 - `SqlAlchemyExperimentLedgerRepository(connection)`
+- `build_experiment_run_replay_select(run_id=...)`
 
 These primitives define how validated contract payloads become stable
 `contract_hash` values for audit and idempotency metadata, how future
@@ -320,7 +340,7 @@ PR 32 adds `SqlAlchemyExperimentLedgerRepository` in
 `research_sdk.persistence.sqlalchemy_repository`. This is the first public
 SQLAlchemy-oriented repository type boundary, not a repository implementation.
 
-The skeleton constructor is:
+The constructor is:
 
 ```python
 SqlAlchemyExperimentLedgerRepository(connection: Connection)
@@ -328,9 +348,9 @@ SqlAlchemyExperimentLedgerRepository(connection: Connection)
 
 The constructor requires a single SQLAlchemy `Connection`, stores that exact
 object in protected `_connection`, and does not validate it by calling methods
-on it. The connection is stored for future subclasses but remains unused in PR
-32. There is no public connection property, setter, lifecycle method, factory,
-transaction argument, optional connection, `Engine`, `Session`, or DB URL.
+on it during construction. There is no public connection property, setter,
+lifecycle method, factory, transaction argument, optional connection, `Engine`,
+`Session`, or DB URL.
 
 The class declares the same five public repository methods as
 `ExperimentLedgerRepository`:
@@ -341,26 +361,31 @@ The class declares the same five public repository methods as
 - `record_research_note(note)`;
 - `append_review_event(review_event_id=..., subject_type=..., subject_id=..., review=...)`.
 
-Each method is abstract and has the same parameter names, ordering,
-keyword-only behavior, validated contract annotations,
-`ReviewSubjectType | str` behavior, and `PersistenceWriteResult` return
-annotation as the protocol. The class intentionally does not inherit
-`ExperimentLedgerRepository`; structural typing remains the boundary, and tests
-verify protocol conformance and signature parity.
+`record_experiment_run()` is concrete as of PR 33. The other four methods
+remain abstract. All five methods have the same parameter names, ordering,
+keyword-only behavior, validated contract annotations, `ReviewSubjectType |
+str` behavior, and `PersistenceWriteResult` return annotation as the protocol.
+The class intentionally does not inherit `ExperimentLedgerRepository`;
+structural typing remains the boundary, and tests verify protocol conformance
+and signature parity.
 
 `__slots__ = ("_connection",)` limits the production state surface to the
-protected connection reference. PR 32 does not add context-manager behavior,
-`execute`, `begin`, `commit`, `rollback`, `close`, `dispose`, `connect`, retry,
+protected connection reference. PR 33 adds a private active-transaction guard
+that calls only `self._connection.in_transaction()` and raises
+`RuntimeError("repository write requires an active caller-owned transaction")`
+when no caller-owned transaction is active. It does not add context-manager
+behavior, `begin`, `commit`, `rollback`, `close`, `dispose`, `connect`, retry,
 or logging methods.
 
 Repository skeleton complete does not mean repository implementation complete.
-PR 32 still executes no SQL, calls no statement builders, constructs no
-`PersistenceWriteResult`, classifies no `CREATED` or `REPLAYED` outcomes,
-performs no replay `SELECT`, compares no hashes, catches no database
-exceptions, calls no translators, raises or chains no translated exceptions,
-starts no transactions, commits nothing, rolls nothing back, and does not close
-or dispose caller-owned resources. Caller-owned transaction policy is unchanged,
-and artifact aggregate atomicity remains future work.
+After PR 33 only experiment-run execution exists. The remaining repository
+methods still execute no SQL, call no statement builders, construct no
+`PersistenceWriteResult`, classify no `CREATED` or `REPLAYED` outcomes, perform
+no replay lookup, compare no hashes, catch no database exceptions, call no
+translators, raise or chain no translated exceptions, start no transactions,
+commit nothing, roll nothing back, and do not close or dispose caller-owned
+resources. Caller-owned transaction policy is unchanged, and artifact aggregate
+atomicity remains future work.
 
 ## Statement Builder Boundary
 
@@ -372,6 +397,7 @@ dictionaries to the current SQLAlchemy Core table metadata.
 The public builders are explicit per current table boundary:
 
 - `build_experiment_run_insert(run)`;
+- `build_experiment_run_replay_select(run_id=...)`;
 - `build_data_snapshot_manifest_insert(snapshot)`;
 - `build_run_artifact_manifest_inserts(manifest_id=..., manifest=...)`;
 - `build_research_note_insert(note)`;

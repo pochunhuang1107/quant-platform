@@ -38,6 +38,8 @@ EXPECTED_REPOSITORY_METHODS = {
     "append_review_event",
 }
 
+EXPECTED_ABSTRACT_METHODS = EXPECTED_REPOSITORY_METHODS - {"record_experiment_run"}
+
 PROHIBITED_PUBLIC_OPERATIONAL_NAMES = {
     "connection",
     "engine",
@@ -54,10 +56,8 @@ PROHIBITED_PUBLIC_OPERATIONAL_NAMES = {
 
 PROHIBITED_IMPORT_MODULES = {
     "research_sdk.persistence.protocols",
-    "research_sdk.persistence.statements",
     "research_sdk.persistence.tables",
     "research_sdk.persistence.database",
-    "research_sdk.persistence.errors",
     "research_sdk.persistence.constraint_translation",
     "research_sdk.persistence.driver_exception_translation",
 }
@@ -71,7 +71,6 @@ PROHIBITED_OPERATIONAL_SYMBOLS = {
     "IntegrityError",
     "translate_sqlalchemy_integrity_error",
     "translate_constraint_violation",
-    "build_experiment_run_insert",
     "build_data_snapshot_manifest_insert",
     "build_run_artifact_manifest_inserts",
     "build_research_note_insert",
@@ -99,25 +98,9 @@ PROHIBITED_OPERATIONAL_SYMBOLS = {
     "live trading",
 }
 
-PROHIBITED_RESULT_CONSTRUCTION_NAMES = {
-    "PersistenceWriteResult",
-    "PersistedRecordMetadata",
-}
-
-PROHIBITED_DISPOSITION_ATTRIBUTES = {
-    "CREATED",
-    "REPLAYED",
-}
-
 
 class _ConcreteRepository(SqlAlchemyExperimentLedgerRepository):
     __slots__ = ()
-
-    def record_experiment_run(
-        self,
-        run: ExperimentRunRecord,
-    ) -> PersistenceWriteResult:
-        raise AssertionError(SCOPE_MESSAGE)
 
     def record_data_snapshot_manifest(
         self,
@@ -203,7 +186,12 @@ def test_sqlalchemy_repository_is_abstract_boundary() -> None:
 
     assert (
         SqlAlchemyExperimentLedgerRepository.__abstractmethods__
-        == EXPECTED_REPOSITORY_METHODS
+        == EXPECTED_ABSTRACT_METHODS
+    )
+    assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.record_experiment_run,
+        "__isabstractmethod__",
+        False,
     )
 
 
@@ -212,6 +200,7 @@ def test_constructor_stores_exact_injected_connection(
     connection_sentinel: Connection,
 ) -> None:
     assert repository._connection is connection_sentinel
+    assert type(repository).__init__ is SqlAlchemyExperimentLedgerRepository.__init__
     assert SqlAlchemyExperimentLedgerRepository.__slots__ == ("_connection",)
     assert _ConcreteRepository.__slots__ == ()
     assert not hasattr(repository, "__dict__")
@@ -254,17 +243,11 @@ def test_method_signatures_match_repository_protocol(method_name: str) -> None:
 
 def test_abstract_method_bodies_defensively_raise_not_implemented(
     repository: _ConcreteRepository,
-    experiment_run: ExperimentRunRecord,
     data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
     research_note: ResearchNote,
     review_metadata: ReviewMetadata,
 ) -> None:
-    with pytest.raises(NotImplementedError):
-        SqlAlchemyExperimentLedgerRepository.record_experiment_run(
-            repository,
-            experiment_run,
-        )
     with pytest.raises(NotImplementedError):
         SqlAlchemyExperimentLedgerRepository.record_data_snapshot_manifest(
             repository,
@@ -286,7 +269,7 @@ def test_abstract_method_bodies_defensively_raise_not_implemented(
             repository,
             review_event_id="review-event-20260709-001",
             subject_type=ReviewSubjectType.EXPERIMENT_RUN,
-            subject_id=experiment_run.run_id,
+            subject_id="run-20260709-001",
             review=review_metadata,
         )
 
@@ -299,8 +282,8 @@ def test_concrete_test_subclass_methods_raise_scope_assertion(
     research_note: ResearchNote,
     review_metadata: ReviewMetadata,
 ) -> None:
-    with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
-        repository.record_experiment_run(experiment_run)
+    assert "record_experiment_run" not in _ConcreteRepository.__dict__
+
     with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
         repository.record_data_snapshot_manifest(data_snapshot_manifest)
     with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
@@ -352,34 +335,45 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
     assigned_names = _assigned_names(tree)
     class_members = _class_member_names(tree, "SqlAlchemyExperimentLedgerRepository")
 
-    allowed_calls = {"abstractmethod", "NotImplementedError"}
+    allowed_calls = {
+        "ContractHashConflictError",
+        "PersistedRecordMetadata",
+        "PersistenceErrorContext",
+        "PersistenceWriteResult",
+        "ReplayLookupError",
+        "_experiment_run_write_result",
+        "abstractmethod",
+        "build_experiment_run_insert",
+        "build_experiment_run_replay_select",
+        "contract_sha256",
+        "execute",
+        "in_transaction",
+        "mappings",
+        "one_or_none",
+        "NotImplementedError",
+        "RuntimeError",
+    }
 
     assert PROHIBITED_OPERATIONAL_SYMBOLS.isdisjoint(called_names - allowed_calls)
     assert PROHIBITED_OPERATIONAL_SYMBOLS.isdisjoint(assigned_names)
     assert PROHIBITED_OPERATIONAL_SYMBOLS.isdisjoint(class_members)
 
 
-def test_source_constructs_no_persistence_results_or_dispositions() -> None:
+def test_source_constructs_only_approved_persistence_results_or_dispositions() -> None:
     tree = _production_ast()
     called_names = _called_names(tree)
     attribute_pairs = _attribute_pairs(tree)
 
-    assert PROHIBITED_RESULT_CONSTRUCTION_NAMES.isdisjoint(called_names)
     assert (
         "PersistenceDisposition",
         "CREATED",
-    ) not in attribute_pairs
+    ) in attribute_pairs
     assert (
         "PersistenceDisposition",
         "REPLAYED",
-    ) not in attribute_pairs
-    assert PROHIBITED_DISPOSITION_ATTRIBUTES.isdisjoint(
-        {
-            attribute
-            for value, attribute in attribute_pairs
-            if value == "PersistenceDisposition"
-        }
-    )
+    ) in attribute_pairs
+    assert "PersistenceWriteResult" in called_names
+    assert "PersistedRecordMetadata" in called_names
 
 
 def _assert_signature_shape_matches(

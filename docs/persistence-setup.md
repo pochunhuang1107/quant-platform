@@ -85,7 +85,7 @@ builders. See [Persistence Repository Plan](persistence-repository-plan.md) for
 the authoritative statement semantics. The builders compile PostgreSQL SQL
 only; they do not execute SQL, introduce runtime insert/replay/conflict
 behavior, own connections or transactions, translate constraint exceptions, or
-change local Compose and CI Postgres migration-only behavior.
+change the then-current local Compose and CI Postgres migration-only behavior.
 
 PR 30 adds pure exact-name constraint classification. See
 [Persistence Repository Plan](persistence-repository-plan.md) for the
@@ -93,15 +93,15 @@ authoritative mapping. The translator accepts a stable constraint-name string
 and safe persistence error context only. It does not connect to PostgreSQL,
 inspect database exceptions, inspect SQLSTATE or driver diagnostics, execute
 SQL, alter transaction ownership, or change local Compose and CI Postgres
-migration-only behavior.
+migration-only behavior before PR 33.
 
 PR 31 adds a narrow SQLAlchemy `IntegrityError` diagnostic adapter. See
 [Persistence Repository Plan](persistence-repository-plan.md) for the
 authoritative policy. The adapter receives an already-caught `IntegrityError`,
 executes no SQL, creates no `Engine`, `Connection`, `Session`, or transaction,
 performs no rollback, and raises or chains no exceptions. Local Compose and CI
-Postgres remain migration-only and are not insert, replay, conflict, or
-repository execution coverage.
+Postgres remained migration-only before PR 33 and were not yet insert, replay,
+conflict, or repository execution coverage.
 
 PR 32 adds the abstract SQLAlchemy repository skeleton. See
 [Persistence Repository Plan](persistence-repository-plan.md) for the
@@ -111,7 +111,8 @@ methods that match `ExperimentLedgerRepository`, but it does not use the
 connection. It does not connect to PostgreSQL, execute SQL, start or end
 transactions, commit, roll back, close, dispose, call statement builders,
 construct persistence results, catch exceptions, translate errors, retry, or
-log. Local Compose and CI Postgres remain migration-only.
+log. Local Compose and CI Postgres remained migration-only until the approved
+PR 33 experiment-run repository smoke expansion.
 
 ## Alembic Layout
 
@@ -340,6 +341,19 @@ catch or translate exceptions, retry, log, or verify artifact aggregates. It
 does not change local Compose or CI Postgres behavior; both remain
 migration-only.
 
+PR 33 adds the experiment-run-only repository execution vertical slice. It
+keeps the repository class abstract overall, makes only
+`record_experiment_run()` concrete, requires an active caller-owned transaction,
+uses the existing insert builder and new replay `SELECT` builder, returns
+DB-generated `inserted_at` values for `CREATED` and `REPLAYED`, raises
+`ContractHashConflictError` for same `run_id` with a different canonical hash,
+and raises `ReplayLookupError` if a suppressed replay candidate cannot be
+loaded. It adds live disposable PostgreSQL repository tests and expands the
+existing CI Postgres job to run both migration and experiment-run repository
+smoke tests. It does not add dependencies, migrations, tables, metadata,
+constraints, contracts, schemas, Docker Compose changes, application
+integration, broker integration, paper trading, or live trading.
+
 ## Live Postgres Test Harness Boundary
 
 PR 20 documented the boundary before executable live DB tests. PR 21 implements
@@ -455,8 +469,9 @@ harness.
 This Compose file is optional local infrastructure only. It is not a project
 runtime, app stack, CI service, production DB, shared DB, cloud DB, vendor DB,
 or broker-related service. It does not run migrations automatically, run app
-code, run repository writes, enable insert execution, enable statement builder
-execution, or enable paper/live trading.
+code, enable application integration, or enable paper/live trading. As of PR
+33, it may be used for the approved experiment-run repository live smoke test
+against a disposable local test database.
 
 The Compose service uses `postgres:17.10`, creates the local database
 `quant_platform_test`, and creates the local user `quant_test` with password
@@ -479,6 +494,16 @@ Run the existing local opt-in migration smoke test:
 
 ```bash
 QUANT_RUN_LIVE_DB_TESTS=1 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' python -m uv run pytest -m live_db tests/test_live_postgres_migrations.py
+```
+
+Run the combined local opt-in persistence smoke tests:
+
+```bash
+QUANT_RUN_LIVE_DB_TESTS=1 \
+QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' \
+python -m uv run pytest -m live_db \
+  tests/test_live_postgres_migrations.py \
+  tests/test_live_postgres_experiment_run_repository.py
 ```
 
 Use the `python -m uv` form because `uv` may not be on `PATH`.
@@ -581,11 +606,39 @@ The live migration test does not check:
 - Experiment run writing from backtests.
 - Broker, paper trading, or live trading.
 
+## Local Live Postgres Experiment-Run Repository Smoke
+
+PR 33 adds a second live DB test file:
+`tests/test_live_postgres_experiment_run_repository.py`.
+
+The repository smoke test uses the same disposable database safety policy as
+the migration smoke test. It requires `QUANT_RUN_LIVE_DB_TESTS=1`,
+`QUANT_TEST_DATABASE_URL`, a safe local PostgreSQL URL, and Alembic
+`upgrade head` before repository assertions run. It uses explicit
+caller-owned SQLAlchemy transactions and rolls back inserted experiment-run
+rows for cleanup. It must not be pointed at a production, shared, vendor,
+cloud, or externally hosted database.
+
+The test covers only `record_experiment_run()`:
+
+- active caller-owned transaction enforcement without SQLAlchemy autobegin;
+- `CREATED` from PostgreSQL `INSERT RETURNING`;
+- exact replay lookup and `REPLAYED` for the same `run_id` and canonical hash;
+- `ContractHashConflictError` for the same `run_id` with a different hash;
+- caller-owned rollback cleanup.
+
+The test does not cover data snapshots, research notes, review events, artifact
+manifests, artifact entries, aggregate verification, concurrency, application
+integration, backtest execution, broker behavior, paper trading, or live
+trading.
+
 ## CI Postgres Migration Smoke
 
-PR 24 adds a separate GitHub Actions job named `postgres-migrations` with the
-display name `Postgres migration smoke`. This job is isolated from the existing
-fast `tooling` job and does not make normal unit CI depend on Postgres.
+PR 24 adds a separate GitHub Actions job named `postgres-migrations`. PR 33
+renames its display name to `Postgres persistence smoke` and expands the test
+command to include the experiment-run repository smoke. This job is isolated
+from the existing fast `tooling` job and does not make normal unit CI depend on
+Postgres.
 
 CI uses a GitHub Actions service container, not Docker Compose. Docker Compose
 remains optional local infrastructure only. The CI service uses the same
@@ -606,28 +659,27 @@ not echo the full test URL or credentials. The hard-coded test credentials are
 acceptable only because the database is an isolated disposable service
 container created for the job.
 
-The CI job runs only:
+The CI job runs:
 
 ```bash
-uv run pytest -m live_db tests/test_live_postgres_migrations.py
+uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py
 ```
 
 It does not rerun the full test suite, linting, type checking, or schema export
 checks. Those remain owned by the existing `tooling` job. Both local Compose
-and CI use the same migration-only test path: Alembic `upgrade head` followed
-by PostgreSQL catalog inspection.
+and CI use the same safe disposable PostgreSQL path: Alembic `upgrade head`,
+catalog inspection, and the approved experiment-run repository insert/replay
+smoke. The expected added runtime is approximately 15-30 seconds and remains
+comfortably below the ten-minute job timeout.
 
-The CI migration smoke job does not check or execute:
+The CI persistence smoke job does not check or execute:
 
-- Data inserts.
-- Statement builder execution.
-- Repository writes.
-- Contract fixture inserts.
-- Replay logic.
-- Conflict handling.
-- Idempotency.
+- Data snapshot inserts.
+- Research note inserts.
+- Review event inserts.
+- Artifact manifest or artifact entry inserts.
 - `ON CONFLICT` or upsert behavior.
-- Duplicate behavior.
+- Natural-key duplicate behavior.
 - Correction or lifecycle behavior.
 - FastAPI/backtest integration.
 - Backtest execution or experiment-run writing from backtests.
@@ -686,7 +738,8 @@ After local Docker Compose:
 
 After CI Postgres:
 
-- Keep the CI database coverage migration-only and isolated.
+- Keep the CI database coverage isolated to migration and approved
+  experiment-run repository smoke tests.
 - Keep the existing `tooling` job independent from Postgres.
 - Avoid CI secrets and external database dependencies.
 - Do not run Docker Compose in CI.
@@ -758,6 +811,22 @@ production, shared, vendor, or cloud database. The test runs Alembic
 `upgrade head` and inspects catalog metadata only. It does not insert contract
 fixtures, execute statement builders, execute repositories, create or drop
 databases, create or drop schemas, or clean up user-provided database objects.
+
+Local opt-in live persistence smoke test command:
+
+```bash
+QUANT_RUN_LIVE_DB_TESTS=1 \
+QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' \
+python -m uv run pytest -m live_db \
+  tests/test_live_postgres_migrations.py \
+  tests/test_live_postgres_experiment_run_repository.py
+```
+
+This command requires a disposable local Postgres database and the same safe
+URL gate. It runs Alembic `upgrade head`, inspects migration catalog shape, and
+tests only the experiment-run repository vertical slice inside explicit
+caller-owned transactions with rollback cleanup. It does not use production
+databases or application integration.
 
 ## Validation Commands
 

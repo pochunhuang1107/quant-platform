@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import Column, MetaData, Table, Text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.dml import Insert
+from sqlalchemy.sql.selectable import Select
 
 import research_sdk.persistence.statements as statements
 from research_sdk.contracts import (
@@ -27,6 +28,9 @@ from research_sdk.persistence import (
 )
 from research_sdk.persistence import (
     build_experiment_run_insert as exported_build_experiment_run_insert,
+)
+from research_sdk.persistence import (
+    build_experiment_run_replay_select as exported_build_experiment_run_replay_select,
 )
 from research_sdk.persistence import (
     build_research_note_insert as exported_build_research_note_insert,
@@ -50,6 +54,7 @@ from research_sdk.persistence.statements import (
     _build_replay_candidate_insert,
     build_data_snapshot_manifest_insert,
     build_experiment_run_insert,
+    build_experiment_run_replay_select,
     build_research_note_insert,
     build_review_event_insert,
     build_run_artifact_manifest_inserts,
@@ -103,15 +108,15 @@ def review_metadata() -> ReviewMetadata:
     return ReviewMetadata.model_validate(load_fixture("review_metadata.json"))
 
 
-def compiled_sql(statement: Insert) -> str:
+def compiled_sql(statement: Insert | Select[Any]) -> str:
     return str(statement.compile(dialect=POSTGRESQL_DIALECT))
 
 
-def compiled_params(statement: Insert) -> dict[str, Any]:
+def compiled_params(statement: Insert | Select[Any]) -> dict[str, Any]:
     return statement.compile(dialect=POSTGRESQL_DIALECT).params
 
 
-def normalized_sql(statement: Insert) -> str:
+def normalized_sql(statement: Insert | Select[Any]) -> str:
     return " ".join(compiled_sql(statement).split())
 
 
@@ -177,6 +182,10 @@ def test_statement_builders_import_from_statement_module() -> None:
         ArtifactManifestInsertStatements
     )
     assert statements.build_experiment_run_insert is build_experiment_run_insert
+    assert statements.build_experiment_run_replay_select is (
+        build_experiment_run_replay_select
+    )
+    assert "build_experiment_run_replay_select" in statements.__all__
     assert statements.build_data_snapshot_manifest_insert is (
         build_data_snapshot_manifest_insert
     )
@@ -190,6 +199,9 @@ def test_statement_builders_import_from_statement_module() -> None:
 def test_statement_builders_export_from_persistence_package() -> None:
     assert ExportedArtifactManifestInsertStatements is ArtifactManifestInsertStatements
     assert exported_build_experiment_run_insert is build_experiment_run_insert
+    assert exported_build_experiment_run_replay_select is (
+        build_experiment_run_replay_select
+    )
     assert exported_build_data_snapshot_manifest_insert is (
         build_data_snapshot_manifest_insert
     )
@@ -319,6 +331,40 @@ def test_contract_builders_return_insert_objects_for_expected_tables(
             "review_events.inserted_at",
         ),
     )
+
+
+def test_experiment_run_replay_select_shape() -> None:
+    run_id = "run-replay-select-sentinel"
+
+    statement = build_experiment_run_replay_select(run_id=run_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "run_id",
+        "contract_hash",
+        "inserted_at",
+    )
+    assert tuple(statement.get_final_froms()) == (experiment_runs,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "experiment_runs.run_id = %(run_id_1)s"
+    )
+    assert sql.startswith(
+        "SELECT experiment_runs.run_id, experiment_runs.contract_hash, "
+        "experiment_runs.inserted_at FROM experiment_runs WHERE "
+        "experiment_runs.run_id = "
+    )
+    assert params == {"run_id_1": run_id}
+    assert run_id not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
 
 
 def test_contract_builder_params_match_mapper_outputs(
@@ -538,8 +584,6 @@ def test_statement_module_excludes_db_driver_session_engine_and_io_hooks() -> No
         "begin(",
         "commit(",
         "rollback(",
-        "select(",
-        "SELECT",
         "scalar",
         "fetchone",
         "fetchall",
