@@ -95,6 +95,14 @@ inspect database exceptions, inspect SQLSTATE or driver diagnostics, execute
 SQL, alter transaction ownership, or change local Compose and CI Postgres
 migration-only behavior.
 
+PR 31 adds a narrow SQLAlchemy `IntegrityError` diagnostic adapter. See
+[Persistence Repository Plan](persistence-repository-plan.md) for the
+authoritative policy. The adapter receives an already-caught `IntegrityError`,
+executes no SQL, creates no `Engine`, `Connection`, `Session`, or transaction,
+performs no rollback, and raises or chains no exceptions. Local Compose and CI
+Postgres remain migration-only and are not insert, replay, conflict, or
+repository execution coverage.
+
 ## Alembic Layout
 
 Alembic uses this layout:
@@ -305,12 +313,14 @@ result/disposition value objects without repository execution. PR 28 adds pure
 domain error/context types without repository execution, SQL execution,
 constraint inspection, SQLAlchemy/psycopg exception translation, retry
 behavior, logging behavior, or transaction ownership changes. PR 30 adds pure
-exact-name classification for approved constraint names only; it does not
-inspect database exceptions or execute SQL. Live insert/replay/conflict tests
-remain deferred until policy, schema requirements, SQLAlchemy/psycopg exception
-extraction, repository-boundary exception chaining, and repository execution
-are separately approved for implementation. Artifact-manifest execution is
-blocked until the remaining execution gates are approved.
+exact-name classification for approved constraint names only. PR 31 adds narrow
+SQLAlchemy `IntegrityError` diagnostic extraction for PostgreSQL unique
+violations only. These boundaries still do not execute SQL, catch exceptions at
+the repository boundary, raise translated errors, chain exceptions, perform
+rollback, or implement repository behavior. Live insert/replay/conflict tests
+remain deferred until repository-boundary exception chaining and repository
+execution are separately approved for implementation. Artifact-manifest
+execution is blocked until the remaining execution gates are approved.
 
 ## Live Postgres Test Harness Boundary
 
@@ -670,6 +680,9 @@ Before insert execution tests:
 - Define transaction ownership and rollback behavior.
 - Keep contract fixture inserts separate from repository semantics.
 - Keep artifact IO and content hash verification out of DB tests.
+- Treat the PR 31 adapter as classification of an already-caught exception
+  only; it does not approve repository exception catching or live conflict
+  tests.
 
 Before repository implementation:
 
@@ -753,15 +766,16 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 30, future persistence PRs should keep table design, constraints,
+After PR 31, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
-migration-only; targeted statement shapes, result types, error types, and pure
-constraint-name classification do not cause inserts, replay lookups, database
-exception inspection, database-driver exception translation, retry behavior,
-transaction behavior, or repository execution.
+migration-only; targeted statement shapes, result types, error types, pure
+constraint-name classification, and narrow SQLAlchemy `IntegrityError`
+diagnostic translation do not cause inserts, replay lookups, repository-boundary
+exception catching, translated exception chaining, retry behavior, transaction
+behavior, or repository execution.
 Future PRs should still avoid repository implementations, DB write paths, API
 endpoints, backtest integration, artifact IO, data ingestion, broker
 integration, live trading, and paper trading execution unless separately
 approved. Live insert/replay/conflict tests remain deferred until
-SQLAlchemy/psycopg exception extraction, repository-boundary exception
-chaining, and repository execution are separately approved.
+repository-boundary exception chaining and repository execution are separately
+approved.
