@@ -28,7 +28,7 @@ from research_sdk.persistence.sqlalchemy_repository import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "contracts"
-SCOPE_MESSAGE = "repository execution is outside PR 34 data-snapshot scope"
+SCOPE_MESSAGE = "repository execution is outside PR 35 research-note scope"
 
 EXPECTED_REPOSITORY_METHODS = {
     "record_experiment_run",
@@ -41,6 +41,7 @@ EXPECTED_REPOSITORY_METHODS = {
 EXPECTED_ABSTRACT_METHODS = EXPECTED_REPOSITORY_METHODS - {
     "record_experiment_run",
     "record_data_snapshot_manifest",
+    "record_research_note",
 }
 
 PROHIBITED_PUBLIC_OPERATIONAL_NAMES = {
@@ -75,7 +76,6 @@ PROHIBITED_OPERATIONAL_SYMBOLS = {
     "translate_sqlalchemy_integrity_error",
     "translate_constraint_violation",
     "build_run_artifact_manifest_inserts",
-    "build_research_note_insert",
     "build_review_event_insert",
     "execute",
     "select",
@@ -109,12 +109,6 @@ class _ConcreteRepository(SqlAlchemyExperimentLedgerRepository):
         *,
         manifest_id: str,
         manifest: RunArtifactManifest,
-    ) -> PersistenceWriteResult:
-        raise AssertionError(SCOPE_MESSAGE)
-
-    def record_research_note(
-        self,
-        note: ResearchNote,
     ) -> PersistenceWriteResult:
         raise AssertionError(SCOPE_MESSAGE)
 
@@ -250,9 +244,7 @@ def test_method_signatures_match_repository_protocol(method_name: str) -> None:
 
 def test_abstract_method_bodies_defensively_raise_not_implemented(
     repository: _ConcreteRepository,
-    data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
-    research_note: ResearchNote,
     review_metadata: ReviewMetadata,
 ) -> None:
     with pytest.raises(NotImplementedError):
@@ -260,11 +252,6 @@ def test_abstract_method_bodies_defensively_raise_not_implemented(
             repository,
             manifest_id="manifest-run-20260709-001",
             manifest=run_artifact_manifest,
-        )
-    with pytest.raises(NotImplementedError):
-        SqlAlchemyExperimentLedgerRepository.record_research_note(
-            repository,
-            research_note,
         )
     with pytest.raises(NotImplementedError):
         SqlAlchemyExperimentLedgerRepository.append_review_event(
@@ -286,14 +273,13 @@ def test_concrete_test_subclass_methods_raise_scope_assertion(
 ) -> None:
     assert "record_experiment_run" not in _ConcreteRepository.__dict__
     assert "record_data_snapshot_manifest" not in _ConcreteRepository.__dict__
+    assert "record_research_note" not in _ConcreteRepository.__dict__
 
     with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
         repository.record_run_artifact_manifest(
             manifest_id="manifest-run-20260709-001",
             manifest=run_artifact_manifest,
         )
-    with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
-        repository.record_research_note(research_note)
     with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
         repository.append_review_event(
             review_event_id="review-event-20260709-001",
@@ -348,6 +334,8 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
         "build_data_snapshot_manifest_replay_select",
         "build_experiment_run_insert",
         "build_experiment_run_replay_select",
+        "build_research_note_insert",
+        "build_research_note_replay_select",
         "contract_sha256",
         "execute",
         "in_transaction",

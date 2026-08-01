@@ -49,6 +49,7 @@ from research_sdk.persistence.statements import (
     build_experiment_run_insert,
     build_experiment_run_replay_select,
     build_research_note_insert,
+    build_research_note_replay_select,
     build_review_event_insert,
     build_run_artifact_manifest_inserts,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "build_experiment_run_insert",
     "build_experiment_run_replay_select",
     "build_research_note_insert",
+    "build_research_note_replay_select",
     "build_review_event_insert",
     "build_run_artifact_manifest_inserts",
     "canonical_contract_json",

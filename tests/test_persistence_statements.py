@@ -39,6 +39,9 @@ from research_sdk.persistence import (
     build_research_note_insert as exported_build_research_note_insert,
 )
 from research_sdk.persistence import (
+    build_research_note_replay_select as exported_build_research_note_replay_select,
+)
+from research_sdk.persistence import (
     build_review_event_insert as exported_build_review_event_insert,
 )
 from research_sdk.persistence import (
@@ -60,6 +63,7 @@ from research_sdk.persistence.statements import (
     build_experiment_run_insert,
     build_experiment_run_replay_select,
     build_research_note_insert,
+    build_research_note_replay_select,
     build_review_event_insert,
     build_run_artifact_manifest_inserts,
 )
@@ -201,6 +205,10 @@ def test_statement_builders_import_from_statement_module() -> None:
         build_run_artifact_manifest_inserts
     )
     assert statements.build_research_note_insert is build_research_note_insert
+    assert statements.build_research_note_replay_select is (
+        build_research_note_replay_select
+    )
+    assert "build_research_note_replay_select" in statements.__all__
     assert statements.build_review_event_insert is build_review_event_insert
 
 
@@ -220,6 +228,9 @@ def test_statement_builders_export_from_persistence_package() -> None:
         build_run_artifact_manifest_inserts
     )
     assert exported_build_research_note_insert is build_research_note_insert
+    assert exported_build_research_note_replay_select is (
+        build_research_note_replay_select
+    )
     assert exported_build_review_event_insert is build_review_event_insert
 
 
@@ -404,6 +415,40 @@ def test_data_snapshot_manifest_replay_select_shape() -> None:
     )
     assert params == {"snapshot_id_1": snapshot_id}
     assert snapshot_id not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_research_note_replay_select_shape() -> None:
+    note_id = "note-replay-select-sentinel"
+
+    statement = build_research_note_replay_select(note_id=note_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "note_id",
+        "contract_hash",
+        "inserted_at",
+    )
+    assert tuple(statement.get_final_froms()) == (research_notes,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "research_notes.note_id = %(note_id_1)s"
+    )
+    assert sql.startswith(
+        "SELECT research_notes.note_id, research_notes.contract_hash, "
+        "research_notes.inserted_at FROM research_notes WHERE "
+        "research_notes.note_id = "
+    )
+    assert params == {"note_id_1": note_id}
+    assert note_id not in sql
     assert "raw_contract" not in sql
     assert "SELECT *" not in sql
     assert " JOIN " not in sql

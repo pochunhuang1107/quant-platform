@@ -32,6 +32,8 @@ from research_sdk.persistence.statements import (
     build_data_snapshot_manifest_replay_select,
     build_experiment_run_insert,
     build_experiment_run_replay_select,
+    build_research_note_insert,
+    build_research_note_replay_select,
 )
 
 
@@ -170,12 +172,59 @@ class SqlAlchemyExperimentLedgerRepository(ABC):
     ) -> PersistenceWriteResult:
         raise NotImplementedError
 
-    @abstractmethod
     def record_research_note(
         self,
         note: ResearchNote,
     ) -> PersistenceWriteResult:
-        raise NotImplementedError
+        self._require_active_transaction()
+
+        result = self._connection.execute(build_research_note_insert(note))
+        returned = result.mappings().one_or_none()
+        if returned is not None:
+            return _hash_backed_write_result(
+                disposition=PersistenceDisposition.CREATED,
+                table_name="research_notes",
+                primary_key={"note_id": returned["note_id"]},
+                contract_hash=returned["contract_hash"],
+                inserted_at=returned["inserted_at"],
+            )
+
+        attempted_hash = contract_sha256(note)
+        replay_result = self._connection.execute(
+            build_research_note_replay_select(note_id=note.note_id)
+        )
+        stored = replay_result.mappings().one_or_none()
+        if stored is None:
+            raise ReplayLookupError(
+                PersistenceErrorContext(
+                    table_name="research_notes",
+                    operation="record_research_note",
+                    logical_identity={"note_id": note.note_id},
+                    constraint_name="pk_research_notes",
+                    attempted_hash_prefix=attempted_hash[:12],
+                )
+            )
+
+        stored_hash = stored["contract_hash"]
+        if stored_hash != attempted_hash:
+            raise ContractHashConflictError(
+                PersistenceErrorContext(
+                    table_name="research_notes",
+                    operation="record_research_note",
+                    logical_identity={"note_id": note.note_id},
+                    constraint_name="pk_research_notes",
+                    existing_hash_prefix=stored_hash[:12],
+                    attempted_hash_prefix=attempted_hash[:12],
+                )
+            )
+
+        return _hash_backed_write_result(
+            disposition=PersistenceDisposition.REPLAYED,
+            table_name="research_notes",
+            primary_key={"note_id": stored["note_id"]},
+            contract_hash=stored_hash,
+            inserted_at=stored["inserted_at"],
+        )
 
     @abstractmethod
     def append_review_event(
