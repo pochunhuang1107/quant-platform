@@ -162,6 +162,25 @@ call constraint translators, expose raw contracts, or expose SQL. Snapshot,
 note, review-event, and artifact aggregate execution, repository-boundary
 exception chaining, and concurrency tests remain future work.
 
+PR 34 adds the data-snapshot-only repository execution vertical slice. It makes
+`record_data_snapshot_manifest(snapshot)` concrete while
+`record_experiment_run(run)` remains concrete and
+`record_run_artifact_manifest()`, `record_research_note()`, and
+`append_review_event()` remain abstract, so the repository class remains
+abstract. The data-snapshot method reuses the active caller-owned transaction
+guard, executes the existing data-snapshot insert builder, builds `CREATED`
+from PostgreSQL `RETURNING`, performs a replay `SELECT` by `snapshot_id`,
+compares canonical hashes with `contract_sha256()`, returns `REPLAYED` only
+for exact `snapshot_id` and hash matches, raises `ContractHashConflictError`
+for the same `snapshot_id` with a different hash, and raises
+`ReplayLookupError` if a suppressed replay candidate cannot be loaded. It does
+not update, overwrite, repair, catch `IntegrityError`, call translators, or
+verify external datasets, filesystem paths, S3 objects, vendor APIs, parquet
+contents, checksums, row counts, file counts, sizes, availability times, or
+leakage assumptions. PR 34 also adds live disposable PostgreSQL coverage for
+the snapshot path and expands the existing CI persistence smoke job. Research
+note, review-event, and artifact aggregate execution remain future work.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -183,6 +202,7 @@ The persistence primitive boundaries now include:
 - `translate_sqlalchemy_integrity_error(error=..., context=...)`
 - `SqlAlchemyExperimentLedgerRepository(connection)`
 - `build_experiment_run_replay_select(run_id=...)`
+- `build_data_snapshot_manifest_replay_select(snapshot_id=...)`
 
 These primitives define how validated contract payloads become stable
 `contract_hash` values for audit and idempotency metadata, how future
@@ -361,8 +381,9 @@ The class declares the same five public repository methods as
 - `record_research_note(note)`;
 - `append_review_event(review_event_id=..., subject_type=..., subject_id=..., review=...)`.
 
-`record_experiment_run()` is concrete as of PR 33. The other four methods
-remain abstract. All five methods have the same parameter names, ordering,
+`record_experiment_run()` is concrete as of PR 33, and
+`record_data_snapshot_manifest()` is concrete as of PR 34. The other three
+methods remain abstract. All five methods have the same parameter names, ordering,
 keyword-only behavior, validated contract annotations, `ReviewSubjectType |
 str` behavior, and `PersistenceWriteResult` return annotation as the protocol.
 The class intentionally does not inherit `ExperimentLedgerRepository`;
@@ -378,14 +399,14 @@ behavior, `begin`, `commit`, `rollback`, `close`, `dispose`, `connect`, retry,
 or logging methods.
 
 Repository skeleton complete does not mean repository implementation complete.
-After PR 33 only experiment-run execution exists. The remaining repository
-methods still execute no SQL, call no statement builders, construct no
-`PersistenceWriteResult`, classify no `CREATED` or `REPLAYED` outcomes, perform
-no replay lookup, compare no hashes, catch no database exceptions, call no
-translators, raise or chain no translated exceptions, start no transactions,
-commit nothing, roll nothing back, and do not close or dispose caller-owned
-resources. Caller-owned transaction policy is unchanged, and artifact aggregate
-atomicity remains future work.
+After PR 34 only experiment-run and data-snapshot execution exist. The
+remaining repository methods still execute no SQL, call no statement builders,
+construct no `PersistenceWriteResult`, classify no `CREATED` or `REPLAYED`
+outcomes, perform no replay lookup, compare no hashes, catch no database
+exceptions, call no translators, raise or chain no translated exceptions, start
+no transactions, commit nothing, roll nothing back, and do not close or dispose
+caller-owned resources. Caller-owned transaction policy is unchanged, and
+artifact aggregate atomicity remains future work.
 
 ## Statement Builder Boundary
 
@@ -399,6 +420,7 @@ The public builders are explicit per current table boundary:
 - `build_experiment_run_insert(run)`;
 - `build_experiment_run_replay_select(run_id=...)`;
 - `build_data_snapshot_manifest_insert(snapshot)`;
+- `build_data_snapshot_manifest_replay_select(snapshot_id=...)`;
 - `build_run_artifact_manifest_inserts(manifest_id=..., manifest=...)`;
 - `build_research_note_insert(note)`;
 - `build_review_event_insert(review_event_id=..., subject_type=..., subject_id=..., review=...)`.

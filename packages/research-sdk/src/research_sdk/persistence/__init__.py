@@ -45,6 +45,7 @@ from research_sdk.persistence.sqlalchemy_repository import (
 from research_sdk.persistence.statements import (
     ArtifactManifestInsertStatements,
     build_data_snapshot_manifest_insert,
+    build_data_snapshot_manifest_replay_select,
     build_experiment_run_insert,
     build_experiment_run_replay_select,
     build_research_note_insert,
@@ -77,6 +78,7 @@ __all__ = [
     "SqlAlchemyExperimentLedgerRepository",
     "UnsupportedVersioningConflictError",
     "build_data_snapshot_manifest_insert",
+    "build_data_snapshot_manifest_replay_select",
     "build_experiment_run_insert",
     "build_experiment_run_replay_select",
     "build_research_note_insert",

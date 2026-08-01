@@ -192,6 +192,24 @@ metadata, constraints, indexes, contracts, generated schemas, dependencies,
 Docker Compose configuration, application/backtest integration, broker
 integration, paper trading, or live trading.
 
+PR 34 adds the data-snapshot-only repository execution vertical slice. It makes
+`record_data_snapshot_manifest(snapshot)` concrete, keeps
+`record_experiment_run(run)` concrete, and keeps artifact, research-note, and
+review-event repository methods abstract, so the class remains abstract. The
+data-snapshot method reuses the active caller-owned transaction guard, executes
+the existing targeted data-snapshot insert builder through `Connection.execute`,
+builds `CREATED` from PostgreSQL `RETURNING`, performs a replay `SELECT` by
+`snapshot_id`, compares the stored hash to `contract_sha256(snapshot)`, returns
+`REPLAYED` for an exact identity/hash match, raises
+`ContractHashConflictError` for the same `snapshot_id` with a different hash,
+and raises `ReplayLookupError` when a suppressed replay candidate cannot be
+loaded. PR 34 also adds a live disposable PostgreSQL data-snapshot repository
+test and expands the existing CI persistence smoke job to include it. It
+changes no migrations, tables, metadata, constraints, indexes, contracts,
+generated schemas, dependencies, Docker Compose configuration,
+application/backtest integration, broker integration, paper trading, or live
+trading.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -508,12 +526,16 @@ experiment-run-only repository execution is implemented with active transaction
 enforcement, `Connection.execute`, `CREATED` result construction, replay
 `SELECT`, canonical hash comparison, `REPLAYED` result construction,
 `ContractHashConflictError`, `ReplayLookupError`, live disposable PostgreSQL
-coverage, and CI persistence smoke coverage. Data snapshot, research-note,
-review-event, and artifact aggregate execution remain blocked on future
-repository implementation, repository-boundary exception catching, translated
-exception chaining where needed, natural-key conflict execution, concurrency
-tests, aggregate atomicity and integrity verification, and application/backtest
-integration.
+coverage, and CI persistence smoke coverage. As of PR 34, data-snapshot
+repository execution is also implemented with active transaction guard reuse,
+`Connection.execute` insert execution, `CREATED` result construction, snapshot
+replay `SELECT`, canonical hash comparison, `REPLAYED` result construction,
+snapshot hash conflict handling, missing replay-row invariant handling, live
+disposable PostgreSQL coverage, and CI persistence smoke expansion.
+Research-note implementation, review-event implementation, artifact aggregate
+implementation, natural-key execution, `IntegrityError` catching and chaining
+where needed, concurrency tests, artifact atomicity and verification, and
+application/backtest integration remain future work.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -649,7 +671,7 @@ PR 14 adds the research/review indexes:
 
 ## Planned Migration Sequence
 
-This sequence is partially implemented and current through PR 33:
+This sequence is partially implemented and current through PR 34:
 
 1. Add Alembic setup and the SQLAlchemy dependency in a dedicated setup PR.
    See [Persistence Setup](persistence-setup.md) for the minimal tooling,
@@ -798,12 +820,25 @@ This sequence is partially implemented and current through PR 33:
    - raise `ReplayLookupError` for a missing replay row invariant failure;
    - add live disposable PostgreSQL repository behavior tests;
    - expand the existing CI Postgres job to persistence smoke coverage.
-24. Add stable non-blocking cross-contract foreign keys later where appropriate.
-25. Add contract fixture persistence tests later for the remaining entities.
-26. Add repository/write-path code only in later PRs after semantics, conflict
+24. Add the data-snapshot-only repository execution vertical slice:
+   - require an active caller-owned transaction;
+   - execute the existing data-snapshot insert builder;
+   - construct `CREATED` from PostgreSQL `RETURNING`;
+   - add and use the exact data-snapshot replay `SELECT`;
+   - use `snapshot_id` as the replay identity;
+   - compare stored and attempted canonical hashes;
+   - construct `REPLAYED` only for exact hash matches;
+   - raise `ContractHashConflictError` for same `snapshot_id` with a different
+     hash;
+   - raise `ReplayLookupError` for a missing replay row invariant failure;
+   - add live disposable PostgreSQL repository behavior tests;
+   - expand the existing CI Postgres persistence smoke command.
+25. Add stable non-blocking cross-contract foreign keys later where appropriate.
+26. Add contract fixture persistence tests later for the remaining entities.
+27. Add repository/write-path code only in later PRs after semantics, conflict
    behavior, schema requirements, repository-boundary exception catching,
    translated exception chaining, and test harness design are approved.
-27. Require Pydantic contract validation before persistence.
+28. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -957,9 +992,10 @@ Postgres service, run FastAPI/backtest integration, or write experiment runs
 from backtests. Downgrade testing remains deferred.
 
 PR 23 adds optional local Docker Compose infrastructure for that harness. As of
-PR 33, the same disposable local Postgres service may also be used for the
-approved experiment-run repository smoke test. Both live paths remain double
-opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and `QUANT_TEST_DATABASE_URL`.
+PR 34, the same disposable local Postgres service may also be used for the
+approved experiment-run and data-snapshot repository smoke tests. Both live
+paths remain double opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and
+`QUANT_TEST_DATABASE_URL`.
 
 Before PR 24, the PR 23 Compose path was manually validated with Docker:
 `postgres:17.10` pulled successfully, the container started, the live migration
@@ -968,20 +1004,21 @@ container, network, and named volume so no persistent local test DB state
 remained.
 
 PR 24 adds CI Postgres only for migration validation. PR 33 expands that same
-job to persistence smoke coverage. The CI job uses a
+job to persistence smoke coverage, and PR 34 adds the data-snapshot repository
+smoke test to the same job. The CI job uses a
 GitHub Actions `postgres:17.10` service container with
 `quant_platform_test`/`quant_test` test-only values, maps the service to
 localhost for the existing URL safety helper, and runs the migration smoke test
-plus the experiment-run repository live test. The normal tooling CI job remains
-unchanged and does not depend on Postgres.
+plus the experiment-run and data-snapshot repository live tests. The normal
+tooling CI job remains unchanged and does not depend on Postgres.
 
-After PR 33, the artifact-manifest identity schema blocker is resolved, the
+After PR 34, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
 exists, targeted PostgreSQL insert-attempt statement shapes exist, pure exact
 constraint-name classification exists, narrow SQLAlchemy `IntegrityError`
 diagnostic extraction exists, the abstract SQLAlchemy repository skeleton
-exists, and `record_experiment_run()` has the first concrete execution path.
-The next expansion gates remain data snapshot implementation, research-note
+exists, and `record_experiment_run()` plus `record_data_snapshot_manifest()`
+have concrete execution paths. The next expansion gates remain research-note
 implementation, review-event implementation, artifact aggregate
 implementation, natural-key conflict execution, repository-boundary exception
 catching and translated exception chaining where needed, concurrency tests,
