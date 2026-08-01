@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from datetime import datetime
 
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 from research_sdk.contracts import (
     DataSnapshotManifest,
@@ -14,6 +15,9 @@ from research_sdk.contracts import (
     ResearchNote,
     ReviewMetadata,
     RunArtifactManifest,
+)
+from research_sdk.persistence.driver_exception_translation import (
+    translate_sqlalchemy_integrity_error,
 )
 from research_sdk.persistence.errors import (
     ContractHashConflictError,
@@ -34,6 +38,7 @@ from research_sdk.persistence.statements import (
     build_experiment_run_replay_select,
     build_research_note_insert,
     build_research_note_replay_select,
+    build_review_event_insert,
 )
 
 
@@ -226,7 +231,6 @@ class SqlAlchemyExperimentLedgerRepository(ABC):
             inserted_at=stored["inserted_at"],
         )
 
-    @abstractmethod
     def append_review_event(
         self,
         *,
@@ -235,7 +239,40 @@ class SqlAlchemyExperimentLedgerRepository(ABC):
         subject_id: str,
         review: ReviewMetadata,
     ) -> PersistenceWriteResult:
-        raise NotImplementedError
+        self._require_active_transaction()
+
+        statement = build_review_event_insert(
+            review_event_id=review_event_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            review=review,
+        )
+        try:
+            result = self._connection.execute(statement)
+        except IntegrityError as error:
+            context = PersistenceErrorContext(
+                table_name="review_events",
+                operation="append_review_event",
+                logical_identity={"review_event_id": review_event_id},
+            )
+            translated = translate_sqlalchemy_integrity_error(
+                error=error,
+                context=context,
+            )
+            if translated is None:
+                raise
+            raise translated from error
+
+        returned = result.mappings().one()
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="review_events",
+                primary_key={"review_event_id": returned["review_event_id"]},
+                contract_hash=None,
+                inserted_at=returned["inserted_at"],
+            ),
+        )
 
 
 def _hash_backed_write_result(

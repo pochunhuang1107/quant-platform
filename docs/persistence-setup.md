@@ -516,7 +516,7 @@ local and disposable. Do not reuse it anywhere else.
 Start the local Postgres service from the repository root:
 
 ```bash
-docker compose -f infra/db/docker-compose.yml up -d
+docker compose -f infra/db/docker-compose.yml up -d --wait
 ```
 
 Inspect the service:
@@ -539,7 +539,9 @@ QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:54
 python -m uv run pytest -m live_db \
   tests/test_live_postgres_migrations.py \
   tests/test_live_postgres_experiment_run_repository.py \
-  tests/test_live_postgres_data_snapshot_repository.py
+  tests/test_live_postgres_data_snapshot_repository.py \
+  tests/test_live_postgres_research_note_repository.py \
+  tests/test_live_postgres_review_event_repository.py
 ```
 
 Use the `python -m uv` form because `uv` may not be on `PATH`.
@@ -722,13 +724,44 @@ aggregate verification, lineage existence checks, cycle detection, concurrency,
 application integration, backtest execution, broker behavior, paper trading, or
 live trading.
 
+## Local Live Postgres Review-Event Repository Smoke
+
+PR 36 adds a fifth live DB test file:
+`tests/test_live_postgres_review_event_repository.py`.
+
+The review-event repository smoke test uses the same disposable database safety
+policy as the migration, experiment-run, data-snapshot, and research-note smoke
+tests. It requires `QUANT_RUN_LIVE_DB_TESTS=1`, `QUANT_TEST_DATABASE_URL`, a
+safe local PostgreSQL URL, and Alembic `upgrade head` before repository
+assertions run. It uses explicit caller-owned SQLAlchemy transactions, uses
+caller-owned nested savepoints around expected duplicate failures, and rolls
+back inserted review-event rows for cleanup. It must not be pointed at a
+production, shared, vendor, cloud, or externally hosted database.
+
+The test covers only `append_review_event()`:
+
+- active caller-owned transaction enforcement without SQLAlchemy autobegin;
+- `CREATED` from PostgreSQL `INSERT RETURNING`;
+- DB-generated timezone-aware `inserted_at`;
+- `contract_hash=None` in the successful result;
+- duplicate `review_event_id` rejection for identical subject and payload;
+- duplicate `review_event_id` rejection for changed subject or review payload;
+- `DuplicateReviewEventError` translation and explicit exception chaining;
+- caller-owned savepoint recovery and rollback cleanup.
+
+The test does not cover replay, review-event hash comparison, a standalone
+`ReviewEvent` contract, subject existence validation, artifact manifests,
+artifact entries, aggregate verification, concurrency, application integration,
+backtest execution, broker behavior, paper trading, or live trading.
+
 ## CI Postgres Migration Smoke
 
 PR 24 adds a separate GitHub Actions job named `postgres-migrations`. PR 33
 renames its display name to `Postgres persistence smoke` and expands the test
 command to include the experiment-run repository smoke. PR 34 expands the same
 command to include the data-snapshot repository smoke. PR 35 expands the same
-command to include the research-note repository smoke. This job is isolated from
+command to include the research-note repository smoke. PR 36 expands the same
+command to include the review-event repository smoke. This job is isolated from
 the existing fast `tooling` job and does not make normal unit CI depend on
 Postgres.
 
@@ -754,23 +787,23 @@ container created for the job.
 The CI job runs:
 
 ```bash
-uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py tests/test_live_postgres_research_note_repository.py
+uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py tests/test_live_postgres_research_note_repository.py tests/test_live_postgres_review_event_repository.py
 ```
 
 It does not rerun the full test suite, linting, type checking, or schema export
 checks. Those remain owned by the existing `tooling` job. Both local Compose
 and CI use the same safe disposable PostgreSQL path: Alembic `upgrade head`,
 catalog inspection, and the approved experiment-run and data-snapshot
-repository insert/replay smokes plus the approved research-note smoke. PR 35 is
-expected to add approximately 5-15 seconds and remains comfortably below the
-ten-minute job timeout.
+repository insert/replay smokes plus the approved research-note and review-event
+smokes. PR 36 is expected to add approximately 5-20 seconds and remains
+comfortably below the ten-minute job timeout.
 
 The CI persistence smoke job does not check or execute:
 
-- Review event inserts.
 - Artifact manifest or artifact entry inserts.
 - `ON CONFLICT` or upsert behavior.
 - Natural-key duplicate behavior.
+- Review-event replay or hash comparison.
 - Correction or lifecycle behavior.
 - FastAPI/backtest integration.
 - Backtest execution or experiment-run writing from backtests.
@@ -802,7 +835,7 @@ Before running the live migration smoke test:
   database name containing `test`, and a non-privileged/non-production-looking
   user.
 - Postgres is not running: start a disposable local Postgres service, optionally
-  with `docker compose -f infra/db/docker-compose.yml up -d`.
+  with `docker compose -f infra/db/docker-compose.yml up -d --wait`.
 - Database does not exist: create the disposable local test database outside the
   repo before running the harness, or use the provided Compose service.
 - Permission denied: grant the local test user permission to create tables,
@@ -912,14 +945,16 @@ python -m uv run pytest -m live_db \
   tests/test_live_postgres_migrations.py \
   tests/test_live_postgres_experiment_run_repository.py \
   tests/test_live_postgres_data_snapshot_repository.py \
-  tests/test_live_postgres_research_note_repository.py
+  tests/test_live_postgres_research_note_repository.py \
+  tests/test_live_postgres_review_event_repository.py
 ```
 
 This command requires a disposable local Postgres database and the same safe
 URL gate. It runs Alembic `upgrade head`, inspects migration catalog shape, and
-tests only the experiment-run, data-snapshot, and research-note repository
-vertical slices inside explicit caller-owned transactions with rollback
-cleanup. It does not use production databases or application integration.
+tests only the experiment-run, data-snapshot, research-note, and review-event
+repository vertical slices inside explicit caller-owned transactions with
+rollback cleanup. It does not use production databases or application
+integration.
 
 ## Validation Commands
 
@@ -939,6 +974,7 @@ uv run pytest tests/test_live_postgres_url_safety.py
 uv run pytest tests/test_persistence_setup.py
 uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py tests/test_persistence_statements.py
 uv run pytest
+uv run pytest -m live_db tests/test_live_postgres_review_event_repository.py
 ```
 
 If `uv` is unavailable on `PATH`, use `python -m uv` as the equivalent command
@@ -946,13 +982,14 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 35, future persistence PRs should keep table design, constraints,
+After PR 36, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres cover
-the approved migration, experiment-run, data-snapshot, and research-note smoke
+the approved migration, experiment-run, data-snapshot, research-note, and
+review-event smoke
 paths only. Future PRs should still avoid new concrete repository entity
 implementations, DB write paths, API endpoints, backtest integration, artifact
 IO, data ingestion, broker integration, live trading, and paper trading
-execution unless separately approved. Review-event execution, artifact
-aggregate execution, generic orchestration, repository-boundary exception
-catching where needed, and additional live insert/replay/conflict tests remain
-deferred until separately approved.
+execution unless separately approved. Artifact aggregate execution, generic
+orchestration, repository-boundary exception catching where needed outside the
+approved review-event duplicate path, and additional live insert/replay/conflict
+tests remain deferred until separately approved.
