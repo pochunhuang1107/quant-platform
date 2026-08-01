@@ -230,6 +230,23 @@ tables, metadata, constraints, indexes, contracts, generated schemas,
 dependencies, Docker Compose configuration, application/backtest integration,
 broker integration, paper trading, or live trading.
 
+PR 36 adds the review-event-only repository execution vertical slice. It makes
+`append_review_event(...)` concrete while experiment-run, data-snapshot, and
+research-note execution remain concrete and artifact-manifest execution remains
+abstract, so the repository class remains abstract. The review-event method
+requires an active caller-owned transaction before statement construction,
+executes the existing strict review-event insert builder, constructs only
+`CREATED` from PostgreSQL `RETURNING review_event_id, inserted_at`, returns
+`contract_hash=None`, and treats `review_event_id` as the sole duplicate
+identity. Duplicate IDs always raise `DuplicateReviewEventError` through the
+approved SQLAlchemy `IntegrityError` adapter and exact `pk_review_events`
+constraint translation, regardless of whether subject or review payload matches.
+Unknown `IntegrityError` values are re-raised unchanged. PR 36 adds no replay
+`SELECT`, `REPLAYED` outcome, review-event hash, `ReviewEvent` contract,
+subject existence validation, subject foreign key, schema/table/metadata change,
+dependency change, Docker Compose change, application/backtest integration,
+broker integration, paper trading, or live trading.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -557,11 +574,17 @@ transaction guard reuse, `Connection.execute` insert execution, `CREATED`
 result construction, note replay `SELECT`, canonical hash comparison,
 `REPLAYED` result construction, note hash conflict handling, missing replay-row
 invariant handling, immutable insert-only note policy, live disposable
-PostgreSQL coverage, and CI persistence smoke expansion. Review-event
-implementation, artifact aggregate implementation, natural-key execution,
-`IntegrityError` catching and chaining where needed, concurrency tests, generic
-repository orchestration, artifact atomicity and verification, and
-application/backtest integration remain future work.
+PostgreSQL coverage, and CI persistence smoke expansion. As of PR 36,
+review-event repository execution is implemented with active transaction guard
+reuse, strict insert execution, `CREATED` result construction with
+`contract_hash=None`, duplicate primary-key rejection through
+`DuplicateReviewEventError`, explicit exception chaining for approved
+`pk_review_events` diagnostics, unchanged re-raise for unknown
+`IntegrityError` values, live disposable PostgreSQL coverage, and CI
+persistence smoke expansion. Artifact aggregate implementation, natural-key
+execution, concurrency tests, generic repository orchestration, artifact
+atomicity and verification, and application/backtest integration remain future
+work.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -874,12 +897,22 @@ This sequence is partially implemented and current through PR 35:
      by new `note_id` values and contract-level lineage fields;
    - add live disposable PostgreSQL repository behavior tests;
    - expand the existing CI Postgres persistence smoke command.
-26. Add stable non-blocking cross-contract foreign keys later where appropriate.
-27. Add contract fixture persistence tests later for the remaining entities.
-28. Add repository/write-path code only in later PRs after semantics, conflict
+26. Add the review-event-only repository execution vertical slice:
+   - require an active caller-owned transaction;
+   - execute the existing strict review-event insert builder;
+   - construct only `CREATED` from PostgreSQL `RETURNING`;
+   - return `contract_hash=None`;
+   - use `review_event_id` as the sole duplicate identity;
+   - reject all duplicate IDs with `DuplicateReviewEventError`;
+   - do not add replay, hash comparison, subject validation, or schema changes;
+   - add live disposable PostgreSQL repository behavior tests;
+   - expand the existing CI Postgres persistence smoke command.
+27. Add stable non-blocking cross-contract foreign keys later where appropriate.
+28. Add contract fixture persistence tests later for the remaining entities.
+29. Add repository/write-path code only in later PRs after semantics, conflict
    behavior, schema requirements, repository-boundary exception catching,
    translated exception chaining, and test harness design are approved.
-29. Require Pydantic contract validation before persistence.
+30. Require Pydantic contract validation before persistence.
 
 PR 12 intentionally adds no foreign keys. Contract references are declarative
 today, and insertion ordering, backfill behavior, and lifecycle rules are not
@@ -1034,10 +1067,10 @@ Postgres service, run FastAPI/backtest integration, or write experiment runs
 from backtests. Downgrade testing remains deferred.
 
 PR 23 adds optional local Docker Compose infrastructure for that harness. As of
-PR 35, the same disposable local Postgres service may also be used for the
-approved experiment-run, data-snapshot, and research-note repository smoke
-tests. All live paths remain double opt-in through `QUANT_RUN_LIVE_DB_TESTS=1` and
-`QUANT_TEST_DATABASE_URL`.
+PR 36, the same disposable local Postgres service may also be used for the
+approved experiment-run, data-snapshot, research-note, and review-event
+repository smoke tests. All live paths remain double opt-in through
+`QUANT_RUN_LIVE_DB_TESTS=1` and `QUANT_TEST_DATABASE_URL`.
 
 Before PR 24, the PR 23 Compose path was manually validated with Docker:
 `postgres:17.10` pulled successfully, the container started, the live migration
@@ -1048,26 +1081,28 @@ remained.
 PR 24 adds CI Postgres only for migration validation. PR 33 expands that same
 job to persistence smoke coverage, and PR 34 adds the data-snapshot repository
 smoke test to the same job. PR 35 adds the research-note repository smoke test
-to the same job. The CI job uses a GitHub Actions `postgres:17.10` service container with
+to the same job. PR 36 adds the review-event repository smoke test to the same
+job. The CI job uses a GitHub Actions `postgres:17.10` service container with
 `quant_platform_test`/`quant_test` test-only values, maps the service to
 localhost for the existing URL safety helper, and runs the migration smoke test
-plus the experiment-run, data-snapshot, and research-note repository live tests.
-The normal tooling CI job remains unchanged and does not depend on Postgres.
+plus the experiment-run, data-snapshot, research-note, and review-event
+repository live tests. The normal tooling CI job remains unchanged and does not
+depend on Postgres.
 
-After PR 35, the artifact-manifest identity schema blocker is resolved, the
+After PR 36, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
 exists, targeted PostgreSQL insert-attempt statement shapes exist, pure exact
 constraint-name classification exists, narrow SQLAlchemy `IntegrityError`
 diagnostic extraction exists, the abstract SQLAlchemy repository skeleton
 exists, and `record_experiment_run()`, `record_data_snapshot_manifest()`, and
-`record_research_note()` have concrete execution paths. The next expansion
-gates remain review-event implementation, artifact aggregate implementation,
+`record_research_note()` plus `append_review_event()` have concrete execution
+paths. The next expansion gates remain artifact aggregate implementation,
 natural-key conflict execution, repository-boundary exception catching and
-translated exception chaining where needed, concurrency tests, artifact
-aggregate atomicity and integrity verification, application/backtest
-integration, and SQLite persistence policy if it is ever reconsidered. Each gate
-requires separate approval before it changes code, tests, dependencies,
-workflows, infrastructure, or migrations.
+translated exception chaining for artifact constraints where needed, concurrency
+tests, artifact aggregate atomicity and integrity verification,
+application/backtest integration, and SQLite persistence policy if it is ever
+reconsidered. Each gate requires separate approval before it changes code,
+tests, dependencies, workflows, infrastructure, or migrations.
 
 ## Future DB Test Strategy
 
@@ -1085,7 +1120,8 @@ When DB work begins, plan tests for:
 - Later rejection of the same ID with a different `contract_hash` unless using
   a correction path, only after correction semantics are approved.
 - Later querying by common indexes.
-- Later `review_events` append-only behavior.
+- Later additional `review_events` append-only behavior beyond the approved PR
+  36 repository append path.
 - Later `run_artifact_entries` projection from manifest.
 - No artifact file existence checks.
 - No hash verification side effects.

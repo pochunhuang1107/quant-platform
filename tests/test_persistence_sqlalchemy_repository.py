@@ -8,6 +8,7 @@ from typing import Any, cast, get_type_hints
 
 import pytest
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 import research_sdk.persistence as persistence
 import research_sdk.persistence.protocols as protocols
@@ -19,7 +20,6 @@ from research_sdk.contracts import (
     ReviewMetadata,
     RunArtifactManifest,
 )
-from research_sdk.persistence.mappers import ReviewSubjectType
 from research_sdk.persistence.protocols import ExperimentLedgerRepository
 from research_sdk.persistence.results import PersistenceWriteResult
 from research_sdk.persistence.sqlalchemy_repository import (
@@ -28,7 +28,7 @@ from research_sdk.persistence.sqlalchemy_repository import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "contracts"
-SCOPE_MESSAGE = "repository execution is outside PR 35 research-note scope"
+SCOPE_MESSAGE = "artifact repository execution is outside PR 36 review-event scope"
 
 EXPECTED_REPOSITORY_METHODS = {
     "record_experiment_run",
@@ -38,11 +38,7 @@ EXPECTED_REPOSITORY_METHODS = {
     "append_review_event",
 }
 
-EXPECTED_ABSTRACT_METHODS = EXPECTED_REPOSITORY_METHODS - {
-    "record_experiment_run",
-    "record_data_snapshot_manifest",
-    "record_research_note",
-}
+EXPECTED_ABSTRACT_METHODS = {"record_run_artifact_manifest"}
 
 PROHIBITED_PUBLIC_OPERATIONAL_NAMES = {
     "connection",
@@ -63,7 +59,6 @@ PROHIBITED_IMPORT_MODULES = {
     "research_sdk.persistence.tables",
     "research_sdk.persistence.database",
     "research_sdk.persistence.constraint_translation",
-    "research_sdk.persistence.driver_exception_translation",
 }
 
 PROHIBITED_OPERATIONAL_SYMBOLS = {
@@ -72,11 +67,8 @@ PROHIBITED_OPERATIONAL_SYMBOLS = {
     "Session",
     "get_database_url",
     "DATABASE_URL",
-    "IntegrityError",
-    "translate_sqlalchemy_integrity_error",
     "translate_constraint_violation",
     "build_run_artifact_manifest_inserts",
-    "build_review_event_insert",
     "execute",
     "select",
     "insert",
@@ -112,15 +104,27 @@ class _ConcreteRepository(SqlAlchemyExperimentLedgerRepository):
     ) -> PersistenceWriteResult:
         raise AssertionError(SCOPE_MESSAGE)
 
-    def append_review_event(
-        self,
-        *,
-        review_event_id: str,
-        subject_type: ReviewSubjectType | str,
-        subject_id: str,
-        review: ReviewMetadata,
-    ) -> PersistenceWriteResult:
-        raise AssertionError(SCOPE_MESSAGE)
+
+class _FakeDiagnostic:
+    constraint_name = "unknown_review_event_constraint"
+
+
+class _FakeOrig(Exception):
+    sqlstate = "23505"
+    diag = _FakeDiagnostic()
+
+
+class _FailingConnection:
+    __slots__ = ("_error",)
+
+    def __init__(self, error: IntegrityError) -> None:
+        self._error = error
+
+    def in_transaction(self) -> bool:
+        return True
+
+    def execute(self, statement: object) -> object:
+        raise self._error
 
 
 def load_fixture(filename: str) -> dict[str, Any]:
@@ -188,6 +192,16 @@ def test_sqlalchemy_repository_is_abstract_boundary() -> None:
         "__isabstractmethod__",
         False,
     )
+    assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.record_research_note,
+        "__isabstractmethod__",
+        False,
+    )
+    assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.append_review_event,
+        "__isabstractmethod__",
+        False,
+    )
     for method_name in EXPECTED_ABSTRACT_METHODS:
         assert getattr(
             getattr(SqlAlchemyExperimentLedgerRepository, method_name),
@@ -245,7 +259,6 @@ def test_method_signatures_match_repository_protocol(method_name: str) -> None:
 def test_abstract_method_bodies_defensively_raise_not_implemented(
     repository: _ConcreteRepository,
     run_artifact_manifest: RunArtifactManifest,
-    review_metadata: ReviewMetadata,
 ) -> None:
     with pytest.raises(NotImplementedError):
         SqlAlchemyExperimentLedgerRepository.record_run_artifact_manifest(
@@ -253,39 +266,21 @@ def test_abstract_method_bodies_defensively_raise_not_implemented(
             manifest_id="manifest-run-20260709-001",
             manifest=run_artifact_manifest,
         )
-    with pytest.raises(NotImplementedError):
-        SqlAlchemyExperimentLedgerRepository.append_review_event(
-            repository,
-            review_event_id="review-event-20260709-001",
-            subject_type=ReviewSubjectType.EXPERIMENT_RUN,
-            subject_id="run-20260709-001",
-            review=review_metadata,
-        )
 
 
 def test_concrete_test_subclass_methods_raise_scope_assertion(
     repository: _ConcreteRepository,
-    experiment_run: ExperimentRunRecord,
-    data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
-    research_note: ResearchNote,
-    review_metadata: ReviewMetadata,
 ) -> None:
     assert "record_experiment_run" not in _ConcreteRepository.__dict__
     assert "record_data_snapshot_manifest" not in _ConcreteRepository.__dict__
     assert "record_research_note" not in _ConcreteRepository.__dict__
+    assert "append_review_event" not in _ConcreteRepository.__dict__
 
     with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
         repository.record_run_artifact_manifest(
             manifest_id="manifest-run-20260709-001",
             manifest=run_artifact_manifest,
-        )
-    with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
-        repository.append_review_event(
-            review_event_id="review-event-20260709-001",
-            subject_type=ReviewSubjectType.EXPERIMENT_RUN,
-            subject_id=experiment_run.run_id,
-            review=review_metadata,
         )
 
 
@@ -336,13 +331,16 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
         "build_experiment_run_replay_select",
         "build_research_note_insert",
         "build_research_note_replay_select",
+        "build_review_event_insert",
         "contract_sha256",
         "execute",
         "in_transaction",
         "mappings",
+        "one",
         "one_or_none",
         "NotImplementedError",
         "RuntimeError",
+        "translate_sqlalchemy_integrity_error",
     }
 
     assert PROHIBITED_OPERATIONAL_SYMBOLS.isdisjoint(called_names - allowed_calls)
@@ -365,6 +363,70 @@ def test_source_constructs_only_approved_persistence_results_or_dispositions() -
     ) in attribute_pairs
     assert "PersistenceWriteResult" in called_names
     assert "PersistedRecordMetadata" in called_names
+
+
+def test_source_catches_only_integrity_error_with_bare_unknown_reraise() -> None:
+    tree = _production_ast()
+
+    assert _caught_exception_names(tree) == {"IntegrityError"}
+    assert _has_bare_raise_in_exception_handler(tree, "IntegrityError")
+    assert _has_raise_from_in_exception_handler(
+        tree,
+        handler_name="IntegrityError",
+        raised_name="translated",
+        cause_name="error",
+    )
+
+
+def test_source_contains_no_repository_transaction_lifecycle_calls() -> None:
+    called_names = _called_names(_production_ast())
+
+    for prohibited_call in (
+        "begin",
+        "begin_nested",
+        "commit",
+        "rollback",
+        "close",
+        "dispose",
+        "connect",
+    ):
+        assert prohibited_call not in called_names
+
+
+def test_source_keeps_review_events_out_of_replay_and_hash_paths() -> None:
+    source = inspect.getsource(sqlalchemy_repository)
+    append_source = inspect.getsource(
+        SqlAlchemyExperimentLedgerRepository.append_review_event
+    )
+
+    assert "build_review_event_replay_select" not in source
+    assert "review_events.c" not in source
+    assert "contract_sha256(review" not in append_source
+    assert "_hash_backed_write_result" not in append_source
+    assert "PersistenceDisposition.REPLAYED" not in append_source
+
+
+def test_append_review_event_reraises_untranslated_integrity_error(
+    review_metadata: ReviewMetadata,
+) -> None:
+    original_error = IntegrityError(
+        "INSERT INTO review_events",
+        {"review_event_id": "review-event-untranslated"},
+        _FakeOrig(),
+    )
+    repository = _ConcreteRepository(
+        cast(Connection, _FailingConnection(original_error))
+    )
+
+    with pytest.raises(IntegrityError) as exc_info:
+        repository.append_review_event(
+            review_event_id="review-event-untranslated",
+            subject_type="experiment_run",
+            subject_id="run-untranslated",
+            review=review_metadata,
+        )
+
+    assert exc_info.value is original_error
 
 
 def _assert_signature_shape_matches(
@@ -471,3 +533,65 @@ def _attribute_pairs(tree: ast.AST) -> set[tuple[str, str]]:
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             pairs.add((node.value.id, node.attr))
     return pairs
+
+
+def _caught_exception_names(tree: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler) or node.type is None:
+            continue
+        if isinstance(node.type, ast.Name):
+            names.add(node.type.id)
+        elif isinstance(node.type, ast.Tuple):
+            names.update(
+                element.id
+                for element in node.type.elts
+                if isinstance(element, ast.Name)
+            )
+    return names
+
+
+def _has_bare_raise_in_exception_handler(
+    tree: ast.AST,
+    handler_name: str,
+) -> bool:
+    return any(
+        isinstance(statement, ast.Raise) and statement.exc is None
+        for handler in _exception_handlers(tree, handler_name)
+        for statement in ast.walk(handler)
+    )
+
+
+def _has_raise_from_in_exception_handler(
+    tree: ast.AST,
+    *,
+    handler_name: str,
+    raised_name: str,
+    cause_name: str,
+) -> bool:
+    for handler in _exception_handlers(tree, handler_name):
+        for statement in ast.walk(handler):
+            if (
+                isinstance(statement, ast.Raise)
+                and isinstance(statement.exc, ast.Name)
+                and isinstance(statement.cause, ast.Name)
+                and statement.exc.id == raised_name
+                and statement.cause.id == cause_name
+            ):
+                return True
+    return False
+
+
+def _exception_handlers(
+    tree: ast.AST,
+    handler_name: str,
+) -> tuple[ast.ExceptHandler, ...]:
+    handlers: list[ast.ExceptHandler] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ExceptHandler)
+            and isinstance(node.type, ast.Name)
+            and node.type.id == handler_name
+        ):
+            handlers.append(node)
+    return tuple(handlers)

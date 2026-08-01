@@ -203,6 +203,26 @@ disposable PostgreSQL coverage for the note path and expands the existing CI
 persistence smoke job. Review-event and artifact aggregate execution remain
 future work.
 
+PR 36 adds the review-event-only repository execution vertical slice. It makes
+`append_review_event(...)` concrete while `record_experiment_run()`,
+`record_data_snapshot_manifest()`, and `record_research_note()` remain concrete
+and `record_run_artifact_manifest()` remains abstract, so the repository class
+remains abstract. The review-event method requires an active caller-owned
+transaction before statement construction, executes the existing strict
+`build_review_event_insert(...)` statement through the injected `Connection`,
+builds only `CREATED` from PostgreSQL `RETURNING review_event_id, inserted_at`,
+and returns `contract_hash=None` because review events have no event hash or
+standalone `ReviewEvent` contract. Duplicate `review_event_id` values always
+raise `DuplicateReviewEventError` through the approved SQLAlchemy
+`IntegrityError` diagnostic adapter and exact `pk_review_events` constraint
+translation. The method does not compare payloads, select existing rows, return
+`REPLAYED`, validate subject existence, branch by subject type, update, delete,
+own transaction lifecycle, retry, log, or add generic repository orchestration.
+Unknown or unapproved `IntegrityError` values are re-raised unchanged. PR 36
+also adds live disposable PostgreSQL coverage for created, rollback, identical
+duplicate, and changed-payload duplicate behavior and expands the existing CI
+persistence smoke job. Artifact aggregate execution remains future work.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -405,10 +425,11 @@ The class declares the same five public repository methods as
 - `append_review_event(review_event_id=..., subject_type=..., subject_id=..., review=...)`.
 
 `record_experiment_run()` is concrete as of PR 33,
-`record_data_snapshot_manifest()` is concrete as of PR 34, and
-`record_research_note()` is concrete as of PR 35. The artifact-manifest and
-review-event methods remain abstract. All five methods have the same parameter
-names, ordering, keyword-only behavior, validated contract annotations,
+`record_data_snapshot_manifest()` is concrete as of PR 34,
+`record_research_note()` is concrete as of PR 35, and `append_review_event()`
+is concrete as of PR 36. The artifact-manifest method remains abstract. All
+five methods have the same parameter names, ordering, keyword-only behavior,
+validated contract annotations,
 `ReviewSubjectType | str` behavior, and `PersistenceWriteResult` return
 annotation as the protocol.
 The class intentionally does not inherit `ExperimentLedgerRepository`;
@@ -424,14 +445,15 @@ behavior, `begin`, `commit`, `rollback`, `close`, `dispose`, `connect`, retry,
 or logging methods.
 
 Repository skeleton complete does not mean repository implementation complete.
-After PR 35 experiment-run, data-snapshot, and research-note execution exist.
-The remaining artifact-manifest and review-event methods still execute no SQL,
-call no statement builders, construct no `PersistenceWriteResult`, classify no
-`CREATED` or `REPLAYED` outcomes, perform no replay lookup, compare no hashes,
-catch no database exceptions, call no translators, raise or chain no translated
-exceptions, start no transactions, commit nothing, roll nothing back, and do
-not close or dispose caller-owned resources. Caller-owned transaction policy is
-unchanged, and artifact aggregate atomicity remains future work.
+After PR 36 experiment-run, data-snapshot, research-note, and review-event
+execution exist. The remaining artifact-manifest method still executes no SQL,
+calls no statement builders, constructs no `PersistenceWriteResult`, classifies
+no `CREATED` or `REPLAYED` outcomes, performs no replay lookup, compares no
+hashes, catches no database exceptions, calls no translators, raises or chains
+no translated exceptions, starts no transactions, commits nothing, rolls
+nothing back, and does not close or dispose caller-owned resources. Caller-owned
+transaction policy is unchanged, and artifact aggregate atomicity remains
+future work.
 
 ## Statement Builder Boundary
 
@@ -924,9 +946,13 @@ except IntegrityError as database_error:
     raise
 ```
 
-PR 31 does not implement that block. Repository-boundary exception catching,
-translated exception chaining, and transaction rollback responsibility remain
-future repository/service-layer work.
+PR 31 does not implement that block. PR 36 implements the block only inside
+`append_review_event(...)`, where duplicate primary-key violations on
+`review_events` translate to `DuplicateReviewEventError` with explicit
+exception chaining. Unknown or unapproved `IntegrityError` values are re-raised
+unchanged with bare `raise`. Repository-boundary exception catching for
+artifact-manifest natural-key conflicts and any broader database failure
+classification remain future work.
 
 Future repository classification should follow this policy:
 
@@ -1081,17 +1107,19 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 32:
+The following remain deferred after PR 36:
 
-- SQLAlchemy repository implementations;
-- database write paths;
-- statement execution;
+- artifact-manifest SQLAlchemy repository implementation;
+- artifact-manifest aggregate database write path;
+- artifact-manifest statement execution;
 - sessions or unit-of-work abstractions except as future design;
 - runtime DB driver dependencies and async drivers such as `asyncpg`;
-- live Postgres repository/write-path tests;
+- additional live Postgres repository/write-path tests outside approved slices;
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
-- idempotency, replay, duplicate handling, conflict handling, and `ON CONFLICT`
+- standalone review-event idempotency, replay, hash comparison, and `ON CONFLICT`
   implementation;
+- artifact-manifest idempotency, replay, duplicate handling, conflict handling,
+  and aggregate verification implementation;
 - lifecycle, correction, supersession, and append-only enforcement;
 - FastAPI endpoints;
 - backtest integration;
