@@ -354,6 +354,23 @@ smoke tests. It does not add dependencies, migrations, tables, metadata,
 constraints, contracts, schemas, Docker Compose changes, application
 integration, broker integration, paper trading, or live trading.
 
+PR 34 adds the data-snapshot-only repository execution vertical slice. It keeps
+the repository class abstract overall, makes `record_data_snapshot_manifest()`
+concrete, keeps `record_experiment_run()` concrete, and leaves artifact,
+research-note, and review-event methods abstract. The snapshot method requires
+the same active caller-owned transaction, uses the data-snapshot insert builder
+and replay `SELECT` builder, returns DB-generated `inserted_at` values for
+`CREATED` and `REPLAYED`, treats `snapshot_id` as the replay identity, raises
+`ContractHashConflictError` for same `snapshot_id` with a different canonical
+hash, and raises `ReplayLookupError` if a suppressed replay candidate cannot
+be loaded. It performs no external dataset, filesystem, S3, vendor, parquet,
+checksum, row-count, file-count, size, availability-time, or leakage
+verification. It adds a live disposable PostgreSQL data-snapshot repository
+test and expands the existing CI Postgres persistence smoke job. It does not
+add dependencies, migrations, tables, metadata, constraints, contracts,
+schemas, Docker Compose changes, application integration, broker integration,
+paper trading, or live trading.
+
 ## Live Postgres Test Harness Boundary
 
 PR 20 documented the boundary before executable live DB tests. PR 21 implements
@@ -503,7 +520,8 @@ QUANT_RUN_LIVE_DB_TESTS=1 \
 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' \
 python -m uv run pytest -m live_db \
   tests/test_live_postgres_migrations.py \
-  tests/test_live_postgres_experiment_run_repository.py
+  tests/test_live_postgres_experiment_run_repository.py \
+  tests/test_live_postgres_data_snapshot_repository.py
 ```
 
 Use the `python -m uv` form because `uv` may not be on `PATH`.
@@ -632,11 +650,39 @@ manifests, artifact entries, aggregate verification, concurrency, application
 integration, backtest execution, broker behavior, paper trading, or live
 trading.
 
+## Local Live Postgres Data-Snapshot Repository Smoke
+
+PR 34 adds a third live DB test file:
+`tests/test_live_postgres_data_snapshot_repository.py`.
+
+The data-snapshot repository smoke test uses the same disposable database
+safety policy as the migration and experiment-run smoke tests. It requires
+`QUANT_RUN_LIVE_DB_TESTS=1`, `QUANT_TEST_DATABASE_URL`, a safe local
+PostgreSQL URL, and Alembic `upgrade head` before repository assertions run. It
+uses explicit caller-owned SQLAlchemy transactions and rolls back inserted
+data-snapshot rows for cleanup. It must not be pointed at a production, shared,
+vendor, cloud, or externally hosted database.
+
+The test covers only `record_data_snapshot_manifest()`:
+
+- active caller-owned transaction enforcement without SQLAlchemy autobegin;
+- `CREATED` from PostgreSQL `INSERT RETURNING`;
+- exact replay lookup and `REPLAYED` for the same `snapshot_id` and canonical
+  hash;
+- `ContractHashConflictError` for the same `snapshot_id` with a different hash;
+- caller-owned rollback cleanup.
+
+The test does not cover research notes, review events, artifact manifests,
+artifact entries, aggregate verification, concurrency, application integration,
+backtest execution, broker behavior, paper trading, live trading, or external
+dataset verification.
+
 ## CI Postgres Migration Smoke
 
 PR 24 adds a separate GitHub Actions job named `postgres-migrations`. PR 33
 renames its display name to `Postgres persistence smoke` and expands the test
-command to include the experiment-run repository smoke. This job is isolated
+command to include the experiment-run repository smoke. PR 34 expands the same
+command to include the data-snapshot repository smoke. This job is isolated
 from the existing fast `tooling` job and does not make normal unit CI depend on
 Postgres.
 
@@ -662,19 +708,18 @@ container created for the job.
 The CI job runs:
 
 ```bash
-uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py
+uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py
 ```
 
 It does not rerun the full test suite, linting, type checking, or schema export
 checks. Those remain owned by the existing `tooling` job. Both local Compose
 and CI use the same safe disposable PostgreSQL path: Alembic `upgrade head`,
-catalog inspection, and the approved experiment-run repository insert/replay
-smoke. The expected added runtime is approximately 15-30 seconds and remains
-comfortably below the ten-minute job timeout.
+catalog inspection, and the approved experiment-run and data-snapshot
+repository insert/replay smokes. PR 34 is expected to add approximately 5-15
+seconds and remains comfortably below the ten-minute job timeout.
 
 The CI persistence smoke job does not check or execute:
 
-- Data snapshot inserts.
 - Research note inserts.
 - Review event inserts.
 - Artifact manifest or artifact entry inserts.
@@ -819,13 +864,14 @@ QUANT_RUN_LIVE_DB_TESTS=1 \
 QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:5432/quant_platform_test' \
 python -m uv run pytest -m live_db \
   tests/test_live_postgres_migrations.py \
-  tests/test_live_postgres_experiment_run_repository.py
+  tests/test_live_postgres_experiment_run_repository.py \
+  tests/test_live_postgres_data_snapshot_repository.py
 ```
 
 This command requires a disposable local Postgres database and the same safe
 URL gate. It runs Alembic `upgrade head`, inspects migration catalog shape, and
-tests only the experiment-run repository vertical slice inside explicit
-caller-owned transactions with rollback cleanup. It does not use production
+tests only the experiment-run and data-snapshot repository vertical slices
+inside explicit caller-owned transactions with rollback cleanup. It does not use production
 databases or application integration.
 
 ## Validation Commands

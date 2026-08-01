@@ -90,6 +90,19 @@ def build_data_snapshot_manifest_insert(
     )
 
 
+def build_data_snapshot_manifest_replay_select(
+    *,
+    snapshot_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for a data snapshot manifest."""
+
+    return select(
+        data_snapshot_manifests.c.snapshot_id,
+        data_snapshot_manifests.c.contract_hash,
+        data_snapshot_manifests.c.inserted_at,
+    ).where(data_snapshot_manifests.c.snapshot_id == snapshot_id)
+
+
 def build_run_artifact_manifest_inserts(
     *,
     manifest_id: str,
@@ -194,6 +207,7 @@ def _build_strict_insert(
 __all__ = [
     "ArtifactManifestInsertStatements",
     "build_data_snapshot_manifest_insert",
+    "build_data_snapshot_manifest_replay_select",
     "build_experiment_run_insert",
     "build_experiment_run_replay_select",
     "build_research_note_insert",

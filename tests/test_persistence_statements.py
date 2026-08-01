@@ -27,6 +27,9 @@ from research_sdk.persistence import (
     build_data_snapshot_manifest_insert as exported_build_data_snapshot_manifest_insert,
 )
 from research_sdk.persistence import (
+    build_data_snapshot_manifest_replay_select as exported_build_snapshot_replay_select,
+)
+from research_sdk.persistence import (
     build_experiment_run_insert as exported_build_experiment_run_insert,
 )
 from research_sdk.persistence import (
@@ -53,6 +56,7 @@ from research_sdk.persistence.statements import (
     ArtifactManifestInsertStatements,
     _build_replay_candidate_insert,
     build_data_snapshot_manifest_insert,
+    build_data_snapshot_manifest_replay_select,
     build_experiment_run_insert,
     build_experiment_run_replay_select,
     build_research_note_insert,
@@ -189,6 +193,10 @@ def test_statement_builders_import_from_statement_module() -> None:
     assert statements.build_data_snapshot_manifest_insert is (
         build_data_snapshot_manifest_insert
     )
+    assert statements.build_data_snapshot_manifest_replay_select is (
+        build_data_snapshot_manifest_replay_select
+    )
+    assert "build_data_snapshot_manifest_replay_select" in statements.__all__
     assert statements.build_run_artifact_manifest_inserts is (
         build_run_artifact_manifest_inserts
     )
@@ -204,6 +212,9 @@ def test_statement_builders_export_from_persistence_package() -> None:
     )
     assert exported_build_data_snapshot_manifest_insert is (
         build_data_snapshot_manifest_insert
+    )
+    assert exported_build_snapshot_replay_select is (
+        build_data_snapshot_manifest_replay_select
     )
     assert exported_build_run_artifact_manifest_inserts is (
         build_run_artifact_manifest_inserts
@@ -358,6 +369,41 @@ def test_experiment_run_replay_select_shape() -> None:
     )
     assert params == {"run_id_1": run_id}
     assert run_id not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_data_snapshot_manifest_replay_select_shape() -> None:
+    snapshot_id = "snapshot-replay-select-sentinel"
+
+    statement = build_data_snapshot_manifest_replay_select(snapshot_id=snapshot_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "snapshot_id",
+        "contract_hash",
+        "inserted_at",
+    )
+    assert tuple(statement.get_final_froms()) == (data_snapshot_manifests,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "data_snapshot_manifests.snapshot_id = %(snapshot_id_1)s"
+    )
+    assert sql.startswith(
+        "SELECT data_snapshot_manifests.snapshot_id, "
+        "data_snapshot_manifests.contract_hash, "
+        "data_snapshot_manifests.inserted_at FROM data_snapshot_manifests WHERE "
+        "data_snapshot_manifests.snapshot_id = "
+    )
+    assert params == {"snapshot_id_1": snapshot_id}
+    assert snapshot_id not in sql
     assert "raw_contract" not in sql
     assert "SELECT *" not in sql
     assert " JOIN " not in sql
