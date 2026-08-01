@@ -86,3 +86,4 @@ jobs:
           tests/test_live_postgres_migrations.py
           tests/test_live_postgres_experiment_run_repository.py
           tests/test_live_postgres_data_snapshot_repository.py
+          tests/test_live_postgres_research_note_repository.py

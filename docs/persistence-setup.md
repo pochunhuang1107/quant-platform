@@ -371,6 +371,24 @@ add dependencies, migrations, tables, metadata, constraints, contracts,
 schemas, Docker Compose changes, application integration, broker integration,
 paper trading, or live trading.
 
+PR 35 adds the research-note-only repository execution vertical slice. It keeps
+the repository class abstract overall, makes `record_research_note()` concrete,
+keeps `record_experiment_run()` and `record_data_snapshot_manifest()` concrete,
+and leaves artifact and review-event methods abstract. The note method requires
+the same active caller-owned transaction, uses the research-note insert builder
+and replay `SELECT` builder, returns DB-generated `inserted_at` values for
+`CREATED` and `REPLAYED`, treats `note_id` as the replay identity, raises
+`ContractHashConflictError` for same `note_id` with a different canonical hash,
+and raises `ReplayLookupError` if a suppressed replay candidate cannot be
+loaded. Research notes remain immutable insert-only records; contract
+`updated_at` is stored as payload/projection data, while DB `inserted_at` is
+persistence metadata. It performs no lineage existence checks, cycle detection,
+updates, overwrites, artifact execution, review-event execution, or application
+integration. It adds a live disposable PostgreSQL research-note repository test
+and expands the existing CI Postgres persistence smoke job. It does not add
+dependencies, migrations, tables, metadata, constraints, contracts, schemas,
+Docker Compose changes, broker integration, paper trading, or live trading.
+
 ## Live Postgres Test Harness Boundary
 
 PR 20 documented the boundary before executable live DB tests. PR 21 implements
@@ -677,13 +695,41 @@ artifact entries, aggregate verification, concurrency, application integration,
 backtest execution, broker behavior, paper trading, live trading, or external
 dataset verification.
 
+## Local Live Postgres Research-Note Repository Smoke
+
+PR 35 adds a fourth live DB test file:
+`tests/test_live_postgres_research_note_repository.py`.
+
+The research-note repository smoke test uses the same disposable database
+safety policy as the migration, experiment-run, and data-snapshot smoke tests.
+It requires `QUANT_RUN_LIVE_DB_TESTS=1`, `QUANT_TEST_DATABASE_URL`, a safe local
+PostgreSQL URL, and Alembic `upgrade head` before repository assertions run. It
+uses explicit caller-owned SQLAlchemy transactions and rolls back inserted
+research-note rows for cleanup. It must not be pointed at a production, shared,
+vendor, cloud, or externally hosted database.
+
+The test covers only `record_research_note()`:
+
+- active caller-owned transaction enforcement without SQLAlchemy autobegin;
+- `CREATED` from PostgreSQL `INSERT RETURNING`;
+- exact replay lookup and `REPLAYED` for the same `note_id` and canonical hash;
+- `ContractHashConflictError` for the same `note_id` with a different hash;
+- preservation of contract `updated_at` separately from DB `inserted_at`;
+- caller-owned rollback cleanup.
+
+The test does not cover review events, artifact manifests, artifact entries,
+aggregate verification, lineage existence checks, cycle detection, concurrency,
+application integration, backtest execution, broker behavior, paper trading, or
+live trading.
+
 ## CI Postgres Migration Smoke
 
 PR 24 adds a separate GitHub Actions job named `postgres-migrations`. PR 33
 renames its display name to `Postgres persistence smoke` and expands the test
 command to include the experiment-run repository smoke. PR 34 expands the same
-command to include the data-snapshot repository smoke. This job is isolated
-from the existing fast `tooling` job and does not make normal unit CI depend on
+command to include the data-snapshot repository smoke. PR 35 expands the same
+command to include the research-note repository smoke. This job is isolated from
+the existing fast `tooling` job and does not make normal unit CI depend on
 Postgres.
 
 CI uses a GitHub Actions service container, not Docker Compose. Docker Compose
@@ -708,19 +754,19 @@ container created for the job.
 The CI job runs:
 
 ```bash
-uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py
+uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py tests/test_live_postgres_research_note_repository.py
 ```
 
 It does not rerun the full test suite, linting, type checking, or schema export
 checks. Those remain owned by the existing `tooling` job. Both local Compose
 and CI use the same safe disposable PostgreSQL path: Alembic `upgrade head`,
 catalog inspection, and the approved experiment-run and data-snapshot
-repository insert/replay smokes. PR 34 is expected to add approximately 5-15
-seconds and remains comfortably below the ten-minute job timeout.
+repository insert/replay smokes plus the approved research-note smoke. PR 35 is
+expected to add approximately 5-15 seconds and remains comfortably below the
+ten-minute job timeout.
 
 The CI persistence smoke job does not check or execute:
 
-- Research note inserts.
 - Review event inserts.
 - Artifact manifest or artifact entry inserts.
 - `ON CONFLICT` or upsert behavior.
@@ -784,7 +830,7 @@ After local Docker Compose:
 After CI Postgres:
 
 - Keep the CI database coverage isolated to migration and approved
-  experiment-run repository smoke tests.
+  repository smoke tests.
 - Keep the existing `tooling` job independent from Postgres.
 - Avoid CI secrets and external database dependencies.
 - Do not run Docker Compose in CI.
@@ -865,14 +911,15 @@ QUANT_TEST_DATABASE_URL='postgresql+psycopg://quant_test:quant_test@127.0.0.1:54
 python -m uv run pytest -m live_db \
   tests/test_live_postgres_migrations.py \
   tests/test_live_postgres_experiment_run_repository.py \
-  tests/test_live_postgres_data_snapshot_repository.py
+  tests/test_live_postgres_data_snapshot_repository.py \
+  tests/test_live_postgres_research_note_repository.py
 ```
 
 This command requires a disposable local Postgres database and the same safe
 URL gate. It runs Alembic `upgrade head`, inspects migration catalog shape, and
-tests only the experiment-run and data-snapshot repository vertical slices
-inside explicit caller-owned transactions with rollback cleanup. It does not use production
-databases or application integration.
+tests only the experiment-run, data-snapshot, and research-note repository
+vertical slices inside explicit caller-owned transactions with rollback
+cleanup. It does not use production databases or application integration.
 
 ## Validation Commands
 
@@ -899,17 +946,13 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 32, future persistence PRs should keep table design, constraints,
-indexes, semantics, and tests reviewable. Local Compose and CI Postgres remain
-migration-only; targeted statement shapes, result types, error types, pure
-constraint-name classification, narrow SQLAlchemy `IntegrityError` diagnostic
-translation, and the abstract SQLAlchemy repository skeleton do not cause
-inserts, replay lookups, repository-boundary exception catching, translated
-exception chaining, retry behavior, transaction behavior, or repository
-execution.
-Future PRs should still avoid concrete repository implementations, DB write
-paths, API endpoints, backtest integration, artifact IO, data ingestion, broker
-integration, live trading, and paper trading execution unless separately
-approved. Live insert/replay/conflict tests remain deferred until
-repository-boundary exception chaining and repository execution are separately
-approved.
+After PR 35, future persistence PRs should keep table design, constraints,
+indexes, semantics, and tests reviewable. Local Compose and CI Postgres cover
+the approved migration, experiment-run, data-snapshot, and research-note smoke
+paths only. Future PRs should still avoid new concrete repository entity
+implementations, DB write paths, API endpoints, backtest integration, artifact
+IO, data ingestion, broker integration, live trading, and paper trading
+execution unless separately approved. Review-event execution, artifact
+aggregate execution, generic orchestration, repository-boundary exception
+catching where needed, and additional live insert/replay/conflict tests remain
+deferred until separately approved.

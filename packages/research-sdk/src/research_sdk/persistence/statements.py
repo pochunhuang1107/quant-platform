@@ -148,6 +148,19 @@ def build_research_note_insert(
     )
 
 
+def build_research_note_replay_select(
+    *,
+    note_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for a research note."""
+
+    return select(
+        research_notes.c.note_id,
+        research_notes.c.contract_hash,
+        research_notes.c.inserted_at,
+    ).where(research_notes.c.note_id == note_id)
+
+
 def build_review_event_insert(
     *,
     review_event_id: str,
@@ -211,6 +224,7 @@ __all__ = [
     "build_experiment_run_insert",
     "build_experiment_run_replay_select",
     "build_research_note_insert",
+    "build_research_note_replay_select",
     "build_review_event_insert",
     "build_run_artifact_manifest_inserts",
 ]
