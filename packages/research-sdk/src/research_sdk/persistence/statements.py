@@ -132,6 +132,48 @@ def build_run_artifact_manifest_inserts(
     )
 
 
+def build_run_artifact_manifest_replay_select(
+    *,
+    manifest_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for an artifact manifest."""
+
+    return select(
+        run_artifact_manifests.c.manifest_id,
+        run_artifact_manifests.c.run_id,
+        run_artifact_manifests.c.contract_hash,
+        run_artifact_manifests.c.inserted_at,
+    ).where(run_artifact_manifests.c.manifest_id == manifest_id)
+
+
+def build_run_artifact_entries_replay_select(
+    *,
+    manifest_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for artifact manifest entries."""
+
+    return (
+        select(
+            run_artifact_entries.c.manifest_id,
+            run_artifact_entries.c.artifact_id,
+            run_artifact_entries.c.run_id,
+            run_artifact_entries.c.artifact_kind,
+            run_artifact_entries.c.uri,
+            run_artifact_entries.c.filename,
+            run_artifact_entries.c.format,
+            run_artifact_entries.c.status,
+            run_artifact_entries.c.hash_algorithm,
+            run_artifact_entries.c.content_hash,
+            run_artifact_entries.c.size_bytes,
+            run_artifact_entries.c.row_count,
+            run_artifact_entries.c.created_at,
+            run_artifact_entries.c.validator_version,
+        )
+        .where(run_artifact_entries.c.manifest_id == manifest_id)
+        .order_by(run_artifact_entries.c.artifact_id)
+    )
+
+
 def build_research_note_insert(
     note: ResearchNote,
 ) -> Insert:
@@ -223,8 +265,10 @@ __all__ = [
     "build_data_snapshot_manifest_replay_select",
     "build_experiment_run_insert",
     "build_experiment_run_replay_select",
+    "build_run_artifact_entries_replay_select",
     "build_research_note_insert",
     "build_research_note_replay_select",
     "build_review_event_insert",
     "build_run_artifact_manifest_inserts",
+    "build_run_artifact_manifest_replay_select",
 ]

@@ -223,6 +223,39 @@ also adds live disposable PostgreSQL coverage for created, rollback, identical
 duplicate, and changed-payload duplicate behavior and expands the existing CI
 persistence smoke job. Artifact aggregate execution remains future work.
 
+PR 37 adds the artifact-manifest aggregate repository execution vertical slice
+and completes the concrete SQLAlchemy repository surface. It makes
+`record_run_artifact_manifest(...)` concrete, removes the ABC/abstractmethod
+machinery from `SqlAlchemyExperimentLedgerRepository`, and keeps structural
+typing through `ExperimentLedgerRepository`. The method requires an active
+caller-owned transaction before mapping, hashing, statement construction, or
+SQL execution. It executes the existing grouped artifact insert builder:
+targeted parent `run_artifact_manifests` insert first, then strict
+`run_artifact_entries` inserts only when the parent was newly created.
+`CREATED` returns the parent `manifest_id`, PostgreSQL `contract_hash`,
+PostgreSQL `inserted_at`, and `aggregate_entry_count` equal to the complete
+projected entry count.
+
+For replay, PR 37 adds explicit parent and entry replay `SELECT` builders. A
+same `manifest_id` replay first verifies the stored canonical manifest hash,
+then verifies the stored parent `run_id` projection, and then verifies the
+complete stored entry projection against
+`run_artifact_manifest_to_rows(...)`, keyed by `artifact_id` and excluding entry
+`inserted_at`. Exact replay returns `REPLAYED` with the original parent
+`inserted_at` and the verified complete entry count. Same `manifest_id` with a
+different canonical manifest hash raises `ContractHashConflictError`. Different
+`manifest_id` with the same `run_id` raises
+`UnsupportedVersioningConflictError` through the approved SQLAlchemy
+`IntegrityError` adapter and `uq_run_artifact_manifests_run_id` translation,
+regardless of whether the hash matches. Matching parent hash with a changed
+stored parent `run_id`, missing entry, extra entry, or changed entry projection
+raises `AggregateIntegrityError`. PR 37 does
+not repair, partially upsert, independently persist entries, mutate replayed
+entries, verify files, verify artifact content hashes, access object storage,
+add application/backtest integration, add migrations, add constraints, or add
+concurrency tests. The existing CI Postgres persistence smoke job is expanded
+to include the artifact aggregate live repository test.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -245,6 +278,8 @@ The persistence primitive boundaries now include:
 - `SqlAlchemyExperimentLedgerRepository(connection)`
 - `build_experiment_run_replay_select(run_id=...)`
 - `build_data_snapshot_manifest_replay_select(snapshot_id=...)`
+- `build_run_artifact_manifest_replay_select(manifest_id=...)`
+- `build_run_artifact_entries_replay_select(manifest_id=...)`
 - `build_research_note_replay_select(note_id=...)`
 
 These primitives define how validated contract payloads become stable
@@ -427,9 +462,9 @@ The class declares the same five public repository methods as
 `record_experiment_run()` is concrete as of PR 33,
 `record_data_snapshot_manifest()` is concrete as of PR 34,
 `record_research_note()` is concrete as of PR 35, and `append_review_event()`
-is concrete as of PR 36. The artifact-manifest method remains abstract. All
-five methods have the same parameter names, ordering, keyword-only behavior,
-validated contract annotations,
+is concrete as of PR 36. `record_run_artifact_manifest()` is concrete as of
+PR 37, and the repository is directly instantiable. All five methods have the
+same parameter names, ordering, keyword-only behavior, validated contract annotations,
 `ReviewSubjectType | str` behavior, and `PersistenceWriteResult` return
 annotation as the protocol.
 The class intentionally does not inherit `ExperimentLedgerRepository`;
@@ -444,16 +479,11 @@ when no caller-owned transaction is active. It does not add context-manager
 behavior, `begin`, `commit`, `rollback`, `close`, `dispose`, `connect`, retry,
 or logging methods.
 
-Repository skeleton complete does not mean repository implementation complete.
-After PR 36 experiment-run, data-snapshot, research-note, and review-event
-execution exist. The remaining artifact-manifest method still executes no SQL,
-calls no statement builders, constructs no `PersistenceWriteResult`, classifies
-no `CREATED` or `REPLAYED` outcomes, performs no replay lookup, compares no
-hashes, catches no database exceptions, calls no translators, raises or chains
-no translated exceptions, starts no transactions, commits nothing, rolls
-nothing back, and does not close or dispose caller-owned resources. Caller-owned
-transaction policy is unchanged, and artifact aggregate atomicity remains
-future work.
+After PR 37 all five repository methods execute their approved vertical slices.
+The repository still starts no transactions, commits nothing, rolls nothing
+back, and does not close or dispose caller-owned resources. Caller-owned
+transaction policy is unchanged. Artifact aggregate execution is explicit to
+the final entity path rather than a generic repository framework.
 
 ## Statement Builder Boundary
 
@@ -696,7 +726,7 @@ overwritten.
 | --- | --- | --- | --- | --- |
 | `experiment_runs` | `run_id` | Same `run_id` and same `contract_hash` is replay. | Same `run_id` and different `contract_hash` is conflict. | `experiment_id` is reference/context, not replay identity. Persisted run records are immutable in the initial path. Status transitions remain outside the initial persistence path. |
 | `data_snapshot_manifests` | `snapshot_id` | Same `snapshot_id` and same `contract_hash` is replay. | Same `snapshot_id` and different `contract_hash` is conflict. | Initial persisted manifests are immutable. Snapshot replacement or correction requires a future explicit flow. |
-| `run_artifact_manifests` | Primary identity: `manifest_id`. Natural aggregate identity for the initial platform: `run_id`. | Same `manifest_id`, same `contract_hash`, and matching complete entry projection is replay. | Same `manifest_id` and different `contract_hash` is conflict. Different `manifest_id` for the same `run_id` is conflict, regardless of whether the hash matches. Same `run_id` and same `contract_hash` under another `manifest_id` is duplicate alias, not replay. Same `run_id` and different `contract_hash` is unsupported manifest versioning and must reject. | Initial policy permits exactly one artifact-manifest aggregate per `run_id`. Multiple manifest versions are not permitted until an explicit version or supersession model is approved. |
+| `run_artifact_manifests` | Primary identity: `manifest_id`. Natural aggregate identity for the initial platform: `run_id`. | Same `manifest_id`, same `contract_hash`, same stored parent `run_id`, and matching complete entry projection is replay. | Same `manifest_id` and different `contract_hash` is conflict. Different `manifest_id` for the same `run_id` is conflict, regardless of whether the hash matches. Same `run_id` and same `contract_hash` under another `manifest_id` is duplicate alias, not replay. Same `run_id` and different `contract_hash` is unsupported manifest versioning and must reject. | Initial policy permits exactly one artifact-manifest aggregate per `run_id`. Multiple manifest versions are not permitted until an explicit version or supersession model is approved. |
 | `run_artifact_entries` | `(manifest_id, artifact_id)`, only inside the parent aggregate. | Entries have no independent replay path. Parent replay requires the same manifest hash and the exact complete projected entry set. | Missing entries, extra entries, or differing entry values indicate aggregate integrity failure. | Entries must never be written independently. No automatic repair, partial upsert, best-effort entry insertion, or independent entry mutation is allowed. |
 | `research_notes` | `note_id` | Same `note_id` and same `contract_hash` is replay. | Same `note_id` and different `contract_hash` is conflict. | Persisted note versions are immutable. `updated_at` and `updated_by` are values inside one immutable note version; they are not authorization to mutate the stored row. Revisions require a new `note_id` using `parent_note_id` or `supersedes_note_id`. No silent note editing is allowed. |
 | `review_events` | `review_event_id` | No idempotent replay claim exists for now. | Duplicate `review_event_id` always rejects for now. | Events remain append-only. Do not compare `raw_review` directly to infer replay. A future standalone `ReviewEvent` contract with `schema_version` and `event_hash` is required before replay semantics can be approved. `ReviewMetadata` is audit/review metadata and is not trading or risk authorization. |
@@ -764,7 +794,8 @@ outcomes:
 6. Equal canonical hash means `REPLAYED`.
 7. Different canonical hash raises `ContractHashConflictError`.
 8. Non-target unique failure is translated by exact constraint identity.
-9. Artifact replay additionally verifies the complete stored entry projection.
+9. Artifact replay additionally verifies the stored parent `run_id` projection
+   and complete stored entry projection.
 10. Missing, extra, or differing entries cause `AggregateIntegrityError`.
 
 The manifest-level `ON CONFLICT` clause alone does not make artifact aggregate
@@ -1083,7 +1114,8 @@ Future repositories should:
 - call existing statement builders for SQL construction;
 - store raw validated contract JSON for audit and replay;
 - keep artifact and data hashes as declared metadata only;
-- write artifact manifest and entry rows atomically when execution is approved;
+- write artifact manifest and entry rows atomically in the approved aggregate
+  repository path;
 - avoid file IO, object storage IO, vendor calls, and hash verification;
 - avoid accepting `Engine`, `Session`, DB URLs, raw rows, raw statements,
   storage handles, or caller-provided `contract_hash` values;
@@ -1107,19 +1139,15 @@ trading approval, or live trading approval.
 
 ## Deferred Scope
 
-The following remain deferred after PR 36:
+The following remain deferred after PR 37:
 
-- artifact-manifest SQLAlchemy repository implementation;
-- artifact-manifest aggregate database write path;
-- artifact-manifest statement execution;
 - sessions or unit-of-work abstractions except as future design;
 - runtime DB driver dependencies and async drivers such as `asyncpg`;
 - additional live Postgres repository/write-path tests outside approved slices;
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
 - standalone review-event idempotency, replay, hash comparison, and `ON CONFLICT`
   implementation;
-- artifact-manifest idempotency, replay, duplicate handling, conflict handling,
-  and aggregate verification implementation;
+- artifact-manifest concurrency tests and concurrent conflict/replay validation;
 - lifecycle, correction, supersession, and append-only enforcement;
 - FastAPI endpoints;
 - backtest integration;

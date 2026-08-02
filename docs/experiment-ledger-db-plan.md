@@ -247,6 +247,32 @@ subject existence validation, subject foreign key, schema/table/metadata change,
 dependency change, Docker Compose change, application/backtest integration,
 broker integration, paper trading, or live trading.
 
+PR 37 adds the artifact-manifest aggregate repository execution vertical slice.
+It makes `record_run_artifact_manifest(...)` concrete and removes the
+ABC/abstractmethod machinery from the SQLAlchemy repository, so all five
+repository protocol methods now have concrete implementations and the class is
+directly instantiable. The artifact method requires an active caller-owned
+transaction before mapping, hashing, statement construction, or SQL execution.
+It writes the parent manifest and every projected entry in that same
+caller-owned transaction, returns `CREATED` only after all strict entry inserts
+succeed, and reports `aggregate_entry_count` as the complete projected entry
+count.
+
+PR 37 also adds parent and entry replay `SELECT` builders. Replay is accepted
+only for the same `manifest_id`, the same canonical manifest hash, the same
+stored parent `run_id` projection, and the exact complete stored entry
+projection keyed by `artifact_id`. A changed stored parent `run_id`, missing
+entry, extra entry, or changed entry raises `AggregateIntegrityError`; no
+parent or entry state is repaired. A same-ID hash mismatch raises
+`ContractHashConflictError`. A different
+`manifest_id` for an existing `run_id` raises
+`UnsupportedVersioningConflictError` through `uq_run_artifact_manifests_run_id`,
+regardless of whether the attempted hash matches. PR 37 adds no migration,
+metadata, constraint, index, dependency, Docker Compose, contract/schema,
+artifact IO, object-storage IO, content-hash verification,
+application/backtest integration, broker integration, paper trading, live
+trading, or concurrency tests.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
@@ -581,10 +607,15 @@ reuse, strict insert execution, `CREATED` result construction with
 `DuplicateReviewEventError`, explicit exception chaining for approved
 `pk_review_events` diagnostics, unchanged re-raise for unknown
 `IntegrityError` values, live disposable PostgreSQL coverage, and CI
-persistence smoke expansion. Artifact aggregate implementation, natural-key
-execution, concurrency tests, generic repository orchestration, artifact
-atomicity and verification, and application/backtest integration remain future
-work.
+persistence smoke expansion. As of PR 37, artifact-manifest aggregate
+repository execution is implemented with parent plus entry atomicity,
+same-`manifest_id` replay, parent `run_id` projection verification, complete
+entry projection verification,
+same-ID hash conflict handling, natural `run_id` versioning conflict handling,
+aggregate integrity failure detection, direct repository instantiation, live
+disposable PostgreSQL coverage, and CI persistence smoke expansion. Concurrency
+tests, generic repository orchestration, artifact file/content verification,
+and application/backtest integration remain future work.
 
 See [Persistence Repository Plan](persistence-repository-plan.md) for the
 repository boundary, hashing API, future write-path responsibilities, and the
@@ -1067,9 +1098,9 @@ Postgres service, run FastAPI/backtest integration, or write experiment runs
 from backtests. Downgrade testing remains deferred.
 
 PR 23 adds optional local Docker Compose infrastructure for that harness. As of
-PR 36, the same disposable local Postgres service may also be used for the
-approved experiment-run, data-snapshot, research-note, and review-event
-repository smoke tests. All live paths remain double opt-in through
+PR 37, the same disposable local Postgres service may also be used for the
+approved experiment-run, data-snapshot, research-note, review-event, and
+artifact-manifest repository smoke tests. All live paths remain double opt-in through
 `QUANT_RUN_LIVE_DB_TESTS=1` and `QUANT_TEST_DATABASE_URL`.
 
 Before PR 24, the PR 23 Compose path was manually validated with Docker:
@@ -1082,27 +1113,24 @@ PR 24 adds CI Postgres only for migration validation. PR 33 expands that same
 job to persistence smoke coverage, and PR 34 adds the data-snapshot repository
 smoke test to the same job. PR 35 adds the research-note repository smoke test
 to the same job. PR 36 adds the review-event repository smoke test to the same
-job. The CI job uses a GitHub Actions `postgres:17.10` service container with
+job. PR 37 adds the artifact-manifest aggregate repository smoke test to the
+same job. The CI job uses a GitHub Actions `postgres:17.10` service container with
 `quant_platform_test`/`quant_test` test-only values, maps the service to
 localhost for the existing URL safety helper, and runs the migration smoke test
-plus the experiment-run, data-snapshot, research-note, and review-event
-repository live tests. The normal tooling CI job remains unchanged and does not
-depend on Postgres.
+plus the experiment-run, data-snapshot, research-note, review-event, and
+artifact-manifest repository live tests. The normal tooling CI job remains
+unchanged and does not depend on Postgres.
 
-After PR 36, the artifact-manifest identity schema blocker is resolved, the
+After PR 37, the artifact-manifest identity schema blocker is resolved, the
 successful-write result vocabulary exists, the pure domain error taxonomy
 exists, targeted PostgreSQL insert-attempt statement shapes exist, pure exact
 constraint-name classification exists, narrow SQLAlchemy `IntegrityError`
-diagnostic extraction exists, the abstract SQLAlchemy repository skeleton
-exists, and `record_experiment_run()`, `record_data_snapshot_manifest()`, and
-`record_research_note()` plus `append_review_event()` have concrete execution
-paths. The next expansion gates remain artifact aggregate implementation,
-natural-key conflict execution, repository-boundary exception catching and
-translated exception chaining for artifact constraints where needed, concurrency
-tests, artifact aggregate atomicity and integrity verification,
-application/backtest integration, and SQLite persistence policy if it is ever
-reconsidered. Each gate requires separate approval before it changes code,
-tests, dependencies, workflows, infrastructure, or migrations.
+diagnostic extraction exists, and all five SQLAlchemy repository methods have
+concrete execution paths. The next expansion gates remain concurrency tests,
+concurrent artifact replay/conflict validation, application/backtest
+integration, and SQLite persistence policy if it is ever reconsidered. Each
+gate requires separate approval before it changes code, tests, dependencies,
+workflows, infrastructure, or migrations.
 
 ## Future DB Test Strategy
 
