@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import inspect
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast, get_type_hints
 
@@ -21,14 +22,12 @@ from research_sdk.contracts import (
     RunArtifactManifest,
 )
 from research_sdk.persistence.protocols import ExperimentLedgerRepository
-from research_sdk.persistence.results import PersistenceWriteResult
 from research_sdk.persistence.sqlalchemy_repository import (
     SqlAlchemyExperimentLedgerRepository,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "contracts"
-SCOPE_MESSAGE = "artifact repository execution is outside PR 36 review-event scope"
 
 EXPECTED_REPOSITORY_METHODS = {
     "record_experiment_run",
@@ -38,7 +37,7 @@ EXPECTED_REPOSITORY_METHODS = {
     "append_review_event",
 }
 
-EXPECTED_ABSTRACT_METHODS = {"record_run_artifact_manifest"}
+EXPECTED_ABSTRACT_METHODS: set[str] = set()
 
 PROHIBITED_PUBLIC_OPERATIONAL_NAMES = {
     "connection",
@@ -68,7 +67,6 @@ PROHIBITED_OPERATIONAL_SYMBOLS = {
     "get_database_url",
     "DATABASE_URL",
     "translate_constraint_violation",
-    "build_run_artifact_manifest_inserts",
     "execute",
     "select",
     "insert",
@@ -91,18 +89,6 @@ PROHIBITED_OPERATIONAL_SYMBOLS = {
     "paper trading",
     "live trading",
 }
-
-
-class _ConcreteRepository(SqlAlchemyExperimentLedgerRepository):
-    __slots__ = ()
-
-    def record_run_artifact_manifest(
-        self,
-        *,
-        manifest_id: str,
-        manifest: RunArtifactManifest,
-    ) -> PersistenceWriteResult:
-        raise AssertionError(SCOPE_MESSAGE)
 
 
 class _FakeDiagnostic:
@@ -137,8 +123,8 @@ def connection_sentinel() -> Connection:
 
 
 @pytest.fixture
-def repository(connection_sentinel: Connection) -> _ConcreteRepository:
-    return _ConcreteRepository(connection_sentinel)
+def repository(connection_sentinel: Connection) -> SqlAlchemyExperimentLedgerRepository:
+    return SqlAlchemyExperimentLedgerRepository(connection_sentinel)
 
 
 @pytest.fixture
@@ -172,16 +158,17 @@ def review_metadata() -> ReviewMetadata:
     return ReviewMetadata.model_validate(load_fixture("review_metadata.json"))
 
 
-def test_sqlalchemy_repository_is_abstract_boundary() -> None:
-    assert inspect.isabstract(SqlAlchemyExperimentLedgerRepository)
+def test_sqlalchemy_repository_is_directly_instantiable() -> None:
+    connection = cast(Connection, object())
 
-    with pytest.raises(TypeError):
-        SqlAlchemyExperimentLedgerRepository(cast(Connection, object()))
+    repository = SqlAlchemyExperimentLedgerRepository(connection)
 
+    assert inspect.isabstract(SqlAlchemyExperimentLedgerRepository) is False
     assert (
-        SqlAlchemyExperimentLedgerRepository.__abstractmethods__
+        getattr(SqlAlchemyExperimentLedgerRepository, "__abstractmethods__", set())
         == EXPECTED_ABSTRACT_METHODS
     )
+    assert repository._connection is connection
     assert not getattr(
         SqlAlchemyExperimentLedgerRepository.record_experiment_run,
         "__isabstractmethod__",
@@ -202,22 +189,20 @@ def test_sqlalchemy_repository_is_abstract_boundary() -> None:
         "__isabstractmethod__",
         False,
     )
-    for method_name in EXPECTED_ABSTRACT_METHODS:
-        assert getattr(
-            getattr(SqlAlchemyExperimentLedgerRepository, method_name),
-            "__isabstractmethod__",
-            False,
-        )
+    assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.record_run_artifact_manifest,
+        "__isabstractmethod__",
+        False,
+    )
 
 
 def test_constructor_stores_exact_injected_connection(
-    repository: _ConcreteRepository,
+    repository: SqlAlchemyExperimentLedgerRepository,
     connection_sentinel: Connection,
 ) -> None:
     assert repository._connection is connection_sentinel
     assert type(repository).__init__ is SqlAlchemyExperimentLedgerRepository.__init__
     assert SqlAlchemyExperimentLedgerRepository.__slots__ == ("_connection",)
-    assert _ConcreteRepository.__slots__ == ()
     assert not hasattr(repository, "__dict__")
     assert _slotted_state(repository) == {"_connection": connection_sentinel}
 
@@ -238,8 +223,8 @@ def test_public_lifecycle_and_operational_names_are_absent() -> None:
     assert PROHIBITED_PUBLIC_OPERATIONAL_NAMES.isdisjoint(public_api)
 
 
-def test_concrete_subclass_structurally_conforms_to_repository_protocol(
-    repository: _ConcreteRepository,
+def test_repository_structurally_conforms_to_repository_protocol(
+    repository: SqlAlchemyExperimentLedgerRepository,
 ) -> None:
     assert isinstance(repository, ExperimentLedgerRepository)
 
@@ -256,34 +241,6 @@ def test_method_signatures_match_repository_protocol(method_name: str) -> None:
     _assert_type_hints_match(method_name)
 
 
-def test_abstract_method_bodies_defensively_raise_not_implemented(
-    repository: _ConcreteRepository,
-    run_artifact_manifest: RunArtifactManifest,
-) -> None:
-    with pytest.raises(NotImplementedError):
-        SqlAlchemyExperimentLedgerRepository.record_run_artifact_manifest(
-            repository,
-            manifest_id="manifest-run-20260709-001",
-            manifest=run_artifact_manifest,
-        )
-
-
-def test_concrete_test_subclass_methods_raise_scope_assertion(
-    repository: _ConcreteRepository,
-    run_artifact_manifest: RunArtifactManifest,
-) -> None:
-    assert "record_experiment_run" not in _ConcreteRepository.__dict__
-    assert "record_data_snapshot_manifest" not in _ConcreteRepository.__dict__
-    assert "record_research_note" not in _ConcreteRepository.__dict__
-    assert "append_review_event" not in _ConcreteRepository.__dict__
-
-    with pytest.raises(AssertionError, match=SCOPE_MESSAGE):
-        repository.record_run_artifact_manifest(
-            manifest_id="manifest-run-20260709-001",
-            manifest=run_artifact_manifest,
-        )
-
-
 def test_direct_module_and_package_exports_are_canonical() -> None:
     assert sqlalchemy_repository.SqlAlchemyExperimentLedgerRepository is (
         SqlAlchemyExperimentLedgerRepository
@@ -294,7 +251,6 @@ def test_direct_module_and_package_exports_are_canonical() -> None:
     assert sqlalchemy_repository.__all__ == ["SqlAlchemyExperimentLedgerRepository"]
 
     for private_name in (
-        "_ConcreteRepository",
         "_connection",
         "__abstractmethods__",
         "Connection",
@@ -319,12 +275,12 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
 
     allowed_calls = {
         "ContractHashConflictError",
+        "AggregateIntegrityError",
         "PersistedRecordMetadata",
         "PersistenceErrorContext",
         "PersistenceWriteResult",
         "ReplayLookupError",
         "_hash_backed_write_result",
-        "abstractmethod",
         "build_data_snapshot_manifest_insert",
         "build_data_snapshot_manifest_replay_select",
         "build_experiment_run_insert",
@@ -332,6 +288,9 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
         "build_research_note_insert",
         "build_research_note_replay_select",
         "build_review_event_insert",
+        "build_run_artifact_entries_replay_select",
+        "build_run_artifact_manifest_inserts",
+        "build_run_artifact_manifest_replay_select",
         "contract_sha256",
         "execute",
         "in_transaction",
@@ -365,17 +324,50 @@ def test_source_constructs_only_approved_persistence_results_or_dispositions() -
     assert "PersistedRecordMetadata" in called_names
 
 
+def test_record_run_artifact_manifest_requires_transaction_before_work() -> None:
+    method_node = _method_node(
+        _production_ast(),
+        "SqlAlchemyExperimentLedgerRepository",
+        "record_run_artifact_manifest",
+    )
+    first_statement = method_node.body[0]
+
+    assert isinstance(first_statement, ast.Expr)
+    assert isinstance(first_statement.value, ast.Call)
+    assert isinstance(first_statement.value.func, ast.Attribute)
+    assert first_statement.value.func.attr == "_require_active_transaction"
+    assert isinstance(first_statement.value.func.value, ast.Name)
+    assert first_statement.value.func.value.id == "self"
+
+
 def test_source_catches_only_integrity_error_with_bare_unknown_reraise() -> None:
     tree = _production_ast()
+    repository_handler_names = _caught_exception_names_in_repository_methods(tree)
 
-    assert _caught_exception_names(tree) == {"IntegrityError"}
-    assert _has_bare_raise_in_exception_handler(tree, "IntegrityError")
+    assert repository_handler_names == {"IntegrityError"}
+    assert _has_bare_raise_in_exception_handler(
+        _repository_methods_ast(tree),
+        handler_name="IntegrityError",
+    )
     assert _has_raise_from_in_exception_handler(
-        tree,
+        _repository_methods_ast(tree),
         handler_name="IntegrityError",
         raised_name="translated",
         cause_name="error",
     )
+
+
+def test_source_private_projection_comparison_catches_safe_normalization_errors() -> (
+    None
+):
+    tree = _production_ast()
+    helper_node = _function_node(tree, "_artifact_entry_projections_match")
+
+    assert _caught_exception_names(helper_node) == {
+        "KeyError",
+        "TypeError",
+        "ValueError",
+    }
 
 
 def test_source_contains_no_repository_transaction_lifecycle_calls() -> None:
@@ -406,6 +398,64 @@ def test_source_keeps_review_events_out_of_replay_and_hash_paths() -> None:
     assert "PersistenceDisposition.REPLAYED" not in append_source
 
 
+def test_artifact_manifest_reraises_untranslated_parent_integrity_error(
+    run_artifact_manifest: RunArtifactManifest,
+) -> None:
+    original_error = IntegrityError(
+        "INSERT INTO run_artifact_manifests",
+        {"manifest_id": "manifest-untranslated"},
+        _FakeOrig(),
+    )
+    repository = SqlAlchemyExperimentLedgerRepository(
+        cast(Connection, _FailingConnection(original_error))
+    )
+
+    with pytest.raises(IntegrityError) as exc_info:
+        repository.record_run_artifact_manifest(
+            manifest_id="manifest-untranslated",
+            manifest=run_artifact_manifest,
+        )
+
+    assert exc_info.value is original_error
+
+
+def test_artifact_entry_projection_normalizes_equivalent_aware_timestamps() -> None:
+    expected = _artifact_entry_projection_row(
+        created_at="2026-07-09T10:05:00+01:00",
+    )
+    stored = _artifact_entry_projection_row(
+        created_at=datetime(2026, 7, 9, 9, 5, 0, tzinfo=UTC),
+    )
+
+    assert sqlalchemy_repository._artifact_entry_projections_match(
+        expected_entries=(expected,),
+        stored_entries=(stored,),
+    )
+
+
+@pytest.mark.parametrize(
+    "created_at",
+    [
+        "not-a-valid-datetime",
+        "2026-07-09T09:05:00",
+        datetime(2026, 7, 9, 9, 5, 0),
+    ],
+)
+def test_artifact_entry_projection_rejects_invalid_created_at_without_leaking(
+    created_at: object,
+) -> None:
+    expected = _artifact_entry_projection_row(created_at="2026-07-09T09:05:00Z")
+    stored = _artifact_entry_projection_row(created_at=created_at)
+
+    assert (
+        sqlalchemy_repository._artifact_entry_projections_match(
+            expected_entries=(expected,),
+            stored_entries=(stored,),
+        )
+        is False
+    )
+
+
 def test_append_review_event_reraises_untranslated_integrity_error(
     review_metadata: ReviewMetadata,
 ) -> None:
@@ -414,7 +464,7 @@ def test_append_review_event_reraises_untranslated_integrity_error(
         {"review_event_id": "review-event-untranslated"},
         _FakeOrig(),
     )
-    repository = _ConcreteRepository(
+    repository = SqlAlchemyExperimentLedgerRepository(
         cast(Connection, _FailingConnection(original_error))
     )
 
@@ -460,10 +510,31 @@ def _assert_type_hints_match(method_name: str) -> None:
     assert actual_hints == expected_hints
 
 
-def _slotted_state(repository: _ConcreteRepository) -> dict[str, object]:
+def _slotted_state(
+    repository: SqlAlchemyExperimentLedgerRepository,
+) -> dict[str, object]:
     return {
         slot: getattr(repository, slot)
         for slot in SqlAlchemyExperimentLedgerRepository.__slots__
+    }
+
+
+def _artifact_entry_projection_row(*, created_at: object) -> dict[str, object]:
+    return {
+        "manifest_id": "manifest-unit",
+        "artifact_id": "config",
+        "run_id": "run-unit",
+        "artifact_kind": "config",
+        "uri": "artifacts/run-unit/config.json",
+        "filename": "config.json",
+        "format": "json",
+        "status": "produced",
+        "hash_algorithm": "sha256",
+        "content_hash": "sha256:config",
+        "size_bytes": 128,
+        "row_count": None,
+        "created_at": created_at,
+        "validator_version": "artifact-validator-placeholder-0.1.0",
     }
 
 
@@ -525,6 +596,47 @@ def _class_member_names(tree: ast.AST, class_name: str) -> set[str]:
                 if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
             }
     raise AssertionError(f"{class_name} class not found")
+
+
+def _method_node(
+    tree: ast.AST,
+    class_name: str,
+    method_name: str,
+) -> ast.FunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef) and child.name == method_name:
+                    return child
+    raise AssertionError(f"{class_name}.{method_name} not found")
+
+
+def _function_node(tree: ast.AST, function_name: str) -> ast.FunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            return node
+    raise AssertionError(f"{function_name} not found")
+
+
+def _repository_methods_ast(tree: ast.AST) -> ast.Module:
+    method_nodes: list[ast.stmt] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.ClassDef)
+            and node.name == "SqlAlchemyExperimentLedgerRepository"
+        ):
+            method_nodes.extend(
+                child
+                for child in node.body
+                if isinstance(child, ast.FunctionDef) and not child.name.startswith("_")
+            )
+            break
+
+    return ast.Module(body=method_nodes, type_ignores=[])
+
+
+def _caught_exception_names_in_repository_methods(tree: ast.AST) -> set[str]:
+    return _caught_exception_names(_repository_methods_ast(tree))
 
 
 def _attribute_pairs(tree: ast.AST) -> set[tuple[str, str]]:

@@ -45,7 +45,13 @@ from research_sdk.persistence import (
     build_review_event_insert as exported_build_review_event_insert,
 )
 from research_sdk.persistence import (
+    build_run_artifact_entries_replay_select as exported_artifact_entries_select,
+)
+from research_sdk.persistence import (
     build_run_artifact_manifest_inserts as exported_build_run_artifact_manifest_inserts,
+)
+from research_sdk.persistence import (
+    build_run_artifact_manifest_replay_select as exported_artifact_manifest_select,
 )
 from research_sdk.persistence.mappers import (
     ReviewSubjectType,
@@ -65,7 +71,9 @@ from research_sdk.persistence.statements import (
     build_research_note_insert,
     build_research_note_replay_select,
     build_review_event_insert,
+    build_run_artifact_entries_replay_select,
     build_run_artifact_manifest_inserts,
+    build_run_artifact_manifest_replay_select,
 )
 from research_sdk.persistence.tables import (
     data_snapshot_manifests,
@@ -204,6 +212,14 @@ def test_statement_builders_import_from_statement_module() -> None:
     assert statements.build_run_artifact_manifest_inserts is (
         build_run_artifact_manifest_inserts
     )
+    assert statements.build_run_artifact_manifest_replay_select is (
+        build_run_artifact_manifest_replay_select
+    )
+    assert "build_run_artifact_manifest_replay_select" in statements.__all__
+    assert statements.build_run_artifact_entries_replay_select is (
+        build_run_artifact_entries_replay_select
+    )
+    assert "build_run_artifact_entries_replay_select" in statements.__all__
     assert statements.build_research_note_insert is build_research_note_insert
     assert statements.build_research_note_replay_select is (
         build_research_note_replay_select
@@ -227,6 +243,10 @@ def test_statement_builders_export_from_persistence_package() -> None:
     assert exported_build_run_artifact_manifest_inserts is (
         build_run_artifact_manifest_inserts
     )
+    assert exported_artifact_manifest_select is (
+        build_run_artifact_manifest_replay_select
+    )
+    assert exported_artifact_entries_select is build_run_artifact_entries_replay_select
     assert exported_build_research_note_insert is build_research_note_insert
     assert exported_build_research_note_replay_select is (
         build_research_note_replay_select
@@ -450,6 +470,96 @@ def test_research_note_replay_select_shape() -> None:
     assert params == {"note_id_1": note_id}
     assert note_id not in sql
     assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_run_artifact_manifest_replay_select_shape() -> None:
+    manifest_id = "manifest-replay-select-sentinel"
+
+    statement = build_run_artifact_manifest_replay_select(manifest_id=manifest_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "manifest_id",
+        "run_id",
+        "contract_hash",
+        "inserted_at",
+    )
+    assert tuple(statement.get_final_froms()) == (run_artifact_manifests,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "run_artifact_manifests.manifest_id = %(manifest_id_1)s"
+    )
+    assert sql.startswith(
+        "SELECT run_artifact_manifests.manifest_id, "
+        "run_artifact_manifests.run_id, "
+        "run_artifact_manifests.contract_hash, "
+        "run_artifact_manifests.inserted_at FROM run_artifact_manifests WHERE "
+        "run_artifact_manifests.manifest_id = "
+    )
+    assert params == {"manifest_id_1": manifest_id}
+    assert manifest_id not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_run_artifact_entries_replay_select_shape() -> None:
+    manifest_id = "manifest-entry-replay-select-sentinel"
+
+    statement = build_run_artifact_entries_replay_select(manifest_id=manifest_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "manifest_id",
+        "artifact_id",
+        "run_id",
+        "artifact_kind",
+        "uri",
+        "filename",
+        "format",
+        "status",
+        "hash_algorithm",
+        "content_hash",
+        "size_bytes",
+        "row_count",
+        "created_at",
+        "validator_version",
+    )
+    assert tuple(statement.get_final_froms()) == (run_artifact_entries,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "run_artifact_entries.manifest_id = %(manifest_id_1)s"
+    )
+    assert (
+        str(statement._order_by_clauses[0].compile(dialect=POSTGRESQL_DIALECT))
+        == "run_artifact_entries.artifact_id"
+    )
+    assert sql.startswith(
+        "SELECT run_artifact_entries.manifest_id, "
+        "run_artifact_entries.artifact_id, "
+        "run_artifact_entries.run_id, "
+        "run_artifact_entries.artifact_kind, "
+    )
+    assert " FROM run_artifact_entries WHERE run_artifact_entries.manifest_id = " in sql
+    assert sql.endswith(" ORDER BY run_artifact_entries.artifact_id")
+    assert params == {"manifest_id_1": manifest_id}
+    assert manifest_id not in sql
+    assert "raw_contract" not in sql
+    assert "inserted_at" not in sql
     assert "SELECT *" not in sql
     assert " JOIN " not in sql
     assert " FOR UPDATE" not in sql

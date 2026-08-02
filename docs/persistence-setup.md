@@ -541,7 +541,8 @@ python -m uv run pytest -m live_db \
   tests/test_live_postgres_experiment_run_repository.py \
   tests/test_live_postgres_data_snapshot_repository.py \
   tests/test_live_postgres_research_note_repository.py \
-  tests/test_live_postgres_review_event_repository.py
+  tests/test_live_postgres_review_event_repository.py \
+  tests/test_live_postgres_artifact_manifest_repository.py
 ```
 
 Use the `python -m uv` form because `uv` may not be on `PATH`.
@@ -754,6 +755,44 @@ The test does not cover replay, review-event hash comparison, a standalone
 artifact entries, aggregate verification, concurrency, application integration,
 backtest execution, broker behavior, paper trading, or live trading.
 
+## Local Live Postgres Artifact-Manifest Repository Smoke
+
+PR 37 adds a sixth live DB test file:
+`tests/test_live_postgres_artifact_manifest_repository.py`.
+
+The artifact-manifest repository smoke test uses the same disposable database
+safety policy as the existing live persistence smokes. It requires
+`QUANT_RUN_LIVE_DB_TESTS=1`, `QUANT_TEST_DATABASE_URL`, a safe local PostgreSQL
+URL, and Alembic `upgrade head` before repository assertions run. It uses the
+production `SqlAlchemyExperimentLedgerRepository` directly, explicit
+caller-owned SQLAlchemy transactions, caller-owned nested savepoints around
+expected natural-key `IntegrityError` conflicts, test-only SQLAlchemy Core
+mutations to manufacture aggregate corruption, and rollback cleanup. It must
+not be pointed at a production, shared, vendor, cloud, or externally hosted
+database.
+
+The test covers only `record_run_artifact_manifest(...)`:
+
+- active caller-owned transaction enforcement without SQLAlchemy autobegin;
+- `CREATED` after parent plus all strict entry inserts succeed;
+- DB-generated timezone-aware parent `inserted_at`;
+- `aggregate_entry_count` as the complete artifact entry count;
+- caller rollback removing parent and entries together;
+- exact `REPLAYED` behavior after parent canonical hash, stored parent `run_id`,
+  and complete entry projection verification;
+- original parent and entry metadata preserved during replay;
+- same-`manifest_id` hash conflict via `ContractHashConflictError`;
+- same-`run_id` different-`manifest_id` conflict via
+  `UnsupportedVersioningConflictError`;
+- aggregate corruption detection for changed stored parent `run_id`, missing
+  entries, extra entries, and changed entries via `AggregateIntegrityError`;
+- no automatic repair, partial upsert, entry mutation, file IO, object-storage
+  IO, or content-hash verification.
+
+The test does not cover concurrency, artifact validator behavior, application
+integration, backtest execution, broker behavior, paper trading, or live
+trading.
+
 ## CI Postgres Migration Smoke
 
 PR 24 adds a separate GitHub Actions job named `postgres-migrations`. PR 33
@@ -761,9 +800,10 @@ renames its display name to `Postgres persistence smoke` and expands the test
 command to include the experiment-run repository smoke. PR 34 expands the same
 command to include the data-snapshot repository smoke. PR 35 expands the same
 command to include the research-note repository smoke. PR 36 expands the same
-command to include the review-event repository smoke. This job is isolated from
-the existing fast `tooling` job and does not make normal unit CI depend on
-Postgres.
+command to include the review-event repository smoke. PR 37 expands the same
+command to include the artifact-manifest aggregate repository smoke. This job
+is isolated from the existing fast `tooling` job and does not make normal unit
+CI depend on Postgres.
 
 CI uses a GitHub Actions service container, not Docker Compose. Docker Compose
 remains optional local infrastructure only. The CI service uses the same
@@ -787,7 +827,7 @@ container created for the job.
 The CI job runs:
 
 ```bash
-uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py tests/test_live_postgres_research_note_repository.py tests/test_live_postgres_review_event_repository.py
+uv run pytest -m live_db tests/test_live_postgres_migrations.py tests/test_live_postgres_experiment_run_repository.py tests/test_live_postgres_data_snapshot_repository.py tests/test_live_postgres_research_note_repository.py tests/test_live_postgres_review_event_repository.py tests/test_live_postgres_artifact_manifest_repository.py
 ```
 
 It does not rerun the full test suite, linting, type checking, or schema export
@@ -795,14 +835,16 @@ checks. Those remain owned by the existing `tooling` job. Both local Compose
 and CI use the same safe disposable PostgreSQL path: Alembic `upgrade head`,
 catalog inspection, and the approved experiment-run and data-snapshot
 repository insert/replay smokes plus the approved research-note and review-event
-smokes. PR 36 is expected to add approximately 5-20 seconds and remains
-comfortably below the ten-minute job timeout.
+smokes plus the artifact-manifest aggregate smoke. PR 37 is expected to add
+approximately 20-45 seconds and remains comfortably below the ten-minute job
+timeout.
 
 The CI persistence smoke job does not check or execute:
 
-- Artifact manifest or artifact entry inserts.
-- `ON CONFLICT` or upsert behavior.
-- Natural-key duplicate behavior.
+- Application or backtest artifact writes.
+- Artifact file existence checks.
+- Artifact content-hash verification.
+- Object-storage access.
 - Review-event replay or hash comparison.
 - Correction or lifecycle behavior.
 - FastAPI/backtest integration.
@@ -946,15 +988,16 @@ python -m uv run pytest -m live_db \
   tests/test_live_postgres_experiment_run_repository.py \
   tests/test_live_postgres_data_snapshot_repository.py \
   tests/test_live_postgres_research_note_repository.py \
-  tests/test_live_postgres_review_event_repository.py
+  tests/test_live_postgres_review_event_repository.py \
+  tests/test_live_postgres_artifact_manifest_repository.py
 ```
 
 This command requires a disposable local Postgres database and the same safe
 URL gate. It runs Alembic `upgrade head`, inspects migration catalog shape, and
-tests only the experiment-run, data-snapshot, research-note, and review-event
-repository vertical slices inside explicit caller-owned transactions with
-rollback cleanup. It does not use production databases or application
-integration.
+tests only the experiment-run, data-snapshot, research-note, review-event, and
+artifact-manifest repository vertical slices inside explicit caller-owned
+transactions with rollback cleanup. It does not use production databases or
+application integration.
 
 ## Validation Commands
 
@@ -974,7 +1017,7 @@ uv run pytest tests/test_live_postgres_url_safety.py
 uv run pytest tests/test_persistence_setup.py
 uv run pytest tests/test_persistence_hashing.py tests/test_persistence_mappers.py tests/test_persistence_protocols.py tests/test_persistence_statements.py
 uv run pytest
-uv run pytest -m live_db tests/test_live_postgres_review_event_repository.py
+uv run pytest -m live_db tests/test_live_postgres_artifact_manifest_repository.py
 ```
 
 If `uv` is unavailable on `PATH`, use `python -m uv` as the equivalent command
@@ -982,14 +1025,11 @@ prefix.
 
 ## Next Persistence PR
 
-After PR 36, future persistence PRs should keep table design, constraints,
+After PR 37, future persistence PRs should keep table design, constraints,
 indexes, semantics, and tests reviewable. Local Compose and CI Postgres cover
-the approved migration, experiment-run, data-snapshot, research-note, and
-review-event smoke
-paths only. Future PRs should still avoid new concrete repository entity
-implementations, DB write paths, API endpoints, backtest integration, artifact
-IO, data ingestion, broker integration, live trading, and paper trading
-execution unless separately approved. Artifact aggregate execution, generic
-orchestration, repository-boundary exception catching where needed outside the
-approved review-event duplicate path, and additional live insert/replay/conflict
-tests remain deferred until separately approved.
+the approved migration, experiment-run, data-snapshot, research-note,
+review-event, and artifact-manifest smoke paths only. Future PRs should still
+avoid API endpoints, backtest integration, artifact IO, data ingestion, broker
+integration, live trading, and paper trading execution unless separately
+approved. Concurrent artifact replay/conflict validation, generic orchestration,
+and application integration remain deferred until separately approved.

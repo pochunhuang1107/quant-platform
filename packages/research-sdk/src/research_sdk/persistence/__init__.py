@@ -51,7 +51,9 @@ from research_sdk.persistence.statements import (
     build_research_note_insert,
     build_research_note_replay_select,
     build_review_event_insert,
+    build_run_artifact_entries_replay_select,
     build_run_artifact_manifest_inserts,
+    build_run_artifact_manifest_replay_select,
 )
 from research_sdk.persistence.tables import (
     LEDGER_ANCHOR_TABLES,
@@ -85,7 +87,9 @@ __all__ = [
     "build_research_note_insert",
     "build_research_note_replay_select",
     "build_review_event_insert",
+    "build_run_artifact_entries_replay_select",
     "build_run_artifact_manifest_inserts",
+    "build_run_artifact_manifest_replay_select",
     "canonical_contract_json",
     "canonical_json_sha256",
     "contract_sha256",
