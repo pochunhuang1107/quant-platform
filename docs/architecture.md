@@ -23,7 +23,12 @@ requires each empty scaffold path to be tracked with `.gitkeep` or a local
 - `packages/research-sdk`: future shared research APIs and typed contracts.
 - `packages/data-engine`: future data ingestion, validation, and snapshot logic.
 - `packages/feature-store`: future feature definitions and point-in-time materialization.
-- `packages/backtest-engine`: future deterministic backtest execution.
+- `packages/backtest-engine`: deterministic research-engine execution. The
+  first Phase 1 slice is an importable, offline daily ETF baseline engine using
+  synthetic fixture-only QQQ and SPY bars, explicit costs and slippage, Decimal
+  accounting, deterministic identity, and local artifact generation. It does
+  not own SQLAlchemy, Postgres, experiment-ledger transactions, API workflows,
+  paper trading, live trading, broker integrations, or performance claims.
 - `packages/portfolio-engine`: future portfolio construction and risk calculations.
 - `packages/execution-engine`: reserved and inactive until later phases; no paper trading execution, live trading implementation, broker integration, or account-specific configuration is allowed in Phase 0 or Phase 1.
 - `packages/agent-tools`: future safe automation helpers for agents.
@@ -70,9 +75,52 @@ artifact manifest.
 - The platform is research-first. Paper trading and live trading are later phases.
 - Notebooks may support exploration, but accepted results must be reproducible from versioned code, config, data snapshots, and run artifacts.
 - Backtests must include benchmark comparison, transaction cost assumptions, slippage assumptions, and leakage notes.
+- The first deterministic ETF backtest is infrastructure validation only. It
+  uses version-controlled synthetic fixture data, not historical market data or
+  a production data source, and it must not be used for investment conclusions.
+- Backtest engine core models and execution code remain independent of
+  persistence repositories and transaction handling. Experiment-ledger mapping
+  and recording through the completed-experiment boundary are deferred to a
+  later integration PR.
 - The platform must support multiple asset classes without embedding a preferred broker, exchange, or data vendor in Phase 0.
 - Agents can implement and test but cannot approve financial conclusions, risk exceptions, paper trading, or live trading.
 - Formal approval can only be granted by Po-Chun Huang for now.
+
+## Deterministic ETF Baseline
+
+The initial backtest-engine slice runs one unconditional long-only QQQ
+buy-and-hold baseline with SPY as a gross benchmark. It validates aligned daily
+bars from a small synthetic JSON fixture, buys QQQ once at the first aligned
+session open, values the strategy at each aligned close, and does not liquidate
+at the end of the period. The order decision does not use same-day close,
+future values, indicators, or prior performance.
+
+The baseline uses `Decimal` accounting with explicit `ROUND_HALF_EVEN`
+quantization. Monetary values are quantized to `0.000001`; return and ratio
+values are quantized to `0.000000000001`. The default assumptions are
+`100000` initial capital, 1 basis point commission on executed QQQ notional, 2
+basis points buy slippage, integer QQQ shares, retained cash, open execution,
+close valuation, and a gross fractional-unit SPY benchmark with no commission
+or slippage.
+
+Execution identity is content-addressed from execution inputs and lineage:
+resolved configuration, fixture content hash, data and benchmark snapshot
+identities, strategy identity and version, engine version, injected Git and
+environment metadata, dependency-lock hash, execution command, and the explicit
+no-randomness marker. Output metrics, returns, trades, artifact hashes,
+artifact root paths, generated timestamps, runtime duration, and wall-clock
+timestamps are excluded. Public run IDs use `run-` followed by the full
+64-character lowercase SHA-256 digest.
+
+The artifact writer emits the required local payload files under a
+caller-supplied artifact root and writes `artifact_manifest.json` last. JSON and
+Markdown payload bytes are canonical and deterministic. Parquet payloads use
+explicit PyArrow schemas, stable row ordering, no pandas metadata, no
+dictionary encoding, no statistics, and uncompressed output. Payload bytes do
+not depend on the physical artifact root. The manifest contains actual
+`file://` URIs, so manifest bytes and `artifact_manifest_hash` are expected to
+depend on the artifact root; writing the same result to the same root remains
+byte-for-byte deterministic.
 
 ## Phase 0 Acceptance Criteria
 

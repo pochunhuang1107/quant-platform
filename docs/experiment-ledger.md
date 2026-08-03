@@ -165,6 +165,72 @@ recording permits only all-created, existing-snapshot plus new run/artifact, or
 all-replayed outcomes. Other disposition combinations are rejected as incomplete
 pre-existing completed-experiment state and are not repaired automatically.
 
+## Deterministic Backtest Artifact Bundle
+
+The first Phase 1 backtest-engine slice generates a complete local artifact
+bundle for one deterministic QQQ buy-and-hold baseline with SPY as a gross
+benchmark. The input data is a small version-controlled synthetic fixture only;
+it is not historical market data, not a production data source, and not a basis
+for performance claims.
+
+Execution semantics are fixed: one unconditional QQQ buy is submitted on the
+first aligned fixture date and filled at that session's open plus 2 basis
+points of buy slippage. Commission is 1 basis point of executed QQQ notional.
+The engine buys the largest integer quantity whose slipped notional plus
+commission fits within `100000` initial capital, retains remaining cash, values
+the strategy at each aligned close, and does not liquidate at the end. The SPY
+benchmark is normalized from the first aligned SPY open, permits fractional
+benchmark units, and is gross of costs and slippage. The buy decision does not
+use same-day close, future prices, indicators, or prior performance.
+
+The engine uses `Decimal` values and `ROUND_HALF_EVEN` quantization. Monetary
+values are serialized at `0.000001` precision and return/ratio values at
+`0.000000000001` precision. Decimal values are serialized as canonical strings,
+never JSON floats.
+
+Monthly returns use only supplied fixture sessions. The engine selects the
+final available strategy equity observation in each calendar month, reports the
+first month as `month_end_equity / initial_capital - 1`, and reports every
+later month as `current_month_end_equity / previous_month_end_equity - 1`.
+Months are serialized as `YYYY-MM`; no trading calendar is inferred and no
+annualization is performed.
+
+The run identity is content-addressed from execution inputs and lineage only:
+resolved configuration, fixture byte hash, data and benchmark snapshot
+identities, strategy identity and version, engine version, injected Git and
+environment metadata, dependency-lock hash, execution-command identity, and the
+explicit no-randomness marker. Output metrics, returns, generated artifact
+hashes, artifact root URI, generated timestamps, runtime duration, and
+wall-clock timestamps are excluded. The public `run_id` is `run-` plus the full
+64-character lowercase SHA-256 digest, so equivalent inputs produce the same
+identity and nondeterministic output changes can later surface as ledger
+contract conflicts.
+
+The artifact writer creates real local files for all required artifact kinds:
+`config.json`, `metrics.json`, `trade_log.parquet`, `signal_log.parquet`,
+`daily_equity.parquet`, `drawdown_series.parquet`,
+`monthly_returns.parquet`, `regime_breakdown.json`,
+`failure_analysis.md`, and `research_note.md`. `artifact_manifest.json` is
+written last and is not included as its own artifact entry. JSON uses sorted
+keys, compact separators, UTF-8, no NaN/Infinity, and one trailing newline.
+Markdown uses UTF-8, LF line endings, deterministic section order, and one
+final newline. Parquet files use explicit PyArrow schemas, stable row ordering,
+uncompressed output, disabled dictionary encoding and statistics, and no pandas
+metadata.
+
+Payload artifact bytes are independent of the physical artifact root. The
+manifest contains actual `file://` URIs, so manifest bytes and
+`artifact_manifest_hash` are root-dependent by design. A future exact ledger
+replay must therefore reuse the canonical artifact root; changing the root for
+the same `run_id` is expected to become a contract conflict rather than a
+silent relocation.
+
+Experiment-ledger mapping and persistence remain deferred to the next
+integration PR. The backtest engine does not import persistence repositories,
+open database transactions, inspect Git, read lockfiles, collect environment
+metadata, write failed-run records, or interact with API, worker, broker,
+paper-trading, or live-trading code.
+
 ## Schema Evolution
 
 - Ledger schemas use explicit `schema_version` values.
