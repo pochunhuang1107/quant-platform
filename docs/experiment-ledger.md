@@ -132,6 +132,39 @@ The `review` object should include:
 - Artifact files should not be overwritten after ledger registration.
 - Historical records must remain readable after schema upgrades.
 
+## Completed Experiment Recording Boundary
+
+The Phase 1 completed-experiment recording boundary accepts already validated
+ledger contracts for one terminal research execution:
+
+- `DataSnapshotManifest`.
+- `ExperimentRunRecord`.
+- caller-supplied artifact `manifest_id`.
+- `RunArtifactManifest`.
+
+The boundary validates cross-contract consistency before opening a database
+transaction. The experiment run must be exactly `completed`, must not carry
+failure metadata, and must not mark artifacts incomplete. The run must reference
+the supplied data snapshot, the artifact manifest must reference the same
+`run_id` and `experiment_id`, `artifact_uri` must equal the manifest
+`artifact_root_uri`, and `artifact_manifest_uri` must point to
+`artifact_manifest.json` under that root. The run's
+`artifact_manifest_hash` must be present as caller-supplied metadata.
+
+The boundary requires the supplied artifact manifest to declare a complete
+produced artifact set. It relies on the existing `RunArtifactManifest` contract
+for required artifact kinds, required filenames and formats, unique artifact
+identities, and completeness consistency. It does not generate run IDs, inspect
+git state, collect environment metadata, write artifact files, check filesystem
+or object-storage existence, inspect Parquet schemas, verify artifact bytes, or
+hash a serialized manifest file.
+
+Recording uses one injected transaction context and writes, in order, the data
+snapshot manifest, experiment run, and artifact manifest aggregate. Successful
+recording permits only all-created, existing-snapshot plus new run/artifact, or
+all-replayed outcomes. Other disposition combinations are rejected as incomplete
+pre-existing completed-experiment state and are not repaired automatically.
+
 ## Schema Evolution
 
 - Ledger schemas use explicit `schema_version` values.
