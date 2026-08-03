@@ -1156,9 +1156,38 @@ Review approvals are metadata only. Repository code must not treat
 `ReviewMetadata` as trading authorization, risk approval execution, paper
 trading approval, or live trading approval.
 
+## Completed Experiment Recording Boundary
+
+The completed-experiment recording boundary adds a narrow application-layer
+orchestrator in `research_sdk.experiment_recording`. It accepts already
+validated `DataSnapshotManifest`, `ExperimentRunRecord`, caller-supplied
+artifact `manifest_id`, and `RunArtifactManifest` objects for one terminal
+completed research execution. It validates cross-contract references and
+completed-artifact metadata before opening the injected transaction context.
+
+The service uses a `Callable[[], ContextManager[Connection]]`, such as
+`engine.begin`, to own the outer transaction as the repository caller. It then
+constructs the SQLAlchemy repository from the yielded connection and writes the
+data snapshot manifest, experiment run, and artifact manifest aggregate in that
+order. Repositories still do not begin, commit, roll back, retry, savepoint,
+update, or repair state.
+
+Successful completed-experiment recording preserves individual component
+dispositions and permits only these combinations: all three records created,
+snapshot replayed with run and artifact created, or all three records replayed.
+Any other combination is treated as incomplete pre-existing
+completed-experiment state, raises an application-level coherence error, and
+lets the transaction context roll back.
+
+This boundary does not add backtest engines, strategy code, run-ID generation,
+git or environment inspection, dependency-lock hashing, artifact writing,
+artifact storage validation, failed-run persistence, research notes,
+API/worker/UI behavior, migrations, schema changes, constraints, indexes, CI
+changes, broker integration, paper trading, or live trading.
+
 ## Deferred Scope
 
-The following remain deferred after PR 37:
+The following remain deferred after the completed-experiment recording boundary:
 
 - sessions or unit-of-work abstractions except as future design;
 - runtime DB driver dependencies and async drivers such as `asyncpg`;
@@ -1166,7 +1195,6 @@ The following remain deferred after PR 37:
 - SQLite persistence tests, because JSONB/Postgres behavior differs;
 - standalone review-event idempotency, replay, hash comparison, and `ON CONFLICT`
   implementation;
-- artifact-manifest concurrency tests and concurrent conflict/replay validation;
 - lifecycle, correction, supersession, and append-only enforcement;
 - FastAPI endpoints;
 - backtest integration;
