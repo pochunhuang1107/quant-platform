@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Table, insert, select
+from sqlalchemy import BigInteger, Table, bindparam, func, insert, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.sql.dml import Insert
 from sqlalchemy.sql.elements import ColumnElement
@@ -36,6 +37,10 @@ from research_sdk.persistence.tables import (
     run_artifact_manifests,
 )
 
+_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE = "quant-platform:artifact-manifest:manifest-id:"
+_ARTIFACT_RUN_ID_LOCK_NAMESPACE = "quant-platform:artifact-manifest:run-id:"
+_POSTGRES_ADVISORY_LOCK_ENTROPY_MASK = (1 << 63) - 1
+
 
 @dataclass(frozen=True)
 class ArtifactManifestInsertStatements:
@@ -43,6 +48,30 @@ class ArtifactManifestInsertStatements:
 
     manifest: Insert
     entries: tuple[Insert, ...]
+
+
+def build_run_artifact_manifest_advisory_lock_selects(
+    *,
+    manifest_id: str,
+    run_id: str,
+) -> tuple[Select[Any], ...]:
+    """Build transaction-scoped advisory-lock statements for artifact identity."""
+
+    manifest_key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+        value=manifest_id,
+        keyspace="manifest",
+    )
+    run_key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_RUN_ID_LOCK_NAMESPACE,
+        value=run_id,
+        keyspace="run",
+    )
+
+    ordered_keys = (
+        (manifest_key,) if manifest_key == run_key else (manifest_key, run_key)
+    )
+    return tuple(_build_advisory_xact_lock_select(lock_key=key) for key in ordered_keys)
 
 
 def build_experiment_run_insert(
@@ -259,6 +288,32 @@ def _build_strict_insert(
     return statement.returning(*returning_columns)
 
 
+def _build_advisory_xact_lock_select(*, lock_key: int) -> Select[Any]:
+    return select(
+        func.pg_advisory_xact_lock(
+            bindparam("lock_key", lock_key, type_=BigInteger()),
+        )
+    )
+
+
+def _postgres_advisory_lock_key(
+    *,
+    namespace: str,
+    value: str,
+    keyspace: str,
+) -> int:
+    digest = hashlib.sha256(bytes(f"{namespace}{value}", "utf-8")).digest()
+    entropy = (
+        int.from_bytes(digest[:8], byteorder="big", signed=False)
+        & _POSTGRES_ADVISORY_LOCK_ENTROPY_MASK
+    )
+    if keyspace == "manifest":
+        return entropy
+    if keyspace == "run":
+        return -entropy - 1
+    raise ValueError("keyspace must be manifest or run")
+
+
 __all__ = [
     "ArtifactManifestInsertStatements",
     "build_data_snapshot_manifest_insert",
@@ -266,6 +321,7 @@ __all__ = [
     "build_experiment_run_insert",
     "build_experiment_run_replay_select",
     "build_run_artifact_entries_replay_select",
+    "build_run_artifact_manifest_advisory_lock_selects",
     "build_research_note_insert",
     "build_research_note_replay_select",
     "build_review_event_insert",

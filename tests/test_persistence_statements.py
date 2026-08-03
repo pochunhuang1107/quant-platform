@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 from dataclasses import FrozenInstanceError
@@ -48,6 +49,9 @@ from research_sdk.persistence import (
     build_run_artifact_entries_replay_select as exported_artifact_entries_select,
 )
 from research_sdk.persistence import (
+    build_run_artifact_manifest_advisory_lock_selects as exported_artifact_lock_selects,
+)
+from research_sdk.persistence import (
     build_run_artifact_manifest_inserts as exported_build_run_artifact_manifest_inserts,
 )
 from research_sdk.persistence import (
@@ -62,8 +66,11 @@ from research_sdk.persistence.mappers import (
     run_artifact_manifest_to_rows,
 )
 from research_sdk.persistence.statements import (
+    _ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+    _ARTIFACT_RUN_ID_LOCK_NAMESPACE,
     ArtifactManifestInsertStatements,
     _build_replay_candidate_insert,
+    _postgres_advisory_lock_key,
     build_data_snapshot_manifest_insert,
     build_data_snapshot_manifest_replay_select,
     build_experiment_run_insert,
@@ -72,6 +79,7 @@ from research_sdk.persistence.statements import (
     build_research_note_replay_select,
     build_review_event_insert,
     build_run_artifact_entries_replay_select,
+    build_run_artifact_manifest_advisory_lock_selects,
     build_run_artifact_manifest_inserts,
     build_run_artifact_manifest_replay_select,
 )
@@ -220,6 +228,10 @@ def test_statement_builders_import_from_statement_module() -> None:
         build_run_artifact_entries_replay_select
     )
     assert "build_run_artifact_entries_replay_select" in statements.__all__
+    assert statements.build_run_artifact_manifest_advisory_lock_selects is (
+        build_run_artifact_manifest_advisory_lock_selects
+    )
+    assert "build_run_artifact_manifest_advisory_lock_selects" in statements.__all__
     assert statements.build_research_note_insert is build_research_note_insert
     assert statements.build_research_note_replay_select is (
         build_research_note_replay_select
@@ -247,6 +259,9 @@ def test_statement_builders_export_from_persistence_package() -> None:
         build_run_artifact_manifest_replay_select
     )
     assert exported_artifact_entries_select is build_run_artifact_entries_replay_select
+    assert exported_artifact_lock_selects is (
+        build_run_artifact_manifest_advisory_lock_selects
+    )
     assert exported_build_research_note_insert is build_research_note_insert
     assert exported_build_research_note_replay_select is (
         build_research_note_replay_select
@@ -263,6 +278,120 @@ def test_artifact_manifest_insert_statements_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         grouped.entries = (insert_statement,)
+
+
+def test_artifact_advisory_lock_key_derivation_is_deterministic() -> None:
+    key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+        value="manifest-lock-sentinel",
+        keyspace="manifest",
+    )
+
+    assert key == _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+        value="manifest-lock-sentinel",
+        keyspace="manifest",
+    )
+
+
+def test_artifact_advisory_lock_keyspaces_are_disjoint() -> None:
+    manifest_key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+        value="shared-logical-value",
+        keyspace="manifest",
+    )
+    run_key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_RUN_ID_LOCK_NAMESPACE,
+        value="shared-logical-value",
+        keyspace="run",
+    )
+
+    assert manifest_key >= 0
+    assert run_key < 0
+    assert manifest_key != run_key
+
+
+def test_artifact_advisory_lock_keys_fit_postgres_signed_bigint() -> None:
+    manifest_key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+        value="artifact-lock-range-sentinel",
+        keyspace="manifest",
+    )
+    run_key = _postgres_advisory_lock_key(
+        namespace=_ARTIFACT_RUN_ID_LOCK_NAMESPACE,
+        value="artifact-lock-range-sentinel",
+        keyspace="run",
+    )
+
+    assert 0 <= manifest_key <= (2**63) - 1
+    assert -(2**63) <= run_key <= -1
+
+
+def test_artifact_advisory_lock_key_derivation_does_not_use_python_hash() -> None:
+    helper_node = next(
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(statements)))
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_postgres_advisory_lock_key"
+    )
+
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "hash"
+        for node in ast.walk(helper_node)
+    )
+
+
+def test_artifact_advisory_lock_selects_use_bound_bigint_values() -> None:
+    lock_selects = build_run_artifact_manifest_advisory_lock_selects(
+        manifest_id="manifest-lock-sentinel",
+        run_id="run-lock-sentinel",
+    )
+
+    assert len(lock_selects) == 2
+    observed_keys = tuple(
+        compiled_params(statement)["lock_key"] for statement in lock_selects
+    )
+    expected_keys = (
+        _postgres_advisory_lock_key(
+            namespace=_ARTIFACT_MANIFEST_ID_LOCK_NAMESPACE,
+            value="manifest-lock-sentinel",
+            keyspace="manifest",
+        ),
+        _postgres_advisory_lock_key(
+            namespace=_ARTIFACT_RUN_ID_LOCK_NAMESPACE,
+            value="run-lock-sentinel",
+            keyspace="run",
+        ),
+    )
+    assert observed_keys == expected_keys
+
+    for statement in lock_selects:
+        sql = normalized_sql(statement)
+        assert isinstance(statement, Select)
+        assert "pg_advisory_xact_lock" in sql
+        assert "manifest-lock-sentinel" not in sql
+        assert "run-lock-sentinel" not in sql
+        assert isinstance(compiled_params(statement)["lock_key"], int)
+
+
+def test_artifact_advisory_lock_selects_deduplicate_equal_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        statements,
+        "_postgres_advisory_lock_key",
+        lambda *, namespace, value, keyspace: 42,
+    )
+
+    lock_selects = build_run_artifact_manifest_advisory_lock_selects(
+        manifest_id="manifest-lock-collision",
+        run_id="run-lock-collision",
+    )
+
+    assert len(lock_selects) == 1
+    assert compiled_params(lock_selects[0]) == {"lock_key": 42}
 
 
 def test_table_primary_key_constraint_names_match_migrations() -> None:

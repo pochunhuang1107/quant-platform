@@ -101,16 +101,26 @@ class _FakeOrig(Exception):
 
 
 class _FailingConnection:
-    __slots__ = ("_error",)
+    __slots__ = ("_error", "_execute_count", "_fail_on_execute_number")
 
-    def __init__(self, error: IntegrityError) -> None:
+    def __init__(
+        self,
+        error: IntegrityError,
+        *,
+        fail_on_execute_number: int = 1,
+    ) -> None:
         self._error = error
+        self._execute_count = 0
+        self._fail_on_execute_number = fail_on_execute_number
 
     def in_transaction(self) -> bool:
         return True
 
     def execute(self, statement: object) -> object:
-        raise self._error
+        self._execute_count += 1
+        if self._execute_count == self._fail_on_execute_number:
+            raise self._error
+        return object()
 
 
 def load_fixture(filename: str) -> dict[str, Any]:
@@ -289,6 +299,7 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
         "build_research_note_replay_select",
         "build_review_event_insert",
         "build_run_artifact_entries_replay_select",
+        "build_run_artifact_manifest_advisory_lock_selects",
         "build_run_artifact_manifest_inserts",
         "build_run_artifact_manifest_replay_select",
         "contract_sha256",
@@ -338,6 +349,39 @@ def test_record_run_artifact_manifest_requires_transaction_before_work() -> None
     assert first_statement.value.func.attr == "_require_active_transaction"
     assert isinstance(first_statement.value.func.value, ast.Name)
     assert first_statement.value.func.value.id == "self"
+
+
+def test_record_run_artifact_manifest_locks_before_parent_insert() -> None:
+    method_node = _method_node(
+        _production_ast(),
+        "SqlAlchemyExperimentLedgerRepository",
+        "record_run_artifact_manifest",
+    )
+    lock_loop = method_node.body[1]
+    grouped_assignment = method_node.body[2]
+
+    assert isinstance(lock_loop, ast.For)
+    assert isinstance(lock_loop.target, ast.Name)
+    assert lock_loop.target.id == "lock_statement"
+    assert isinstance(lock_loop.iter, ast.Call)
+    assert isinstance(lock_loop.iter.func, ast.Name)
+    assert lock_loop.iter.func.id == "build_run_artifact_manifest_advisory_lock_selects"
+    assert [keyword.arg for keyword in lock_loop.iter.keywords] == [
+        "manifest_id",
+        "run_id",
+    ]
+
+    assert len(lock_loop.body) == 1
+    lock_execute = lock_loop.body[0]
+    assert isinstance(lock_execute, ast.Expr)
+    assert isinstance(lock_execute.value, ast.Call)
+    assert isinstance(lock_execute.value.func, ast.Attribute)
+    assert lock_execute.value.func.attr == "execute"
+
+    assert isinstance(grouped_assignment, ast.Assign)
+    assert isinstance(grouped_assignment.value, ast.Call)
+    assert isinstance(grouped_assignment.value.func, ast.Name)
+    assert grouped_assignment.value.func.id == "build_run_artifact_manifest_inserts"
 
 
 def test_source_catches_only_integrity_error_with_bare_unknown_reraise() -> None:
@@ -407,7 +451,7 @@ def test_artifact_manifest_reraises_untranslated_parent_integrity_error(
         _FakeOrig(),
     )
     repository = SqlAlchemyExperimentLedgerRepository(
-        cast(Connection, _FailingConnection(original_error))
+        cast(Connection, _FailingConnection(original_error, fail_on_execute_number=3))
     )
 
     with pytest.raises(IntegrityError) as exc_info:

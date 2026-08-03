@@ -273,6 +273,24 @@ artifact IO, object-storage IO, content-hash verification,
 application/backtest integration, broker integration, paper trading, live
 trading, or concurrency tests.
 
+The repository write concurrency validation gate adds transaction-scoped
+PostgreSQL advisory-lock coordination to artifact-manifest writes only. The
+repository locks the `manifest_id` identity and then the `run_id` identity
+inside the existing caller-owned transaction using deterministic namespaced
+SHA-256-derived signed-bigint keys and `pg_advisory_xact_lock`. Manifest keys
+use a non-negative signed-bigint keyspace, while run keys use a negative
+signed-bigint keyspace, so cross-namespace equality is impossible by
+construction. The fixed `manifest_id`, then `run_id` order prevents a
+crossed-key advisory-lock cycle, and same-namespace hash collisions may
+conservatively serialize unrelated writes. This preserves the targeted
+primary-key `ON CONFLICT` insert, replay `SELECT`s, canonical hash comparison,
+parent `run_id` verification, complete entry projection verification, and exact
+`uq_run_artifact_manifests_run_id` translation. It adds no repository-owned
+transaction lifecycle, savepoint, retry, broad conflict suppression, update,
+repair, schema change, migration, dependency, or application/backtest
+integration. Long caller-owned transactions can block competing artifact writes
+until caller commit or rollback.
+
 ## Non-Goals
 
 The ledger persistence scope still does not implement:
