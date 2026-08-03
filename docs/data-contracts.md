@@ -78,6 +78,50 @@ Validation expectations:
 - Timestamps are unique per `symbol`, `timestamp`, and bar frequency.
 - Adjustment policy is explicit: raw, split-adjusted, total-return, continuous, or other documented policy.
 
+## Synthetic Daily ETF Fixture Contract
+
+The first deterministic backtest-engine slice uses
+`tests/fixtures/backtest_engine/synthetic_daily_etf_bars.json`. This file is
+version-controlled, deterministic, offline, fixture-only, and explicitly not
+historical market data or a production market-data source. It contains no
+splits or dividends and cannot support performance claims.
+
+The fixture contains dataset-level metadata:
+
+- `snapshot_id`
+- fixture/source version
+- `timezone`
+- `currency`
+- `adjustment_policy`, fixed to `none`
+- `logical_available_at`
+- `source_dataset`
+- `bars`
+
+Each daily bar contains only:
+
+- `symbol`
+- `trading_date`
+- `open`
+- `high`
+- `low`
+- `close`
+- `volume`
+
+Prices are parsed from JSON strings into `Decimal`; binary floating point is
+not used for prices, accounting, or metrics. The QQQ buy-and-hold baseline
+requires exactly QQQ and SPY, filters the requested inclusive start/end range
+deterministically, sorts by `trading_date` then `symbol`, rejects duplicate
+symbol/date rows, rejects unexpected symbols, requires QQQ and SPY to have the
+same date set in the requested window, and requires at least two aligned
+observations. It performs no calendar inference beyond supplied fixture dates
+and never silently inner-joins or drops missing sessions.
+
+Validation requires positive open, high, low, and close values; `high >=
+max(open, close)`; `low <= min(open, close)`; nonnegative volume; and a data
+snapshot identity matching the resolved backtest configuration. There is no
+adjusted close field in this fixture, no corporate-action handling, no intraday
+logic, and no production vendor dependency.
+
 ## Corporate Actions, Rolls, And Survivorship
 
 - Restatements: retain revision metadata and document whether the run uses first-available or latest-known data.
@@ -137,6 +181,18 @@ Minimum files:
 - `monthly_returns.parquet`: month, return.
 - `metrics.json`: returns, volatility, Sharpe or similar risk-adjusted metric, drawdown, turnover, benchmark comparison, benchmark snapshot, cost model, slippage model, fill convention, and fee assumptions.
 - `regime_breakdown.json`: documented regime labels and performance by regime.
+
+For the first deterministic ETF baseline, portfolio artifacts use a narrower
+fixture-only schema: strategy equity, retained cash, integer QQQ quantity, QQQ
+close, gross SPY benchmark equity, SPY close, drawdown, and month-end return
+series. Monthly returns select the final available strategy equity observation
+in each calendar month from the supplied fixture sessions. The first reported
+month is `month_end_equity / initial_capital - 1`; later months are
+`current_month_end_equity / previous_month_end_equity - 1`. The month key is
+serialized as `YYYY-MM`; no trading calendar is inferred and no annualization
+is performed. Annualized return, volatility, Sharpe, Sortino, beta, alpha, and
+risk-free-rate handling are deferred until calendar and annualization policies
+are formalized.
 
 ## Research Note Contract
 

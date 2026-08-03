@@ -1,0 +1,75 @@
+"""Deterministic daily ETF backtest engine."""
+
+from backtest_engine.artifacts import (
+    generate_artifact_bundle,
+    serialize_artifact_manifest,
+)
+from backtest_engine.engine import run_buy_and_hold_backtest
+from backtest_engine.identity import (
+    canonical_json_bytes,
+    canonical_json_sha256,
+    derive_execution_identity,
+    file_sha256_bytes,
+    identity_from_completed_result,
+    validate_run_id_contract_compatibility,
+)
+from backtest_engine.market_data import (
+    align_daily_bars,
+    load_daily_bar_snapshot,
+    snapshot_from_payload,
+)
+from backtest_engine.models import (
+    ARTIFACT_VALIDATOR_VERSION,
+    ENGINE_VERSION,
+    MONEY_QUANT,
+    RATIO_QUANT,
+    AlignedDailyBars,
+    ArtifactFileMetadata,
+    BacktestMetrics,
+    BasisPointAssumption,
+    CompletedBacktestResult,
+    DailyBar,
+    DailyBarSnapshot,
+    DailyEquityRecord,
+    DrawdownRecord,
+    ExecutionMetadata,
+    GeneratedArtifactBundle,
+    MonthlyReturnRecord,
+    ResolvedBacktestConfig,
+    SignalRecord,
+    TradeRecord,
+)
+
+__all__ = [
+    "ARTIFACT_VALIDATOR_VERSION",
+    "ENGINE_VERSION",
+    "MONEY_QUANT",
+    "RATIO_QUANT",
+    "AlignedDailyBars",
+    "ArtifactFileMetadata",
+    "BacktestMetrics",
+    "BasisPointAssumption",
+    "CompletedBacktestResult",
+    "DailyBar",
+    "DailyBarSnapshot",
+    "DailyEquityRecord",
+    "DrawdownRecord",
+    "ExecutionMetadata",
+    "GeneratedArtifactBundle",
+    "MonthlyReturnRecord",
+    "ResolvedBacktestConfig",
+    "SignalRecord",
+    "TradeRecord",
+    "align_daily_bars",
+    "canonical_json_bytes",
+    "canonical_json_sha256",
+    "derive_execution_identity",
+    "file_sha256_bytes",
+    "generate_artifact_bundle",
+    "identity_from_completed_result",
+    "load_daily_bar_snapshot",
+    "run_buy_and_hold_backtest",
+    "serialize_artifact_manifest",
+    "snapshot_from_payload",
+    "validate_run_id_contract_compatibility",
+]

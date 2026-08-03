@@ -1,0 +1,120 @@
+{
+  "adjustment_policy": "none",
+  "bars": [
+    {
+      "close": "201.00",
+      "high": "202.00",
+      "low": "199.00",
+      "open": "200.00",
+      "symbol": "SPY",
+      "trading_date": "2026-01-29",
+      "volume": 2000000
+    },
+    {
+      "close": "102.00",
+      "high": "103.00",
+      "low": "99.00",
+      "open": "100.00",
+      "symbol": "QQQ",
+      "trading_date": "2026-01-29",
+      "volume": 1000000
+    },
+    {
+      "close": "101.00",
+      "high": "102.00",
+      "low": "100.00",
+      "open": "101.00",
+      "symbol": "QQQ",
+      "trading_date": "2026-01-30",
+      "volume": 1001000
+    },
+    {
+      "close": "202.00",
+      "high": "203.00",
+      "low": "200.00",
+      "open": "201.00",
+      "symbol": "SPY",
+      "trading_date": "2026-01-30",
+      "volume": 2001000
+    },
+    {
+      "close": "201.00",
+      "high": "203.00",
+      "low": "200.00",
+      "open": "202.00",
+      "symbol": "SPY",
+      "trading_date": "2026-01-31",
+      "volume": 2002000
+    },
+    {
+      "close": "104.00",
+      "high": "105.00",
+      "low": "102.00",
+      "open": "103.00",
+      "symbol": "QQQ",
+      "trading_date": "2026-01-31",
+      "volume": 1002000
+    },
+    {
+      "close": "103.00",
+      "high": "103.00",
+      "low": "101.00",
+      "open": "102.00",
+      "symbol": "QQQ",
+      "trading_date": "2026-02-03",
+      "volume": 1003000
+    },
+    {
+      "close": "203.00",
+      "high": "204.00",
+      "low": "202.00",
+      "open": "203.00",
+      "symbol": "SPY",
+      "trading_date": "2026-02-03",
+      "volume": 2003000
+    },
+    {
+      "close": "204.00",
+      "high": "205.00",
+      "low": "203.00",
+      "open": "204.00",
+      "symbol": "SPY",
+      "trading_date": "2026-02-04",
+      "volume": 2004000
+    },
+    {
+      "close": "106.00",
+      "high": "107.00",
+      "low": "103.00",
+      "open": "104.00",
+      "symbol": "QQQ",
+      "trading_date": "2026-02-04",
+      "volume": 1004000
+    },
+    {
+      "close": "105.00",
+      "high": "106.00",
+      "low": "104.00",
+      "open": "105.00",
+      "symbol": "QQQ",
+      "trading_date": "2026-02-05",
+      "volume": 1005000
+    },
+    {
+      "close": "205.00",
+      "high": "206.00",
+      "low": "204.00",
+      "open": "205.00",
+      "symbol": "SPY",
+      "trading_date": "2026-02-05",
+      "volume": 2005000
+    }
+  ],
+  "currency": "USD",
+  "fixture_name": "synthetic_daily_etf_bars",
+  "fixture_version": "1.0.0",
+  "logical_available_at": "2026-02-06T00:00:00Z",
+  "snapshot_id": "synthetic-etf-snapshot-20260206",
+  "source_dataset": "fixture-only-synthetic-daily-etf-bars",
+  "timezone": "America/New_York"
+}
