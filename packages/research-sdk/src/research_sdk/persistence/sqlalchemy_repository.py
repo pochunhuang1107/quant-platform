@@ -44,6 +44,7 @@ from research_sdk.persistence.statements import (
     build_research_note_replay_select,
     build_review_event_insert,
     build_run_artifact_entries_replay_select,
+    build_run_artifact_manifest_advisory_lock_selects,
     build_run_artifact_manifest_inserts,
     build_run_artifact_manifest_replay_select,
 )
@@ -182,6 +183,12 @@ class SqlAlchemyExperimentLedgerRepository:
         manifest: RunArtifactManifest,
     ) -> PersistenceWriteResult:
         self._require_active_transaction()
+
+        for lock_statement in build_run_artifact_manifest_advisory_lock_selects(
+            manifest_id=manifest_id,
+            run_id=manifest.run_id,
+        ):
+            self._connection.execute(lock_statement)
 
         grouped_statements = build_run_artifact_manifest_inserts(
             manifest_id=manifest_id,

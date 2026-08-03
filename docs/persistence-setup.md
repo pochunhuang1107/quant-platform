@@ -789,9 +789,27 @@ The test covers only `record_run_artifact_manifest(...)`:
 - no automatic repair, partial upsert, entry mutation, file IO, object-storage
   IO, or content-hash verification.
 
-The test does not cover concurrency, artifact validator behavior, application
-integration, backtest execution, broker behavior, paper trading, or live
-trading.
+Artifact-manifest repository writes also acquire transaction-scoped PostgreSQL
+advisory locks for the primary `manifest_id` identity and natural `run_id`
+identity before the existing targeted parent insert. The lock keys are
+deterministically derived from namespaced UTF-8 strings with SHA-256 and mapped
+to signed PostgreSQL `bigint` values. Manifest keys use a non-negative
+signed-bigint keyspace, while run keys use a negative signed-bigint keyspace,
+so cross-namespace equality is impossible by construction. Locks are acquired
+in fixed `manifest_id`, then `run_id` order, which prevents a crossed-key
+advisory-lock cycle. Same-namespace hash collisions may conservatively
+serialize unrelated writes. The locks remain held for the caller-owned
+transaction and are released by the caller's commit or rollback.
+
+This coordination does not add repository-owned retries, savepoints,
+transaction begin/commit/rollback behavior, broad conflict suppression,
+updates, repair, partial upserts, entry mutation, repository-owned timeout
+configuration, file IO, or object-storage IO. Long caller-owned transactions
+can block competing artifact writes; timeout and retry policy remains outside
+the repository.
+
+The test does not cover artifact validator behavior, application integration,
+backtest execution, broker behavior, paper trading, or live trading.
 
 ## CI Postgres Migration Smoke
 

@@ -771,6 +771,21 @@ For concurrent conflicting writes, one insert may succeed first and the other
 must deterministically receive a conflict. Last-write-wins behavior, silent
 updates, and silent replacement are prohibited.
 
+Artifact-manifest writes use transaction-scoped PostgreSQL advisory locks to
+coordinate the primary `manifest_id` identity and the natural `run_id`
+identity before the existing targeted parent insert executes. The repository
+acquires locks only inside the caller-owned transaction, first for
+`manifest_id` and then for `run_id`, using deterministic SHA-256-derived
+namespaced signed-bigint keys. Manifest keys use a non-negative signed-bigint
+keyspace, while run keys use a negative signed-bigint keyspace, so
+cross-namespace equality is impossible by construction. Same-namespace hash
+collisions may conservatively serialize unrelated artifact writes, but they do
+not change replay, conflict, or aggregate verification semantics. The fixed
+`manifest_id`, then `run_id` order prevents a crossed-key advisory-lock cycle.
+Locks remain held until the caller commits or rolls back. Long caller-owned
+transactions can therefore block competing artifact-manifest writes; timeout
+and retry policy remain caller or service concerns.
+
 Future execution must avoid:
 
 - pre-read as the only concurrency mechanism;
@@ -803,6 +818,10 @@ persistence safe. Future entry insertion should occur only after a newly
 inserted manifest. Future replay must verify existing entries and must not
 insert missing entries, repair partial state, or silently accept mismatched
 aggregate projections.
+
+The artifact advisory locks do not add repository-owned retries, savepoints,
+transaction begin/commit/rollback behavior, broad untargeted conflict
+suppression, `ON CONFLICT DO UPDATE`, repair, update, or entry mutation.
 
 ### Transaction Ownership
 
