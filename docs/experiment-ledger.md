@@ -225,9 +225,39 @@ replay must therefore reuse the canonical artifact root; changing the root for
 the same `run_id` is expected to become a contract conflict rather than a
 silent relocation.
 
-Experiment-ledger mapping and persistence remain deferred to the next
-integration PR. The backtest engine does not import persistence repositories,
-open database transactions, inspect Git, read lockfiles, collect environment
+The deterministic backtest-to-ledger integration maps the completed engine
+result and generated artifact bundle to immutable ledger records for the
+application boundary. The mapper reloads the original synthetic fixture bytes,
+verifies that fixture, result, data snapshot, and benchmark snapshot identities
+match, verifies generated artifact files and `artifact_manifest.json`
+read-only, and returns `DataSnapshotManifest`, `ExperimentRunRecord`,
+caller-owned `manifest_id`, and `RunArtifactManifest`. It imports only stable
+contracts and does not load SQLAlchemy, psycopg, `research_sdk.persistence`, or
+`research_sdk.experiment_recording`.
+
+The mapper accepts caller-supplied `ReviewMetadata` and stores it unchanged in
+the run contract. The first-slice tests use pending review metadata with
+`risk_approval_required=true`; this is not trading authorization or risk
+approval execution.
+
+Backtest execution and artifact writing happen before the database
+transaction. The application caller wraps the mapper's records in
+`CompletedExperimentRecordBundle` and records that bundle through
+`record_completed_experiment`, which atomically persists the data snapshot,
+experiment run, and artifact manifest aggregate in one caller-owned
+transaction. The live integration test proves the complete vertical path while
+keeping the mapper dependency boundary pure. Exact replay reuses the same
+canonical artifact root and returns all three replay dispositions. Reusing the
+same snapshot with changed execution lineage can replay the snapshot while
+creating a new run and artifact manifest. Snapshot, run, or artifact contract
+conflicts propagate and roll back the transaction; the integration does not
+retry, repair, update, relocate, or perform last-write-wins behavior.
+
+Artifact directories may remain if a failure occurs after artifact generation
+but before a database commit. The integration does not automatically delete or
+repair those directories. Failed-run ledger persistence remains deferred. The
+backtest engine core still does not import persistence repositories, open
+database transactions, inspect Git, read lockfiles, collect environment
 metadata, write failed-run records, or interact with API, worker, broker,
 paper-trading, or live-trading code.
 

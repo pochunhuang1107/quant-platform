@@ -13,6 +13,15 @@ from backtest_engine.identity import (
     identity_from_completed_result,
     validate_run_id_contract_compatibility,
 )
+from backtest_engine.ledger_mapping import (
+    BacktestLedgerMappingError,
+    CompletedBacktestLedgerMappingInput,
+    CompletedBacktestLedgerRecords,
+    DirtyBacktestLineageError,
+    GeneratedArtifactBundleVerificationError,
+    map_completed_backtest_to_ledger_records,
+    verify_generated_artifact_bundle,
+)
 from backtest_engine.market_data import (
     align_daily_bars,
     load_daily_bar_snapshot,
@@ -42,6 +51,7 @@ from backtest_engine.models import (
 
 __all__ = [
     "ARTIFACT_VALIDATOR_VERSION",
+    "BacktestLedgerMappingError",
     "ENGINE_VERSION",
     "MONEY_QUANT",
     "RATIO_QUANT",
@@ -49,13 +59,17 @@ __all__ = [
     "ArtifactFileMetadata",
     "BacktestMetrics",
     "BasisPointAssumption",
+    "CompletedBacktestLedgerMappingInput",
+    "CompletedBacktestLedgerRecords",
     "CompletedBacktestResult",
     "DailyBar",
     "DailyBarSnapshot",
     "DailyEquityRecord",
+    "DirtyBacktestLineageError",
     "DrawdownRecord",
     "ExecutionMetadata",
     "GeneratedArtifactBundle",
+    "GeneratedArtifactBundleVerificationError",
     "MonthlyReturnRecord",
     "ResolvedBacktestConfig",
     "SignalRecord",
@@ -68,8 +82,10 @@ __all__ = [
     "generate_artifact_bundle",
     "identity_from_completed_result",
     "load_daily_bar_snapshot",
+    "map_completed_backtest_to_ledger_records",
     "run_buy_and_hold_backtest",
     "serialize_artifact_manifest",
     "snapshot_from_payload",
     "validate_run_id_contract_compatibility",
+    "verify_generated_artifact_bundle",
 ]

@@ -1185,6 +1185,35 @@ artifact storage validation, failed-run persistence, research notes,
 API/worker/UI behavior, migrations, schema changes, constraints, indexes, CI
 changes, broker integration, paper trading, or live trading.
 
+The deterministic backtest-to-ledger integration adds the first narrow
+completed-backtest vertical path. Backtest execution and local artifact writing
+still happen outside the database transaction. A pure mapper in
+`backtest_engine` verifies the original synthetic fixture bytes, verifies the
+generated artifact bundle read-only, constructs the data snapshot manifest,
+experiment run, caller-owned manifest identity, and artifact manifest as
+immutable ledger records. It imports only stable contracts and executing the
+mapper does not load SQLAlchemy, psycopg, `research_sdk.persistence`, or
+`research_sdk.experiment_recording`.
+
+Persistence remains delegated to the completed-experiment service. The
+application caller constructs `CompletedExperimentRecordBundle` from the pure
+mapped records and calls `record_completed_experiment` with a caller-owned
+transaction factory. The repository write order stays data snapshot,
+experiment run, artifact manifest. Exact replay, existing-snapshot plus new
+run/artifact, contract conflicts, aggregate conflicts, and transaction rollback
+behavior all use the existing repository taxonomy. The integration adds no
+repository-owned retry, timeout, savepoint, repair, cleanup, relocation,
+update, failed-run persistence, worker/API entrypoint, or generic workflow
+framework.
+
+Live PostgreSQL coverage adds a focused completed-backtest recording module to
+the existing explicit persistence smoke file list. The tests generate artifacts
+under temporary directories, map and verify records, construct the completed
+bundle, and then record through `record_completed_experiment` before inspecting
+durable state through separate connections where needed. They also document
+that artifact directories can remain after database failures because cleanup is
+caller-owned policy, not repository behavior.
+
 ## Deferred Scope
 
 The following remain deferred after the completed-experiment recording boundary:
