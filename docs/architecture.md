@@ -79,9 +79,11 @@ artifact manifest.
   uses version-controlled synthetic fixture data, not historical market data or
   a production data source, and it must not be used for investment conclusions.
 - Backtest engine core models and execution code remain independent of
-  persistence repositories and transaction handling. Experiment-ledger mapping
-  and recording through the completed-experiment boundary are deferred to a
-  later integration PR.
+  persistence repositories and transaction handling. The deterministic ETF
+  ledger integration is a separate mapping boundary that verifies fixture and
+  artifact bytes read-only, constructs immutable ledger records from stable
+  contracts only, and leaves completed-bundle construction and recording to the
+  application boundary.
 - The platform must support multiple asset classes without embedding a preferred broker, exchange, or data vendor in Phase 0.
 - Agents can implement and test but cannot approve financial conclusions, risk exceptions, paper trading, or live trading.
 - Formal approval can only be granted by Po-Chun Huang for now.
@@ -121,6 +123,27 @@ not depend on the physical artifact root. The manifest contains actual
 `file://` URIs, so manifest bytes and `artifact_manifest_hash` are expected to
 depend on the artifact root; writing the same result to the same root remains
 byte-for-byte deterministic.
+
+The backtest-to-ledger integration maps one completed deterministic result and
+its generated artifact bundle to immutable records containing
+`DataSnapshotManifest`, `ExperimentRunRecord`, caller-owned `manifest_id`, and
+`RunArtifactManifest`. Backtest execution and artifact writing happen before
+any database transaction. The mapper performs only read-only verification: it
+reloads the synthetic fixture, checks snapshot identity equality, verifies
+payload hashes, sizes, URIs, and the canonical `artifact_manifest.json`, and
+rejects dirty execution metadata. It imports only stable contracts from
+`research_sdk`, does not load persistence or completed-experiment service
+dependencies, and does not write, repair, relocate, or delete artifacts.
+
+Persistence remains owned by `research_sdk.experiment_recording`: the
+application caller wraps the pure mapped records in a
+`CompletedExperimentRecordBundle` and passes that bundle to
+`record_completed_experiment` with a transaction factory such as
+`engine.begin`. The data snapshot, experiment run, and artifact manifest
+aggregate are recorded atomically in that caller-owned transaction. Exact
+replay succeeds only when the same canonical artifact root and contracts are
+supplied; a different artifact root for the same `run_id` changes the run
+contract and is expected to conflict rather than silently relocate artifacts.
 
 ## Phase 0 Acceptance Criteria
 

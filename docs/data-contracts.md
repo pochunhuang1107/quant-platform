@@ -122,6 +122,37 @@ snapshot identity matching the resolved backtest configuration. There is no
 adjusted close field in this fixture, no corporate-action handling, no intraday
 logic, and no production vendor dependency.
 
+The first backtest-to-ledger integration records a `DataSnapshotManifest` for
+the actual version-controlled JSON fixture bytes. It does not reconstruct a new
+canonical in-memory dataset snapshot. The mapper requires all four snapshot
+identities to be identical before contract construction: the fixture
+`snapshot_id`, the completed result `input_snapshot_id`, the resolved
+configuration `data_snapshot_id`, and the resolved configuration
+`benchmark_snapshot_id`.
+
+The fixture-local `adjustment_policy` value `none` maps to ledger
+`DataAdjustmentPolicy.RAW`. The snapshot notes explicitly state that the prices
+are unadjusted synthetic raw fixture values with no splits or dividends.
+`TemporalCoverage.POINT_IN_TIME` refers only to the synthetic fixture's logical
+availability timestamp and is not a historical vendor point-in-time claim.
+
+The integration keeps hash meanings separate:
+
+- `run_id` is `run-` plus the full execution-input SHA-256 digest.
+- `parameter_hash` is `sha256:` plus the canonical resolved-configuration
+  hash.
+- `config_hash` is the SHA-256 byte hash of generated `config.json`.
+- `artifact_manifest_hash` is the SHA-256 byte hash of generated
+  `artifact_manifest.json`, whose bytes include root-dependent `file://` URIs.
+- `DataSnapshotManifest.content_hash` is the SHA-256 byte hash of the
+  version-controlled synthetic fixture JSON.
+
+The backtest mapper returns immutable ledger records built from stable
+contracts only. The application boundary constructs the
+`CompletedExperimentRecordBundle` and calls the completed-experiment recording
+service. Executing the mapper itself does not load SQLAlchemy, psycopg,
+`research_sdk.persistence`, or `research_sdk.experiment_recording`.
+
 ## Corporate Actions, Rolls, And Survivorship
 
 - Restatements: retain revision metadata and document whether the run uses first-available or latest-known data.
