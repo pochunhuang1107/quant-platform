@@ -2,42 +2,85 @@
 
 ## Current Phase
 
-Phase 0 establishes the repository, documentation, and contracts required before
-research code is added. The platform is intended to become an enterprise-grade,
-multi-asset quant research system with reproducible experiments, audited
-artifacts, and human approval gates before any paper or live trading.
+Phase 1A - Reproducibility Foundation Complete.
+
+Phase 1B - Research Workflow Layer is next. Current roadmap details live in
+`docs/roadmap-v0.2.md`.
+
+The platform remains research-only. It is not ready for production-data
+research, paper trading, or live trading.
 
 ## Existing Structure
 
-The repository currently contains the Phase 0 scaffold for applications,
-packages, strategies, research, infrastructure, and documentation. Phase 0 exit
-requires each empty scaffold path to be tracked with `.gitkeep` or a local
-`README.md`, as defined in `docs/roadmap.md`.
+The repository now contains implemented reproducibility infrastructure and
+several scaffold-only areas.
+
+Implemented:
+
+- `packages/research-sdk`: immutable contracts, schema exports, persistence
+  helpers, PostgreSQL repository writes, and completed-experiment recording.
+- `packages/backtest-engine`: deterministic synthetic ETF infrastructure
+  baseline, artifact generation, and pure backtest-to-ledger mapping.
+- `infra/db`: Alembic migrations and local PostgreSQL support.
+- Deterministic synthetic ETF artifacts for the required run artifact set.
+- Completed-experiment ledger recording through a caller-owned transaction.
+- Hosted CI and PostgreSQL smoke coverage.
+
+Scaffold-only or deferred:
+
+- `apps/api`
+- `apps/web`
+- `apps/worker`
+- `apps/mcp-server`
+- `packages/data-engine`
+- `packages/feature-store`
+- `packages/portfolio-engine`
+- `packages/execution-engine`
+- `packages/agent-tools`
+- strategy families
+- production research workflows
 
 ## Planned Responsibilities
 
-- `apps/api`: future service API for research metadata and platform workflows.
-- `apps/web`: future web UI for experiment review, reports, and approvals.
-- `apps/worker`: future asynchronous jobs for data validation, backtests, and reports.
-- `apps/mcp-server`: future agent-facing tool surface for controlled platform access.
-- `packages/research-sdk`: future shared research APIs and typed contracts.
-- `packages/data-engine`: future data ingestion, validation, and snapshot logic.
-- `packages/feature-store`: future feature definitions and point-in-time materialization.
-- `packages/backtest-engine`: deterministic research-engine execution. The
-  first Phase 1 slice is an importable, offline daily ETF baseline engine using
-  synthetic fixture-only QQQ and SPY bars, explicit costs and slippage, Decimal
-  accounting, deterministic identity, and local artifact generation. It does
-  not own SQLAlchemy, Postgres, experiment-ledger transactions, API workflows,
-  paper trading, live trading, broker integrations, or performance claims.
-- `packages/portfolio-engine`: future portfolio construction and risk calculations.
-- `packages/execution-engine`: reserved and inactive until later phases; no paper trading execution, live trading implementation, broker integration, or account-specific configuration is allowed in Phase 0 or Phase 1.
-- `packages/agent-tools`: future safe automation helpers for agents.
-- `strategies/*`: future strategy families by asset class or horizon.
+- `apps/api`: scaffold-only future service API for research metadata and
+  platform workflows.
+- `apps/web`: scaffold-only future web UI for experiment review, reports, and
+  approvals.
+- `apps/worker`: scaffold-only future asynchronous jobs for data validation,
+  backtests, and reports.
+- `apps/mcp-server`: scaffold-only future agent-facing tool surface for
+  controlled platform access.
+- `packages/research-sdk`: implemented shared contracts, schema export,
+  persistence, and completed-experiment recording boundaries. It does not yet
+  provide read/query services, report-card generation, batch orchestration, or
+  approval-workflow authority.
+- `packages/data-engine`: scaffold-only future data ingestion, validation, and
+  snapshot logic.
+- `packages/feature-store`: scaffold-only future feature definitions and
+  point-in-time materialization.
+- `packages/backtest-engine`: partially implemented deterministic
+  research-engine execution for the current synthetic ETF infrastructure slice.
+  It includes an importable offline QQQ baseline with SPY as a gross benchmark,
+  explicit costs and slippage, Decimal accounting, deterministic identity,
+  local artifact generation, and pure ledger-record mapping. It does not own
+  SQLAlchemy, Postgres, experiment-ledger transactions, API workflows, paper
+  trading, live trading, broker integrations, or performance claims.
+- `packages/portfolio-engine`: scaffold-only future portfolio construction and
+  risk calculations.
+- `packages/execution-engine`: reserved and inactive until later phases; no
+  paper trading execution, live trading implementation, broker integration, or
+  account-specific configuration is allowed in the current roadmap.
+- `packages/agent-tools`: scaffold-only future safe automation helpers for
+  agents.
+- `strategies/*`: scaffold-only future strategy families by asset class or
+  horizon.
 - `research/hypotheses`: written research hypotheses before implementation.
 - `research/notebooks`: exploratory notebooks; not authoritative experiment records.
 - `research/reports`: reviewed research outputs and summaries.
-- `infra/db`: future database schema and migrations.
-- `infra/docker`: future local development containers.
+- `infra/db`: implemented PostgreSQL ledger migrations, local disposable
+  PostgreSQL Compose support, and migration configuration.
+- `infra/docker`: future local development containers beyond the current
+  database-specific support.
 - `infra/terraform`: reserved for later infrastructure definitions.
 - `docs`: source of truth for architecture, contracts, risk rules, and operating model.
 
@@ -52,23 +95,25 @@ Accepted research must follow this lifecycle:
 5. Backtest: execute deterministic research code with captured Python version, lockfile hash, seed, and run command.
 6. Artifacts: write the required artifact bundle and artifact manifest.
 7. Ledger: register the run, artifacts, assumptions, review status, and integrity hashes.
-8. Report: write `research_note.md` and supporting failure analysis.
+8. Report: write deterministic report-card evidence and supporting failure
+   analysis. The current `research_note.md` file is a generated run artifact;
+   a persisted `ResearchNote` contract is a separate human-reviewed
+   interpretation record.
 9. Review decision: record human review metadata and accepted, rejected, invalid, or superseded status.
 
 Notebooks are exploratory. Notebook-derived charts or tables cannot be cited as
 accepted results unless reproduced by versioned code with a ledger `run_id` and
 artifact manifest.
 
-## Minimal Phase 0 Implementation Plan
+## Historical Phase 0 Foundation
 
-1. Keep the scaffold above and document ownership boundaries for each directory.
-2. Define the experiment ledger schema before any backtest writes results.
-3. Define the required run artifact contract and validation expectations.
-4. Define data contracts for market data, signals, trades, and portfolio outputs.
-5. Define agent rules and trading risk policy, including explicit prohibition of live trading implementation.
-6. Add development environment and CI only after the docs are stable enough to test.
-7. Add lightweight tests for schemas and artifact validation in Phase 1.
-8. Use JSON/Pydantic contracts first in Phase 1; add Postgres/Alembic migrations after those contracts stabilize.
+The original Phase 0 objectives established the repository foundation,
+scaffold, documentation, ledger contract direction, data contract direction,
+agent rules, and trading-risk policy. Historical acceptance details remain
+preserved in `docs/roadmap.md`.
+
+Those objectives have been superseded by the Phase 1A/Phase 1B roadmap
+structure in `docs/roadmap-v0.2.md`.
 
 ## Boundary Decisions
 
@@ -84,7 +129,8 @@ artifact manifest.
   artifact bytes read-only, constructs immutable ledger records from stable
   contracts only, and leaves completed-bundle construction and recording to the
   application boundary.
-- The platform must support multiple asset classes without embedding a preferred broker, exchange, or data vendor in Phase 0.
+- The platform must support multiple asset classes without embedding a
+  preferred broker, exchange, or data vendor in the current roadmap.
 - Agents can implement and test but cannot approve financial conclusions, risk exceptions, paper trading, or live trading.
 - Formal approval can only be granted by Po-Chun Huang for now.
 
@@ -145,20 +191,10 @@ replay succeeds only when the same canonical artifact root and contracts are
 supplied; a different artifact root for the same `run_id` changes the run
 contract and is expected to conflict rather than silently relocate artifacts.
 
-## Phase 0 Acceptance Criteria
+## Roadmap Alignment
 
-- Canonical acceptance criteria are defined in `docs/roadmap.md`.
-- Repository scaffold exists for apps, packages, strategies, research, infra, and docs, with placeholders for empty tracked paths.
-- Required docs exist and describe architecture, agent rules, experiment ledger, data contracts, and trading risk policy.
-- No application code, broker integration, credentials, or data vendor dependency is introduced.
-- Phase 1 work can begin from documented contracts without guessing core artifact names or approval rules.
+Phase 0 history is preserved in `docs/roadmap.md`. Phase 1A completion and
+Phase 1B acceptance criteria are defined in `docs/roadmap-v0.2.md`.
 
-## Phase 1 Acceptance Criteria
-
-- Local development environment and CI run repeatable tests.
-- JSON/Pydantic contracts are implemented before Postgres/Alembic migrations.
-- Backtest artifact validator checks the required files and minimum fields.
-- A simple baseline backtest can write the complete artifact bundle and ledger entry.
-- Tests cover ledger validation, artifact validation, and basic data contract checks.
-- Documentation records lookback, lag, input data, leakage assumptions, costs, slippage, benchmark, failure modes, and validation plan for any strategy result.
-- No live trading or broker integration is added.
+This architecture document describes current boundaries and responsibilities.
+It is not the canonical phase-gate document.

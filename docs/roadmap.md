@@ -1,9 +1,51 @@
-# Roadmap
+# Roadmap Index
 
-This is the canonical phase gate document for the quant platform. Phase criteria
-here override scattered planning notes elsewhere in the repository.
+This is the roadmap index for the quant platform. Versioned roadmap documents
+are the source of truth for phase gates and sequencing.
 
-## Current Phase
+## Current Roadmap Version
+
+Current proposed roadmap version:
+
+- [Quant Research Platform Roadmap v0.2](roadmap-v0.2.md)
+
+Roadmap v0.2 becomes the current repository roadmap only after human approval
+and merge. Roadmap v0.1 remains preserved below as the historical baseline.
+
+## Current Milestone
+
+Phase 1A - Reproducibility Foundation Complete.
+
+Implemented through merge commit:
+
+`52b2e030af584460ef49ce75b2e6f570d16eb3ec`
+
+## Next Milestone
+
+Phase 1B - Research Workflow Layer.
+
+The next milestone turns reproducible experiment infrastructure into
+deterministic evidence, human-reviewed findings, valid comparisons, and
+controlled experiment sets. The repository is not ready for production data
+research, paper trading, or live trading.
+
+## Source-Of-Truth And Versioning Policy
+
+- Roadmap v0.1 is the historical baseline and is retained below.
+- Roadmap v0.2 is the proposed current roadmap for this branch.
+- Future roadmap revisions must be versioned and include a change log.
+- README and this index should point to the current approved version.
+- Versioned roadmap phase criteria override scattered planning notes elsewhere
+  in the repository.
+
+## Historical Roadmap v0.1
+
+The following content is preserved from the original roadmap v0.1 for history.
+
+Historical source-of-truth statement: roadmap v0.1 was the canonical phase gate
+document for the quant platform when Phase 0 was current.
+
+Historical current phase statement:
 
 Phase 0: agent-ready foundation.
 

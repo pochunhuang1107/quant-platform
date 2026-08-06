@@ -17,12 +17,26 @@ Build a reproducible, agent-assisted quant research operating system with:
 
 ## Current Phase
 
-Phase 0: Agent-ready foundation.
+Phase 1A: Reproducibility Foundation Complete.
+
+The repository now supports deterministic synthetic ETF experiment recording:
+a fixture-only QQQ buy-and-hold baseline with SPY as a gross benchmark can
+produce deterministic local artifacts, map them to immutable research-ledger
+records, and record the completed experiment through the PostgreSQL-backed
+ledger boundary.
+
+Phase 1B is next: the research workflow layer for deterministic report cards,
+persisted human-reviewed research notes, compatible-run comparison, curated ETF
+data policy, versioned strategies, and controlled experiment sets.
+
+The repository is not ready for production data research, paper trading, or
+live trading.
 
 ## Documentation Map
 
 - [Architecture](docs/architecture.md): structure, responsibilities, and research lifecycle.
-- [Roadmap](docs/roadmap.md): canonical Phase 0 and Phase 1 gates.
+- [Roadmap](docs/roadmap.md): roadmap index and versioning policy.
+- [Roadmap v0.2](docs/roadmap-v0.2.md): current Phase 1A status and Phase 1B sequence.
 - [Agent Rules](docs/agent-rules.md): agent scope, approval records, secrets policy, and PR expectations.
 - [Experiment Ledger](docs/experiment-ledger.md): ledger fields, artifacts, status lifecycle, and review metadata.
 - [Experiment Ledger DB Plan](docs/experiment-ledger-db-plan.md): planned Postgres/Alembic persistence design for the experiment ledger metadata layer.
@@ -34,9 +48,9 @@ Phase 0: Agent-ready foundation.
 
 ## Next Milestone
 
-Complete Phase 0 by making the documented scaffold, docs, safety rules, ledger
-contract, data contracts, and risk policy satisfy the measurable checklist in
-`docs/roadmap.md`.
+Begin Phase 1B by adding deterministic report cards and a persisted
+human-reviewed `ResearchNote` workflow for one completed backtest, as described
+in `docs/roadmap-v0.2.md`.
 
 ## Development Commands
 
