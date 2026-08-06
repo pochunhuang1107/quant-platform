@@ -1,0 +1,203 @@
+{
+  "assumptions": {
+    "adjustment_policy": "raw",
+    "calendar": "supplied-fixture-sessions-only",
+    "corporate_action_policy": "no corporate actions are modeled",
+    "cost_model": "QQQ commission is 1 basis points on executed notional",
+    "lag_assumptions": "no future observation is used",
+    "leakage_review": "synthetic fixture-only data",
+    "lookback": "no lookback; unconditional initial allocation",
+    "random_seed": {
+      "rationale": "deterministic no-randomness baseline",
+      "seed": null
+    },
+    "slippage_model": "QQQ buy slippage is 2 basis points",
+    "survivorship_policy": "not applicable to the fixed synthetic fixture",
+    "temporal_coverage": "point_in_time",
+    "timezone": "America/New_York",
+    "universe_membership_policy": "fixed synthetic QQQ/SPY membership"
+  },
+  "derivation_policy_version": "deterministic-etf-report-card-v1",
+  "evidence": {
+    "artifact_manifest_uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/artifact_manifest.json",
+    "artifact_root_uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "artifacts": [
+      {
+        "artifact_id": "config",
+        "artifact_kind": "config",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+        "filename": "config.json",
+        "format": "json",
+        "row_count": null,
+        "size_bytes": 101,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/config.json",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "daily_equity",
+        "artifact_kind": "daily_equity",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000005",
+        "filename": "daily_equity.parquet",
+        "format": "parquet",
+        "row_count": null,
+        "size_bytes": 105,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/daily_equity.parquet",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "drawdown_series",
+        "artifact_kind": "drawdown_series",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000006",
+        "filename": "drawdown_series.parquet",
+        "format": "parquet",
+        "row_count": null,
+        "size_bytes": 106,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/drawdown_series.parquet",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "failure_analysis",
+        "artifact_kind": "failure_analysis",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000009",
+        "filename": "failure_analysis.md",
+        "format": "markdown",
+        "row_count": null,
+        "size_bytes": 109,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/failure_analysis.md",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "metrics",
+        "artifact_kind": "metrics",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+        "filename": "metrics.json",
+        "format": "json",
+        "row_count": null,
+        "size_bytes": 102,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/metrics.json",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "monthly_returns",
+        "artifact_kind": "monthly_returns",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000007",
+        "filename": "monthly_returns.parquet",
+        "format": "parquet",
+        "row_count": null,
+        "size_bytes": 107,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/monthly_returns.parquet",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "regime_breakdown",
+        "artifact_kind": "regime_breakdown",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000008",
+        "filename": "regime_breakdown.json",
+        "format": "json",
+        "row_count": null,
+        "size_bytes": 108,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/regime_breakdown.json",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "research_note",
+        "artifact_kind": "research_note",
+        "content_hash": "sha256:000000000000000000000000000000000000000000000000000000000000000a",
+        "filename": "research_note.md",
+        "format": "markdown",
+        "row_count": null,
+        "size_bytes": 110,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/research_note.md",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "signal_log",
+        "artifact_kind": "signal_log",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000004",
+        "filename": "signal_log.parquet",
+        "format": "parquet",
+        "row_count": null,
+        "size_bytes": 104,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/signal_log.parquet",
+        "validator_version": "validator-0.1.0"
+      },
+      {
+        "artifact_id": "trade_log",
+        "artifact_kind": "trade_log",
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+        "filename": "trade_log.parquet",
+        "format": "parquet",
+        "row_count": null,
+        "size_bytes": 103,
+        "status": "produced",
+        "uri": "file:///tmp/run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/trade_log.parquet",
+        "validator_version": "validator-0.1.0"
+      }
+    ],
+    "required_artifacts_complete": true
+  },
+  "experiment_id": "exp-fixture-qqq-buy-hold",
+  "limitations": {
+    "source_snapshot_known_limitations": [
+      "synthetic fixture-only data"
+    ]
+  },
+  "lineage": {
+    "artifact_manifest_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "artifact_manifest_id": "manifest-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "benchmark_snapshot_content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "benchmark_snapshot_id": "synthetic-etf-snapshot-20260206",
+    "config_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "data_snapshot_content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "data_snapshot_id": "synthetic-etf-snapshot-20260206",
+    "engine_version": "backtest-engine-deterministic-etf-0.1.0",
+    "git_commit_sha": "9d18ce75a48beb65a2c633bcd80b440ebbabff20",
+    "parameter_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "strategy_id": "strategies/etfs/qqq_buy_and_hold",
+    "strategy_version": "0.1.0"
+  },
+  "metrics": {
+    "benchmark_total_return": "0.025000000000",
+    "ending_equity": "104965.028002",
+    "excess_return": "0.024650280020",
+    "maximum_drawdown": "-0.009797188585",
+    "number_of_trades": 1,
+    "observation_count": 6,
+    "realized_commission": "9.991998",
+    "realized_slippage": "19.980000",
+    "total_return": "0.049650280020"
+  },
+  "report_card_id": "report-card-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "research_scope": {
+    "asset_class": "etfs",
+    "asset_universe": {
+      "as_of": null,
+      "symbols": [
+        "QQQ"
+      ],
+      "universe_id": null
+    },
+    "benchmark_id": "SPY-gross-normalized",
+    "end_date": "2026-02-05",
+    "frequency": "daily",
+    "observation_count": 6,
+    "source_run_status": "completed",
+    "start_date": "2026-01-29"
+  },
+  "schema_version": "1.0.0",
+  "source_run_id": "run-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "use_restrictions": [
+    "infrastructure_validation_only",
+    "no_investment_performance_claim",
+    "research_generated_synthetic_data"
+  ]
+}

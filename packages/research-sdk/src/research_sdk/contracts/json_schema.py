@@ -13,6 +13,7 @@ from research_sdk.contracts.artifacts import RunArtifactManifest
 from research_sdk.contracts.base import BaseContractModel
 from research_sdk.contracts.data_snapshots import DataSnapshotManifest
 from research_sdk.contracts.ledger import ExperimentRunRecord
+from research_sdk.contracts.report_cards import ResearchReportCard
 from research_sdk.contracts.research_notes import ResearchNote
 from research_sdk.contracts.review import ReviewMetadata
 from research_sdk.contracts.schema import VersionedContract
@@ -23,6 +24,7 @@ SCHEMA_EXPORTS: Final[dict[str, type[BaseContractModel]]] = {
     "experiment_run_record.schema.json": ExperimentRunRecord,
     "run_artifact_manifest.schema.json": RunArtifactManifest,
     "data_snapshot_manifest.schema.json": DataSnapshotManifest,
+    "research_report_card.schema.json": ResearchReportCard,
     "research_note.schema.json": ResearchNote,
 }
 

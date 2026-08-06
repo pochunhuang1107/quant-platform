@@ -52,7 +52,7 @@ Scaffold-only or deferred:
   controlled platform access.
 - `packages/research-sdk`: implemented shared contracts, schema export,
   persistence, and completed-experiment recording boundaries. It does not yet
-  provide read/query services, report-card generation, batch orchestration, or
+  provide read/query services, report-card persistence, batch orchestration, or
   approval-workflow authority.
 - `packages/data-engine`: scaffold-only future data ingestion, validation, and
   snapshot logic.
@@ -190,6 +190,62 @@ aggregate are recorded atomically in that caller-owned transaction. Exact
 replay succeeds only when the same canonical artifact root and contracts are
 supplied; a different artifact root for the same `run_id` changes the run
 contract and is expected to conflict rather than silently relocate artifacts.
+
+## Deterministic Research Report Cards
+
+`research_sdk.contracts.ResearchReportCard` is the common deterministic
+evidence contract for Phase 1B report cards. It is owned by `research_sdk`
+because future research engines and asset classes must be able to emit the same
+kind of factual evidence summary.
+
+The current builder lives in `packages/backtest-engine` as
+`build_deterministic_etf_report_card`. It supports only completed deterministic
+QQQ buy-and-hold runs with SPY as the gross benchmark. The builder consumes
+already constructed ledger contracts and a caller-owned artifact `manifest_id`;
+it performs no filesystem, network, database, repository, transaction, or
+current-time work.
+
+The `deterministic-etf-report-card-v1` policy uses one shared synthetic QQQ/SPY
+market-data snapshot for both researched data and benchmark data. The builder
+does not claim support for independent benchmark snapshots until a future
+derivation-policy version adds that behavior.
+
+Report-card identity is derived from the source `run_id`, contract schema
+version, derivation-policy version, data and benchmark snapshot content hashes,
+run config hash, parameter hash, and artifact manifest hash. The identity is
+evidence-derived and does not replace the engine-owned run identity. Human
+review metadata, `ResearchNote` content, generated prose, runtime duration,
+current process environment, and local working-directory paths are excluded.
+Artifact-root-dependent data may affect identity only through the already
+recorded `artifact_manifest_hash`.
+
+Before constructing evidence, the builder canonicalizes the supplied
+`RunArtifactManifest` contract, hashes those bytes as `sha256:<hex>`, and
+requires that value to equal the run's `artifact_manifest_hash`. It also
+requires `manifest_id` to be `manifest-` plus the 64-character run digest, the
+run and manifest root/manifest URIs to agree, the CONFIG artifact evidence hash
+to equal the run's `config_hash`, and each required artifact URI to be
+`artifact_root_uri/filename`. The public report-card contract independently
+requires every artifact kind in the required artifact set exactly once.
+
+Metric strings use canonical fixed scales: twelve fractional digits for return
+and drawdown ratios, and six fractional digits for commissions, slippage, and
+ending equity. Negative zero is rejected as a noncanonical metric encoding.
+Evidence entries are ordered by artifact kind, filename, and artifact ID. Use
+restrictions are treated as set-like metadata and normalized by enum value.
+
+`ReportCardLineage` stores both data and benchmark snapshot content hashes.
+They are equal under the v1 shared-snapshot policy, but both are retained so
+the report-card ID can be recomputed from durable report-card fields through
+the pure identity verifier without reloading source snapshots.
+
+Report cards are not persisted in the database in this slice, and the completed
+run artifact bundle is not mutated to add report-card files. A deterministic
+report card is factual evidence. A persisted `ResearchNote` is a separate
+human-reviewed interpretation. The generated `research_note.md` artifact,
+`ResearchReportCard`, and persisted `ResearchNote` are not interchangeable.
+Durable report-card persistence and a finalized `ResearchNote` workflow remain
+Phase 1B follow-up work.
 
 ## Roadmap Alignment
 

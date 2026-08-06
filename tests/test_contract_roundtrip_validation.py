@@ -11,6 +11,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
     VersionedContract,
@@ -55,6 +56,11 @@ ROUNDTRIP_CASES = (
         DataSnapshotManifest,
         "data_snapshot_manifest.schema.json",
         "data_snapshot_manifest.json",
+    ),
+    RoundtripCase(
+        ResearchReportCard,
+        "research_report_card.schema.json",
+        "research_report_card.json",
     ),
     RoundtripCase(
         ResearchNote,
@@ -154,6 +160,10 @@ def test_contract_examples_reject_unknown_top_level_fields(
         ),
         (
             ROUNDTRIP_CASES[5],
+            {},
+        ),
+        (
+            ROUNDTRIP_CASES[6],
             {
                 ("created_at",): "2026-07-09T09:00:00Z",
                 ("updated_at",): "2026-07-09T09:30:00Z",
@@ -166,6 +176,7 @@ def test_contract_examples_reject_unknown_top_level_fields(
         "ExperimentRunRecord",
         "RunArtifactManifest",
         "DataSnapshotManifest",
+        "ResearchReportCard",
         "ResearchNote",
     ],
 )
@@ -184,7 +195,8 @@ def test_contract_examples_normalize_json_arrays_to_tuples() -> None:
     experiment = ExperimentRunRecord.model_validate(load_fixture(ROUNDTRIP_CASES[2]))
     artifacts = RunArtifactManifest.model_validate(load_fixture(ROUNDTRIP_CASES[3]))
     snapshot = DataSnapshotManifest.model_validate(load_fixture(ROUNDTRIP_CASES[4]))
-    note = ResearchNote.model_validate(load_fixture(ROUNDTRIP_CASES[5]))
+    report_card = ResearchReportCard.model_validate(load_fixture(ROUNDTRIP_CASES[5]))
+    note = ResearchNote.model_validate(load_fixture(ROUNDTRIP_CASES[6]))
 
     assert experiment.asset_universe.symbols == ("AAPL", "MSFT")
     assert isinstance(experiment.asset_universe.symbols, tuple)
@@ -196,6 +208,9 @@ def test_contract_examples_normalize_json_arrays_to_tuples() -> None:
 
     assert snapshot.known_limitations == ("none known",)
     assert isinstance(snapshot.known_limitations, tuple)
+
+    assert report_card.use_restrictions[0].value == "infrastructure_validation_only"
+    assert isinstance(report_card.evidence.artifacts, tuple)
 
     assert note.risks == ("overfitting",)
     assert isinstance(note.risks, tuple)

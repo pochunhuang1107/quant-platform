@@ -153,6 +153,77 @@ contracts only. The application boundary constructs the
 service. Executing the mapper itself does not load SQLAlchemy, psycopg,
 `research_sdk.persistence`, or `research_sdk.experiment_recording`.
 
+## Research Report Card Contract
+
+`ResearchReportCard` is a stable `research_sdk` contract for deterministic
+evidence derived from immutable run, snapshot, benchmark, metric, assumption,
+and artifact-manifest records. It is common contract data, not a
+backtest-engine-private result model and not human interpretation.
+
+The first builder is
+`backtest_engine.report_cards.build_deterministic_etf_report_card`. It
+supports only the completed deterministic QQQ/SPY infrastructure baseline and
+performs no I/O. It summarizes the already-recorded artifact manifest; it does
+not read artifact bytes, validate storage, create files, mutate
+`artifact_manifest.json`, or add a new artifact to a completed run.
+
+The `deterministic-etf-report-card-v1` policy requires the same synthetic
+QQQ/SPY `DataSnapshotManifest` for the researched QQQ data and the SPY gross
+benchmark reference. That snapshot must be research-generated market data with
+RAW adjustment policy and POINT_IN_TIME temporal coverage. Independent
+benchmark snapshots are deferred to a future derivation-policy version.
+
+Report-card IDs use `report-card-` followed by a full lowercase SHA-256 digest
+derived from exactly:
+
+- source `run_id`
+- `ResearchReportCard` schema version
+- derivation-policy version
+- data snapshot content hash
+- benchmark snapshot content hash
+- run config hash
+- parameter hash
+- artifact manifest hash
+
+The ID excludes review metadata, `ResearchNote` content, generated prose,
+wall-clock generation time, runtime duration, current process environment,
+local working-directory paths, and artifact-root details except through the
+already-recorded artifact manifest hash.
+
+The builder verifies contract-level artifact integrity before summarizing
+evidence. It serializes the supplied `RunArtifactManifest` with the same
+canonical JSON policy used for `artifact_manifest.json`, computes
+`sha256:<hex>`, and requires that hash to match the run's
+`artifact_manifest_hash`. It also requires the supplied `manifest_id` to be
+`manifest-` plus the source run digest, the run artifact root and manifest URI
+to agree with the manifest, the CONFIG artifact evidence hash to equal
+`ExperimentRunRecord.config_hash`, and each required artifact entry URI to
+equal `artifact_root_uri/filename`. `ReportCardEvidence` itself requires every
+artifact kind in `REQUIRED_ARTIFACT_SPECS` exactly once with the expected
+filename, format, produced status, full SHA-256 content hash, and nonnegative
+byte size.
+
+The deterministic ETF report card records only the approved scalar metric set:
+total return, benchmark total return, excess return, maximum drawdown, realized
+commission, realized slippage, ending equity, number of trades, and observation
+count. Ratio metrics use twelve fractional digits; commission, slippage, and
+ending equity use six fractional digits. Negative zero is not a canonical
+metric encoding. It carries explicit use restrictions for research-generated
+synthetic data, infrastructure validation only, no investment-performance
+claim, not production-data research, not paper-trading evidence, and not
+live-trading evidence. Use restrictions are normalized by enum value, and
+artifact evidence is ordered by artifact kind, filename, and artifact ID.
+
+`ReportCardLineage` stores both data and benchmark snapshot content hashes
+alongside config, parameter, and artifact-manifest hashes. The v1 builder
+requires the two snapshot hashes to be equal because it supports only one
+shared synthetic QQQ/SPY snapshot. The report-card ID can be recomputed from
+the durable report-card fields without reading source snapshots or artifacts.
+
+`ResearchReportCard` is not persisted in the database in this slice.
+`research_note.md` remains a generated backtest artifact, while a persisted
+`ResearchNote` remains a separate human-reviewed interpretation record.
+
 ## Corporate Actions, Rolls, And Survivorship
 
 - Restatements: retain revision metadata and document whether the run uses first-available or latest-known data.
