@@ -43,6 +43,7 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "experiment_run_record.schema.json",
         "run_artifact_manifest.schema.json",
         "data_snapshot_manifest.schema.json",
+        "research_report_card.schema.json",
         "research_note.schema.json",
     }
 
@@ -343,3 +344,47 @@ def test_research_note_schema_contains_contract_definitions() -> None:
     assert "ResearchNoteReferences" in schema_defs
     assert "ResearchDecision" in schema_defs
     assert "ReviewMetadata" in schema_defs
+
+
+def test_research_report_card_schema_contains_expected_fields() -> None:
+    schema = load_schema("research_report_card.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "report_card_id",
+        "derivation_policy_version",
+        "source_run_id",
+        "experiment_id",
+        "lineage",
+        "research_scope",
+        "assumptions",
+        "metrics",
+        "evidence",
+        "limitations",
+        "use_restrictions",
+    }
+
+
+def test_research_report_card_schema_contains_contract_definitions() -> None:
+    schema = load_schema("research_report_card.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert "ReportCardLineage" in schema_defs
+    assert {
+        "data_snapshot_content_hash",
+        "benchmark_snapshot_content_hash",
+    }.issubset(schema_defs["ReportCardLineage"]["properties"])
+    assert "ReportCardResearchScope" in schema_defs
+    assert "ReportCardAssumptions" in schema_defs
+    assert "ReportCardMetrics" in schema_defs
+    assert "ReportCardEvidence" in schema_defs
+    assert "ReportCardArtifactEvidenceEntry" in schema_defs
+    assert set(schema_defs["ReportCardUseRestriction"]["enum"]) == {  # type: ignore[index]
+        "research_generated_synthetic_data",
+        "infrastructure_validation_only",
+        "no_investment_performance_claim",
+        "not_production_data_research",
+        "not_paper_trading_evidence",
+        "not_live_trading_evidence",
+    }

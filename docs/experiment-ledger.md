@@ -261,6 +261,65 @@ database transactions, inspect Git, read lockfiles, collect environment
 metadata, write failed-run records, or interact with API, worker, broker,
 paper-trading, or live-trading code.
 
+## Deterministic Research Report Cards
+
+Phase 1B introduces `ResearchReportCard` as deterministic report-card evidence.
+The contract is schema-exported from `research_sdk.contracts` and is distinct
+from both the generated `research_note.md` artifact and the persisted
+`ResearchNote` interpretation contract.
+
+For the current deterministic ETF baseline, the pure builder is
+`backtest_engine.report_cards.build_deterministic_etf_report_card`. It accepts
+an `ExperimentRunRecord`, data and benchmark `DataSnapshotManifest` records, a
+caller-owned artifact `manifest_id`, and a `RunArtifactManifest`. The builder
+requires completed run and snapshot status, complete produced required
+artifacts, coherent run/snapshot/benchmark identities, the approved metric set,
+and the supported QQQ/SPY daily baseline. It performs no filesystem, object
+storage, database, repository, transaction, network, wall-clock, or random
+operation.
+
+The `deterministic-etf-report-card-v1` policy is intentionally narrower than a
+generic benchmark model: it requires one shared research-generated synthetic
+QQQ/SPY market-data snapshot for both the researched QQQ data and the SPY
+benchmark reference. The snapshot must be RAW and POINT_IN_TIME under the
+fixture-only semantics.
+
+The report-card ID is `report-card-` plus a full lowercase SHA-256 digest over
+canonical JSON containing the source `run_id`, report-card schema version,
+derivation-policy version, data and benchmark snapshot content hashes, config
+hash, parameter hash, and artifact manifest hash. The ID excludes review
+metadata, note content, generated prose, runtime duration, current environment,
+and local paths. Artifact-root-dependent information can affect the ID only
+through the recorded artifact manifest hash.
+
+The builder binds the supplied manifest contract to the run by canonicalizing
+the `RunArtifactManifest`, computing `sha256:<hex>` over those bytes, and
+requiring equality with `ExperimentRunRecord.artifact_manifest_hash`. It also
+requires `manifest_id` to be `manifest-` plus the source run digest, requires
+the run and manifest artifact root/manifest URIs to agree, requires the CONFIG
+artifact evidence hash to equal `ExperimentRunRecord.config_hash`, and requires
+each required artifact URI to equal `artifact_root_uri/filename`. The
+`ResearchReportCard` contract itself requires every required artifact kind
+exactly once with the expected filename, format, produced status, full SHA-256
+content hash, and nonnegative size.
+
+Metric strings are canonical: twelve fractional digits for total return,
+benchmark total return, excess return, and maximum drawdown; six fractional
+digits for realized commission, realized slippage, and ending equity. Negative
+zero is rejected. Evidence entries are deterministically ordered by artifact
+kind, filename, and artifact ID. Use restrictions are normalized as set-like
+metadata sorted by enum value.
+
+`ReportCardLineage` stores both data and benchmark snapshot content hashes.
+They are equal under `deterministic-etf-report-card-v1` because the policy uses
+one shared synthetic QQQ/SPY snapshot, but both fields remain explicit lineage.
+The pure identity verifier recomputes `report_card_id` from durable report-card
+fields and performs no I/O or persistence work.
+
+This slice does not add report-card database persistence, repository methods,
+migrations, or artifact mutation. Durable report-card persistence and a
+finalized human-reviewed `ResearchNote` workflow remain planned for PR B1b.
+
 ## Schema Evolution
 
 - Ledger schemas use explicit `schema_version` values.

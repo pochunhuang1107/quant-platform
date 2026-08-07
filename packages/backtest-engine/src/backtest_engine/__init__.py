@@ -48,6 +48,12 @@ from backtest_engine.models import (
     SignalRecord,
     TradeRecord,
 )
+from backtest_engine.report_cards import (
+    DeterministicETFReportCardError,
+    build_deterministic_etf_report_card,
+    derive_deterministic_etf_report_card_id,
+    verify_deterministic_etf_report_card_identity,
+)
 
 __all__ = [
     "ARTIFACT_VALIDATOR_VERSION",
@@ -65,6 +71,7 @@ __all__ = [
     "DailyBar",
     "DailyBarSnapshot",
     "DailyEquityRecord",
+    "DeterministicETFReportCardError",
     "DirtyBacktestLineageError",
     "DrawdownRecord",
     "ExecutionMetadata",
@@ -75,9 +82,11 @@ __all__ = [
     "SignalRecord",
     "TradeRecord",
     "align_daily_bars",
+    "build_deterministic_etf_report_card",
     "canonical_json_bytes",
     "canonical_json_sha256",
     "derive_execution_identity",
+    "derive_deterministic_etf_report_card_id",
     "file_sha256_bytes",
     "generate_artifact_bundle",
     "identity_from_completed_result",
@@ -87,5 +96,6 @@ __all__ = [
     "serialize_artifact_manifest",
     "snapshot_from_payload",
     "validate_run_id_contract_compatibility",
+    "verify_deterministic_etf_report_card_identity",
     "verify_generated_artifact_bundle",
 ]
