@@ -10,10 +10,12 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
 from research_sdk.persistence.hashing import contract_sha256
+from research_sdk.report_card_identity import verify_research_report_card_identity
 
 
 class ReviewSubjectType(StrEnum):
@@ -148,6 +150,29 @@ def run_artifact_manifest_to_rows(
     )
 
     return ArtifactManifestRows(manifest=manifest_row, entries=entry_rows)
+
+
+def research_report_card_to_row(report_card: ResearchReportCard) -> dict[str, Any]:
+    """Project a validated report-card contract to a DB-shaped row."""
+
+    verify_research_report_card_identity(report_card)
+    raw_contract = report_card.model_dump(mode="json")
+    lineage = raw_contract["lineage"]
+
+    return {
+        "report_card_id": raw_contract["report_card_id"],
+        "schema_version": raw_contract["schema_version"],
+        "derivation_policy_version": raw_contract["derivation_policy_version"],
+        "source_run_id": raw_contract["source_run_id"],
+        "experiment_id": raw_contract["experiment_id"],
+        "strategy_id": lineage["strategy_id"],
+        "strategy_version": lineage["strategy_version"],
+        "data_snapshot_id": lineage["data_snapshot_id"],
+        "benchmark_snapshot_id": lineage["benchmark_snapshot_id"],
+        "artifact_manifest_id": lineage["artifact_manifest_id"],
+        "contract_hash": contract_sha256(report_card),
+        "raw_contract": raw_contract,
+    }
 
 
 def research_note_to_row(note: ResearchNote) -> dict[str, Any]:

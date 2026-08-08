@@ -25,9 +25,11 @@ from research_sdk.persistence.errors import (
     DuplicateReviewEventError,
     NaturalKeyConflictError,
     PersistenceConflictError,
+    PersistenceCorruptionError,
     PersistenceError,
     PersistenceErrorContext,
     ReplayLookupError,
+    ResearchReportCardSourceCoherenceError,
     UnsupportedVersioningConflictError,
 )
 from research_sdk.persistence.protocols import ExperimentLedgerRepository
@@ -43,6 +45,8 @@ CONCRETE_ERROR_TYPES = (
     UnsupportedVersioningConflictError,
     DuplicateReviewEventError,
     AggregateIntegrityError,
+    PersistenceCorruptionError,
+    ResearchReportCardSourceCoherenceError,
     ReplayLookupError,
 )
 
@@ -422,9 +426,13 @@ def test_error_types_export_from_errors_module() -> None:
         "DuplicateReviewEventError": DuplicateReviewEventError,
         "NaturalKeyConflictError": NaturalKeyConflictError,
         "PersistenceConflictError": PersistenceConflictError,
+        "PersistenceCorruptionError": PersistenceCorruptionError,
         "PersistenceError": PersistenceError,
         "PersistenceErrorContext": PersistenceErrorContext,
         "ReplayLookupError": ReplayLookupError,
+        "ResearchReportCardSourceCoherenceError": (
+            ResearchReportCardSourceCoherenceError
+        ),
         "UnsupportedVersioningConflictError": UnsupportedVersioningConflictError,
     }
 

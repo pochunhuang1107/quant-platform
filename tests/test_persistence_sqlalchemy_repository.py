@@ -34,6 +34,8 @@ EXPECTED_REPOSITORY_METHODS = {
     "record_data_snapshot_manifest",
     "record_run_artifact_manifest",
     "record_research_note",
+    "record_research_report_card",
+    "get_research_report_card",
     "append_review_event",
 }
 
@@ -195,6 +197,16 @@ def test_sqlalchemy_repository_is_directly_instantiable() -> None:
         False,
     )
     assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.record_research_report_card,
+        "__isabstractmethod__",
+        False,
+    )
+    assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.get_research_report_card,
+        "__isabstractmethod__",
+        False,
+    )
+    assert not getattr(
         SqlAlchemyExperimentLedgerRepository.append_review_event,
         "__isabstractmethod__",
         False,
@@ -286,15 +298,21 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
     allowed_calls = {
         "ContractHashConflictError",
         "AggregateIntegrityError",
+        "PersistenceCorruptionError",
         "PersistedRecordMetadata",
         "PersistenceErrorContext",
         "PersistenceWriteResult",
         "ReplayLookupError",
+        "ResearchReportCard",
         "_hash_backed_write_result",
+        "_raise_report_card_integrity_error",
         "build_data_snapshot_manifest_insert",
         "build_data_snapshot_manifest_replay_select",
         "build_experiment_run_insert",
         "build_experiment_run_replay_select",
+        "build_research_report_card_insert",
+        "build_research_report_card_read_select",
+        "build_research_report_card_replay_select",
         "build_research_note_insert",
         "build_research_note_replay_select",
         "build_review_event_insert",
@@ -306,11 +324,15 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
         "execute",
         "in_transaction",
         "mappings",
+        "model_validate",
         "one",
         "one_or_none",
         "NotImplementedError",
+        "research_report_card_to_row",
         "RuntimeError",
         "translate_sqlalchemy_integrity_error",
+        "validate_research_report_card_sources",
+        "verify_research_report_card_identity",
     }
 
     assert PROHIBITED_OPERATIONAL_SYMBOLS.isdisjoint(called_names - allowed_calls)
@@ -388,7 +410,11 @@ def test_source_catches_only_integrity_error_with_bare_unknown_reraise() -> None
     tree = _production_ast()
     repository_handler_names = _caught_exception_names_in_repository_methods(tree)
 
-    assert repository_handler_names == {"IntegrityError"}
+    assert repository_handler_names == {
+        "Exception",
+        "IntegrityError",
+        "PersistenceCorruptionError",
+    }
     assert _has_bare_raise_in_exception_handler(
         _repository_methods_ast(tree),
         handler_name="IntegrityError",

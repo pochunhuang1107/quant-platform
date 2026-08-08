@@ -17,6 +17,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
@@ -25,6 +26,7 @@ from research_sdk.persistence.mappers import (
     data_snapshot_manifest_to_row,
     experiment_run_to_row,
     research_note_to_row,
+    research_report_card_to_row,
     review_metadata_to_row,
     run_artifact_manifest_to_rows,
 )
@@ -32,6 +34,7 @@ from research_sdk.persistence.tables import (
     data_snapshot_manifests,
     experiment_runs,
     research_notes,
+    research_report_cards,
     review_events,
     run_artifact_entries,
     run_artifact_manifests,
@@ -232,6 +235,46 @@ def build_research_note_replay_select(
     ).where(research_notes.c.note_id == note_id)
 
 
+def build_research_report_card_insert(
+    report_card: ResearchReportCard,
+) -> Insert:
+    """Build a non-executing insert statement for a research report card."""
+
+    return _build_replay_candidate_insert(
+        table=research_report_cards,
+        row=research_report_card_to_row(report_card),
+        returning_columns=(
+            research_report_cards.c.report_card_id,
+            research_report_cards.c.contract_hash,
+            research_report_cards.c.inserted_at,
+        ),
+    )
+
+
+def build_research_report_card_replay_select(
+    *,
+    report_card_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for a research report card."""
+
+    return select(
+        research_report_cards.c.report_card_id,
+        research_report_cards.c.contract_hash,
+        research_report_cards.c.inserted_at,
+    ).where(research_report_cards.c.report_card_id == report_card_id)
+
+
+def build_research_report_card_read_select(
+    *,
+    report_card_id: str,
+) -> Select[Any]:
+    """Build a non-executing durable readback lookup for a report card."""
+
+    return select(research_report_cards).where(
+        research_report_cards.c.report_card_id == report_card_id
+    )
+
+
 def build_review_event_insert(
     *,
     review_event_id: str,
@@ -322,6 +365,9 @@ __all__ = [
     "build_experiment_run_replay_select",
     "build_run_artifact_entries_replay_select",
     "build_run_artifact_manifest_advisory_lock_selects",
+    "build_research_report_card_insert",
+    "build_research_report_card_read_select",
+    "build_research_report_card_replay_select",
     "build_research_note_insert",
     "build_research_note_replay_select",
     "build_review_event_insert",

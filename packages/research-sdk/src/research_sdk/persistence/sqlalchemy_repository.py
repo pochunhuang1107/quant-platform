@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
@@ -22,13 +23,18 @@ from research_sdk.persistence.driver_exception_translation import (
 from research_sdk.persistence.errors import (
     AggregateIntegrityError,
     ContractHashConflictError,
+    PersistenceCorruptionError,
     PersistenceErrorContext,
     ReplayLookupError,
 )
 from research_sdk.persistence.hashing import contract_sha256
 from research_sdk.persistence.mappers import (
     ReviewSubjectType,
+    research_report_card_to_row,
     run_artifact_manifest_to_rows,
+)
+from research_sdk.persistence.report_card_sources import (
+    validate_research_report_card_sources,
 )
 from research_sdk.persistence.results import (
     PersistedRecordMetadata,
@@ -42,12 +48,16 @@ from research_sdk.persistence.statements import (
     build_experiment_run_replay_select,
     build_research_note_insert,
     build_research_note_replay_select,
+    build_research_report_card_insert,
+    build_research_report_card_read_select,
+    build_research_report_card_replay_select,
     build_review_event_insert,
     build_run_artifact_entries_replay_select,
     build_run_artifact_manifest_advisory_lock_selects,
     build_run_artifact_manifest_inserts,
     build_run_artifact_manifest_replay_select,
 )
+from research_sdk.report_card_identity import verify_research_report_card_identity
 
 
 class SqlAlchemyExperimentLedgerRepository:
@@ -358,6 +368,125 @@ class SqlAlchemyExperimentLedgerRepository:
             inserted_at=stored["inserted_at"],
         )
 
+    def record_research_report_card(
+        self,
+        report_card: ResearchReportCard,
+    ) -> PersistenceWriteResult:
+        self._require_active_transaction()
+        validate_research_report_card_sources(
+            connection=self._connection,
+            report_card=report_card,
+        )
+
+        try:
+            result = self._connection.execute(
+                build_research_report_card_insert(report_card)
+            )
+        except IntegrityError as error:
+            attempted_hash = contract_sha256(report_card)
+            context = PersistenceErrorContext(
+                table_name="research_report_cards",
+                operation="record_research_report_card",
+                logical_identity={"report_card_id": report_card.report_card_id},
+                attempted_hash_prefix=attempted_hash[:12],
+            )
+            translated = translate_sqlalchemy_integrity_error(
+                error=error,
+                context=context,
+            )
+            if translated is None:
+                raise
+            raise translated from error
+
+        returned = result.mappings().one_or_none()
+        if returned is not None:
+            return _hash_backed_write_result(
+                disposition=PersistenceDisposition.CREATED,
+                table_name="research_report_cards",
+                primary_key={"report_card_id": returned["report_card_id"]},
+                contract_hash=returned["contract_hash"],
+                inserted_at=returned["inserted_at"],
+            )
+
+        attempted_hash = contract_sha256(report_card)
+        replay_result = self._connection.execute(
+            build_research_report_card_replay_select(
+                report_card_id=report_card.report_card_id,
+            )
+        )
+        stored = replay_result.mappings().one_or_none()
+        if stored is None:
+            raise ReplayLookupError(
+                PersistenceErrorContext(
+                    table_name="research_report_cards",
+                    operation="record_research_report_card",
+                    logical_identity={"report_card_id": report_card.report_card_id},
+                    constraint_name="pk_research_report_cards",
+                    attempted_hash_prefix=attempted_hash[:12],
+                )
+            )
+
+        stored_hash = stored["contract_hash"]
+        if stored_hash != attempted_hash:
+            raise ContractHashConflictError(
+                PersistenceErrorContext(
+                    table_name="research_report_cards",
+                    operation="record_research_report_card",
+                    logical_identity={"report_card_id": report_card.report_card_id},
+                    constraint_name="pk_research_report_cards",
+                    existing_hash_prefix=stored_hash[:12],
+                    attempted_hash_prefix=attempted_hash[:12],
+                )
+            )
+
+        return _hash_backed_write_result(
+            disposition=PersistenceDisposition.REPLAYED,
+            table_name="research_report_cards",
+            primary_key={"report_card_id": stored["report_card_id"]},
+            contract_hash=stored_hash,
+            inserted_at=stored["inserted_at"],
+        )
+
+    def get_research_report_card(
+        self,
+        report_card_id: str,
+    ) -> ResearchReportCard | None:
+        result = self._connection.execute(
+            build_research_report_card_read_select(report_card_id=report_card_id)
+        )
+        stored = result.mappings().one_or_none()
+        if stored is None:
+            return None
+
+        try:
+            report_card = ResearchReportCard.model_validate(stored["raw_contract"])
+            attempted_hash = contract_sha256(report_card)
+            if stored["contract_hash"] != attempted_hash:
+                _raise_report_card_integrity_error(report_card_id)
+            if report_card.report_card_id != report_card_id:
+                _raise_report_card_integrity_error(report_card_id)
+            verify_research_report_card_identity(report_card)
+            expected_row = research_report_card_to_row(report_card)
+            for column_name in _REPORT_CARD_NORMALIZED_COLUMNS:
+                if stored[column_name] != expected_row[column_name]:
+                    _raise_report_card_integrity_error(report_card_id)
+            validate_research_report_card_sources(
+                connection=self._connection,
+                report_card=report_card,
+            )
+        except PersistenceCorruptionError:
+            raise
+        except Exception as exc:
+            raise PersistenceCorruptionError(
+                PersistenceErrorContext(
+                    table_name="research_report_cards",
+                    operation="get_research_report_card",
+                    logical_identity={"report_card_id": report_card_id},
+                )
+            ) from exc
+
+        return report_card
+
     def append_review_event(
         self,
         *,
@@ -437,6 +566,29 @@ _ARTIFACT_ENTRY_REPLAY_COLUMNS = (
     "created_at",
     "validator_version",
 )
+
+_REPORT_CARD_NORMALIZED_COLUMNS = (
+    "report_card_id",
+    "schema_version",
+    "derivation_policy_version",
+    "source_run_id",
+    "experiment_id",
+    "strategy_id",
+    "strategy_version",
+    "data_snapshot_id",
+    "benchmark_snapshot_id",
+    "artifact_manifest_id",
+)
+
+
+def _raise_report_card_integrity_error(report_card_id: str) -> NoReturn:
+    raise PersistenceCorruptionError(
+        PersistenceErrorContext(
+            table_name="research_report_cards",
+            operation="get_research_report_card",
+            logical_identity={"report_card_id": report_card_id},
+        )
+    )
 
 
 def _artifact_entry_projections_match(

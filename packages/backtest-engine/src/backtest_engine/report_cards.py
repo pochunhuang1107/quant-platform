@@ -9,7 +9,6 @@ from backtest_engine.identity import (
     RUN_ID_PREFIX,
     SHA256_HEX_LENGTH,
     canonical_json_bytes,
-    canonical_json_sha256,
     file_sha256_bytes,
 )
 from research_sdk.contracts import (
@@ -38,6 +37,9 @@ from research_sdk.contracts import (
 )
 from research_sdk.contracts.artifacts import REQUIRED_ARTIFACT_SPECS
 from research_sdk.contracts.schema import RESEARCH_SDK_CONTRACT_SCHEMA_VERSION
+from research_sdk.report_card_identity import (
+    derive_research_report_card_id_from_fields,
+)
 
 REPORT_CARD_DERIVATION_POLICY_VERSION: Final = "deterministic-etf-report-card-v1"
 SUPPORTED_STRATEGY_ID: Final = "strategies/etfs/qqq_buy_and_hold"
@@ -482,17 +484,16 @@ def _derive_report_card_id_from_fields(
     parameter_hash: str,
     artifact_manifest_hash: str,
 ) -> str:
-    payload = {
-        "source_run_id": source_run_id,
-        "schema_version": schema_version,
-        "derivation_policy_version": derivation_policy_version,
-        "data_snapshot_content_hash": data_snapshot_content_hash,
-        "benchmark_snapshot_content_hash": benchmark_snapshot_content_hash,
-        "config_hash": config_hash,
-        "parameter_hash": parameter_hash,
-        "artifact_manifest_hash": artifact_manifest_hash,
-    }
-    return f"report-card-{canonical_json_sha256(payload)}"
+    return derive_research_report_card_id_from_fields(
+        source_run_id=source_run_id,
+        schema_version=schema_version,
+        derivation_policy_version=derivation_policy_version,
+        data_snapshot_content_hash=data_snapshot_content_hash,
+        benchmark_snapshot_content_hash=benchmark_snapshot_content_hash,
+        config_hash=config_hash,
+        parameter_hash=parameter_hash,
+        artifact_manifest_hash=artifact_manifest_hash,
+    )
 
 
 def _validate_identity_sources(

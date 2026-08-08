@@ -319,6 +319,67 @@ ARTIFACT_TABLES = (
 )
 
 
+research_report_cards = Table(
+    "research_report_cards",
+    metadata,
+    Column("report_card_id", Text, primary_key=True),
+    Column("schema_version", Text, nullable=False),
+    Column("derivation_policy_version", Text, nullable=False),
+    Column("source_run_id", Text, nullable=False),
+    Column("experiment_id", Text, nullable=False),
+    Column("strategy_id", Text, nullable=False),
+    Column("strategy_version", Text, nullable=False),
+    Column("data_snapshot_id", Text, nullable=False),
+    Column("benchmark_snapshot_id", Text, nullable=False),
+    Column("artifact_manifest_id", Text, nullable=False),
+    Column("contract_hash", Text, nullable=False),
+    Column("raw_contract", JSONB, nullable=False),
+    Column(
+        "inserted_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    ),
+    ForeignKeyConstraint(
+        ["source_run_id"],
+        ["experiment_runs.run_id"],
+        name="fk_research_report_cards_source_run_id_experiment_runs",
+    ),
+    ForeignKeyConstraint(
+        ["data_snapshot_id"],
+        ["data_snapshot_manifests.snapshot_id"],
+        name="fk_research_report_cards_data_snapshot_id_data_snapshot_manifests",
+    ),
+    ForeignKeyConstraint(
+        ["benchmark_snapshot_id"],
+        ["data_snapshot_manifests.snapshot_id"],
+        name="fk_research_report_cards_benchmark_snapshot_id_data_snapshot_manifests",
+    ),
+    ForeignKeyConstraint(
+        ["artifact_manifest_id"],
+        ["run_artifact_manifests.manifest_id"],
+        name="fk_research_report_cards_artifact_manifest_id_run_artifact_manifests",
+    ),
+)
+
+Index(
+    "ix_research_report_cards_source_run_id",
+    research_report_cards.c.source_run_id,
+)
+Index(
+    "ix_research_report_cards_experiment_id",
+    research_report_cards.c.experiment_id,
+)
+Index(
+    "ix_research_report_cards_strategy_id_strategy_version",
+    research_report_cards.c.strategy_id,
+    research_report_cards.c.strategy_version,
+)
+
+
+REPORT_CARD_TABLES = (research_report_cards,)
+
+
 research_notes = Table(
     "research_notes",
     metadata,
@@ -474,4 +535,6 @@ RESEARCH_REVIEW_TABLES = (
     review_events,
 )
 
-LEDGER_TABLES = LEDGER_ANCHOR_TABLES + ARTIFACT_TABLES + RESEARCH_REVIEW_TABLES
+LEDGER_TABLES = (
+    LEDGER_ANCHOR_TABLES + ARTIFACT_TABLES + REPORT_CARD_TABLES + RESEARCH_REVIEW_TABLES
+)

@@ -220,9 +220,37 @@ requires the two snapshot hashes to be equal because it supports only one
 shared synthetic QQQ/SPY snapshot. The report-card ID can be recomputed from
 the durable report-card fields without reading source snapshots or artifacts.
 
-`ResearchReportCard` is not persisted in the database in this slice.
+`ResearchReportCard` is durably persisted by `research_sdk` in the dedicated
+`research_report_cards` table. Normalized columns copy stable query fields from
+the validated contract, while `raw_contract` stores the validated contract
+payload. `report_card_id` remains the natural deterministic evidence identity,
+and `contract_hash` stores `contract_sha256(report_card)` as a lowercase
+64-character SHA-256 hex digest of the entire canonical `ResearchReportCard`
+contract. Exact replay requires the same `report_card_id` and `contract_hash`;
+the same `report_card_id` with changed canonical content is a persistence
+conflict.
+
+Generic report-card identity verification is owned by
+`research_sdk.report_card_identity` and does not import persistence,
+experiment-recording, SQLAlchemy, psycopg, or `backtest_engine`. The
+backtest-engine deterministic ETF verifier keeps the
+`deterministic-etf-report-card-v1` policy restriction. Durable persistence adds
+a separate source-coherence check: before insert and on readback, the
+repository validates the referenced persisted run, data snapshot, benchmark
+snapshot, and artifact manifest, then requires the report-card lineage, scope,
+assumptions, metrics, limitations, and artifact evidence to agree with those
+durable source contracts. Foreign-key existence is not treated as sufficient
+evidence integrity.
+
+Because report cards are now durable, `ResearchReportCard` schema changes that
+alter canonical `model_dump(mode="json")` output must not be introduced under
+the same `schema_version` without an explicit migration or version-aware
+deserialization policy.
+
 `research_note.md` remains a generated backtest artifact, while a persisted
-`ResearchNote` remains a separate human-reviewed interpretation record.
+`ResearchNote` remains a separate human-reviewed interpretation record. There
+is no ResearchNote/report-card linkage or finalized ResearchNote workflow in
+this slice.
 
 ## Corporate Actions, Rolls, And Survivorship
 

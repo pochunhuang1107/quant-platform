@@ -74,6 +74,14 @@ class AggregateIntegrityError(PersistenceError):
     """Raised when persisted aggregate state does not match its projection."""
 
 
+class PersistenceCorruptionError(PersistenceError):
+    """Raised when durable state fails validated readback integrity checks."""
+
+
+class ResearchReportCardSourceCoherenceError(PersistenceError):
+    """Raised when a report card disagrees with its persisted source records."""
+
+
 def _validate_hash_prefix(field_name: str, value: str | None) -> None:
     if value is None:
         return
@@ -116,6 +124,8 @@ __all__ = [
     "PersistenceConflictError",
     "PersistenceError",
     "PersistenceErrorContext",
+    "PersistenceCorruptionError",
     "ReplayLookupError",
+    "ResearchReportCardSourceCoherenceError",
     "UnsupportedVersioningConflictError",
 ]

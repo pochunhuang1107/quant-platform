@@ -313,12 +313,36 @@ metadata sorted by enum value.
 `ReportCardLineage` stores both data and benchmark snapshot content hashes.
 They are equal under `deterministic-etf-report-card-v1` because the policy uses
 one shared synthetic QQQ/SPY snapshot, but both fields remain explicit lineage.
-The pure identity verifier recomputes `report_card_id` from durable report-card
-fields and performs no I/O or persistence work.
+The pure identity verifier in `research_sdk.report_card_identity` recomputes
+`report_card_id` from durable report-card fields and performs no I/O or
+persistence work. The deterministic ETF verifier in `backtest_engine` keeps the
+v1 policy allowlist and delegates generic recomputation to the SDK helper.
 
-This slice does not add report-card database persistence, repository methods,
-migrations, or artifact mutation. Durable report-card persistence and a
-finalized human-reviewed `ResearchNote` workflow remain planned for PR B1b.
+Report cards are durably persisted in the `research_report_cards` table after
+completed-experiment recording. The table stores normalized query fields,
+`raw_contract`, and `contract_hash = contract_sha256(report_card)`, a lowercase
+64-character SHA-256 hex digest over the entire canonical contract. Exact
+replay returns `REPLAYED` only when both the natural `report_card_id` and the
+whole-contract hash match. Same ID with different canonical content raises
+`ContractHashConflictError`; persisted report-card rows are not overwritten.
+Generic identity verification proves the report-card ID is internally derived
+from the card's durable identity inputs. Persistence then separately validates
+that the card faithfully summarizes the referenced persisted run, data
+snapshot, benchmark snapshot, and artifact manifest. Foreign-key existence
+alone is not sufficient evidence integrity. The repository verifies the source
+contracts and their stored hashes before trusting them, then rejects caller
+mismatches such as altered metrics, unrelated snapshots, or substituted
+artifact evidence; corrupted stored source anchors raise persistence
+corruption.
+
+Because report cards are now durable, `ResearchReportCard` schema changes that
+alter canonical `model_dump(mode="json")` output must not be introduced under
+the same `schema_version` without an explicit migration or version-aware
+deserialization policy.
+
+The completed artifact bundle is not mutated. ResearchNote/report-card linkage
+and a finalized human-reviewed `ResearchNote` workflow remain planned
+follow-up work.
 
 ## Schema Evolution
 

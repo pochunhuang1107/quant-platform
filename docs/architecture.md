@@ -51,9 +51,9 @@ Scaffold-only or deferred:
 - `apps/mcp-server`: scaffold-only future agent-facing tool surface for
   controlled platform access.
 - `packages/research-sdk`: implemented shared contracts, schema export,
-  persistence, and completed-experiment recording boundaries. It does not yet
-  provide read/query services, report-card persistence, batch orchestration, or
-  approval-workflow authority.
+  persistence, completed-experiment recording boundaries, and durable
+  deterministic report-card persistence. It does not yet provide broad
+  read/query services, batch orchestration, or approval-workflow authority.
 - `packages/data-engine`: scaffold-only future data ingestion, validation, and
   snapshot logic.
 - `packages/feature-store`: scaffold-only future feature definitions and
@@ -239,13 +239,39 @@ They are equal under the v1 shared-snapshot policy, but both are retained so
 the report-card ID can be recomputed from durable report-card fields through
 the pure identity verifier without reloading source snapshots.
 
-Report cards are not persisted in the database in this slice, and the completed
-run artifact bundle is not mutated to add report-card files. A deterministic
-report card is factual evidence. A persisted `ResearchNote` is a separate
-human-reviewed interpretation. The generated `research_note.md` artifact,
-`ResearchReportCard`, and persisted `ResearchNote` are not interchangeable.
-Durable report-card persistence and a finalized `ResearchNote` workflow remain
-Phase 1B follow-up work.
+Report cards are durably persisted by `research_sdk` in the dedicated
+`research_report_cards` table, and the completed run artifact bundle is not
+mutated to add report-card files. The persisted `report_card_id` is the natural
+deterministic evidence identity; `contract_hash` is
+`contract_sha256(ResearchReportCard)`, the SHA-256 hex digest of the entire
+canonical contract payload. Exact replay requires the same `report_card_id` and
+the same `contract_hash`; the same `report_card_id` with changed metrics or
+other non-identity content is a `ContractHashConflictError`, never
+last-write-wins.
+
+Generic report-card identity verification lives in
+`research_sdk.report_card_identity` and does not import persistence,
+experiment-recording, SQLAlchemy, psycopg, or `backtest_engine`. The
+deterministic ETF v1 policy restriction remains in `backtest_engine`.
+Persistence separately validates source coherence against the already persisted
+run, data snapshot, benchmark snapshot, and artifact manifest before first
+write and again on readback. Foreign-key existence alone is not sufficient
+evidence integrity: the report card must match the durable source contracts,
+their stored hashes, normalized columns, completed run state, snapshot
+coverage, authoritative metric summary, and artifact-manifest evidence. Caller
+mismatches are rejected as source-coherence errors; corrupted persisted source
+anchors are rejected as persistence corruption and are not repaired.
+
+Because report cards are now durable, `ResearchReportCard` schema changes that
+alter canonical `model_dump(mode="json")` output must not be introduced under
+the same `schema_version` without an explicit migration or version-aware
+deserialization policy.
+
+A deterministic report card is factual evidence. A persisted `ResearchNote` is
+a separate human-reviewed interpretation. The generated `research_note.md`
+artifact, `ResearchReportCard`, and persisted `ResearchNote` are not
+interchangeable. ResearchNote/report-card linkage and the finalized
+`ResearchNote` workflow remain Phase 1B follow-up work.
 
 ## Roadmap Alignment
 

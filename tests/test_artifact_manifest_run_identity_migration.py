@@ -20,6 +20,7 @@ MIGRATION_PATH = (
 )
 RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
 ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION = "0005_artifact_run_identity"
+RESEARCH_REPORT_CARD_REVISION = "0006_research_report_cards"
 
 PROHIBITED_SCOPE_TERMS = {
     "alter_column",
@@ -117,11 +118,15 @@ def test_alembic_script_directory_has_artifact_manifest_run_identity_head() -> N
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == [ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION]
+    assert script.get_heads() == [RESEARCH_REPORT_CARD_REVISION]
 
     revision = script.get_revision(ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION)
     assert revision is not None
     assert revision.down_revision == RESEARCH_REVIEW_REVISION
+
+    report_card_revision = script.get_revision(RESEARCH_REPORT_CARD_REVISION)
+    assert report_card_revision is not None
+    assert report_card_revision.down_revision == ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION
 
 
 def test_artifact_manifest_run_identity_upgrade_order(monkeypatch: Any) -> None:

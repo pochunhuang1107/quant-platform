@@ -17,6 +17,7 @@ LEDGER_ANCHOR_REVISION = "0002_ledger_anchor_tables"
 ARTIFACT_REVISION = "0003_artifact_tables"
 RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
 ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION = "0005_artifact_run_identity"
+RESEARCH_REPORT_CARD_REVISION = "0006_research_report_cards"
 
 
 def test_persistence_metadata_is_sqlalchemy_metadata() -> None:
@@ -66,7 +67,7 @@ def test_alembic_script_directory_has_artifact_manifest_run_identity_head() -> N
     script = ScriptDirectory.from_config(config)
 
     heads = script.get_heads()
-    assert heads == [ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION]
+    assert heads == [RESEARCH_REPORT_CARD_REVISION]
 
     baseline = script.get_revision(BASELINE_REVISION)
     assert baseline is not None
@@ -89,3 +90,7 @@ def test_alembic_script_directory_has_artifact_manifest_run_identity_head() -> N
     )
     assert artifact_manifest_run_identity is not None
     assert artifact_manifest_run_identity.down_revision == RESEARCH_REVIEW_REVISION
+
+    report_card_revision = script.get_revision(RESEARCH_REPORT_CARD_REVISION)
+    assert report_card_revision is not None
+    assert report_card_revision.down_revision == ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION

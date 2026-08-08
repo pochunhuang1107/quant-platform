@@ -8,8 +8,10 @@ from sqlalchemy.schema import CreateIndex, CreateTable
 from research_sdk.persistence.metadata import metadata
 from research_sdk.persistence.tables import (
     LEDGER_TABLES,
+    REPORT_CARD_TABLES,
     RESEARCH_REVIEW_TABLES,
     research_notes,
+    research_report_cards,
     review_events,
 )
 
@@ -18,6 +20,7 @@ EXPECTED_TABLE_NAMES = {
     "data_snapshot_manifests",
     "run_artifact_manifests",
     "run_artifact_entries",
+    "research_report_cards",
     "research_notes",
     "review_events",
 }
@@ -137,11 +140,13 @@ EXPECTED_INDEXES = {
 
 def test_metadata_contains_current_approved_ledger_tables_only() -> None:
     assert set(metadata.tables) == EXPECTED_TABLE_NAMES
+    assert REPORT_CARD_TABLES == (research_report_cards,)
     assert RESEARCH_REVIEW_TABLES == (
         research_notes,
         review_events,
     )
     assert LEDGER_TABLES[-2:] == RESEARCH_REVIEW_TABLES
+    assert LEDGER_TABLES[-3] is research_report_cards
 
 
 def test_research_review_tables_have_expected_columns() -> None:
