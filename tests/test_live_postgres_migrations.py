@@ -328,17 +328,23 @@ def _assert_research_report_card_foreign_keys(inspector: object) -> None:
         for foreign_key in inspector.get_foreign_keys("research_report_cards")
     }
 
-    assert foreign_keys["fk_research_report_cards_source_run_id_experiment_runs"] == (
+    assert foreign_keys["fk_report_cards_source_run_id"] == (
         ("source_run_id",),
         "experiment_runs",
         ("run_id",),
     )
-    assert foreign_keys[
-        "fk_research_report_cards_data_snapshot_id_data_snapshot_manifests"
-    ] == (("data_snapshot_id",), "data_snapshot_manifests", ("snapshot_id",))
-    assert foreign_keys[
-        "fk_research_report_cards_benchmark_snapshot_id_data_snapshot_manifests"
-    ] == (("benchmark_snapshot_id",), "data_snapshot_manifests", ("snapshot_id",))
-    assert foreign_keys[
-        "fk_research_report_cards_artifact_manifest_id_run_artifact_manifests"
-    ] == (("artifact_manifest_id",), "run_artifact_manifests", ("manifest_id",))
+    assert foreign_keys["fk_report_cards_data_snapshot_id"] == (
+        ("data_snapshot_id",),
+        "data_snapshot_manifests",
+        ("snapshot_id",),
+    )
+    assert foreign_keys["fk_report_cards_benchmark_snapshot_id"] == (
+        ("benchmark_snapshot_id",),
+        "data_snapshot_manifests",
+        ("snapshot_id",),
+    )
+    assert foreign_keys["fk_report_cards_artifact_manifest_id"] == (
+        ("artifact_manifest_id",),
+        "run_artifact_manifests",
+        ("manifest_id",),
+    )

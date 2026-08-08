@@ -45,26 +45,22 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["source_run_id"],
             ["experiment_runs.run_id"],
-            name="fk_research_report_cards_source_run_id_experiment_runs",
+            name="fk_report_cards_source_run_id",
         ),
         sa.ForeignKeyConstraint(
             ["data_snapshot_id"],
             ["data_snapshot_manifests.snapshot_id"],
-            name=("fk_research_report_cards_data_snapshot_id_data_snapshot_manifests"),
+            name="fk_report_cards_data_snapshot_id",
         ),
         sa.ForeignKeyConstraint(
             ["benchmark_snapshot_id"],
             ["data_snapshot_manifests.snapshot_id"],
-            name=(
-                "fk_research_report_cards_benchmark_snapshot_id_data_snapshot_manifests"
-            ),
+            name="fk_report_cards_benchmark_snapshot_id",
         ),
         sa.ForeignKeyConstraint(
             ["artifact_manifest_id"],
             ["run_artifact_manifests.manifest_id"],
-            name=(
-                "fk_research_report_cards_artifact_manifest_id_run_artifact_manifests"
-            ),
+            name="fk_report_cards_artifact_manifest_id",
         ),
         sa.PrimaryKeyConstraint("report_card_id", name="pk_research_report_cards"),
     )
