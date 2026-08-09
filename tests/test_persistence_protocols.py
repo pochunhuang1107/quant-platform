@@ -11,6 +11,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
@@ -39,8 +40,12 @@ EXPECTED_PROTOCOL_METHODS = {
     "record_data_snapshot_manifest",
     "record_run_artifact_manifest",
     "record_research_note",
+    "record_research_report_card",
+    "get_research_report_card",
     "append_review_event",
 }
+
+WRITE_PROTOCOL_METHODS = EXPECTED_PROTOCOL_METHODS - {"get_research_report_card"}
 
 
 class FakeExperimentLedgerRepository:
@@ -98,6 +103,25 @@ class FakeExperimentLedgerRepository:
                 contract_hash="3" * 64,
             ),
         )
+
+    def record_research_report_card(
+        self,
+        report_card: ResearchReportCard,
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="research_report_cards",
+                primary_key={"report_card_id": report_card.report_card_id},
+                contract_hash="4" * 64,
+            ),
+        )
+
+    def get_research_report_card(
+        self,
+        report_card_id: str,
+    ) -> ResearchReportCard | None:
+        return None
 
     def append_review_event(
         self,
@@ -181,12 +205,19 @@ def test_protocol_method_signatures_use_validated_contract_types() -> None:
         RunArtifactManifest
     )
     assert _type_hints("record_research_note")["note"] is ResearchNote
+    assert _type_hints("record_research_report_card")["report_card"] is (
+        ResearchReportCard
+    )
+    assert _type_hints("get_research_report_card")["report_card_id"] is str
     assert _type_hints("append_review_event")["review"] is ReviewMetadata
 
 
 def test_protocol_method_return_types_use_persistence_write_result() -> None:
-    for method_name in EXPECTED_PROTOCOL_METHODS:
+    for method_name in WRITE_PROTOCOL_METHODS:
         assert _type_hints(method_name)["return"] is PersistenceWriteResult
+    assert _type_hints("get_research_report_card")["return"] == (
+        ResearchReportCard | None
+    )
 
 
 def test_artifact_manifest_signature_requires_keyword_only_fields() -> None:
@@ -260,6 +291,7 @@ def test_protocol_module_does_not_import_row_mapper_functions() -> None:
         "run_artifact_manifest_to_rows",
         "research_note_to_row",
         "review_metadata_to_row",
+        "research_report_card_to_row",
     ):
         assert prohibited_name not in module_names
 

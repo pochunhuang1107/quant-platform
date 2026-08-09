@@ -15,6 +15,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
@@ -25,6 +26,7 @@ from research_sdk.persistence.mappers import (
     data_snapshot_manifest_to_row,
     experiment_run_to_row,
     research_note_to_row,
+    research_report_card_to_row,
     review_metadata_to_row,
     run_artifact_manifest_to_rows,
 )
@@ -32,6 +34,7 @@ from research_sdk.persistence.tables import (
     data_snapshot_manifests,
     experiment_runs,
     research_notes,
+    research_report_cards,
     review_events,
     run_artifact_entries,
     run_artifact_manifests,
@@ -77,6 +80,27 @@ def review_metadata() -> ReviewMetadata:
     return ReviewMetadata.model_validate(load_fixture("review_metadata.json"))
 
 
+@pytest.fixture
+def research_report_card() -> ResearchReportCard:
+    from research_sdk.report_card_identity import (
+        derive_research_report_card_id_from_fields,
+    )
+
+    payload = load_fixture("research_report_card.json")
+    lineage = payload["lineage"]
+    payload["report_card_id"] = derive_research_report_card_id_from_fields(
+        source_run_id=payload["source_run_id"],
+        schema_version=payload["schema_version"],
+        derivation_policy_version=payload["derivation_policy_version"],
+        data_snapshot_content_hash=lineage["data_snapshot_content_hash"],
+        benchmark_snapshot_content_hash=lineage["benchmark_snapshot_content_hash"],
+        config_hash=lineage["config_hash"],
+        parameter_hash=lineage["parameter_hash"],
+        artifact_manifest_hash=lineage["artifact_manifest_hash"],
+    )
+    return ResearchReportCard.model_validate(payload)
+
+
 def projected_column_names(table: Table) -> set[str]:
     return set(table.c.keys()) - PROJECTED_SERVER_COLUMNS
 
@@ -99,6 +123,7 @@ def test_fixture_contracts_validate_and_map_successfully(
     data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
     research_note: ResearchNote,
+    research_report_card: ResearchReportCard,
     review_metadata: ReviewMetadata,
 ) -> None:
     assert experiment_run_to_row(experiment_run)
@@ -108,6 +133,7 @@ def test_fixture_contracts_validate_and_map_successfully(
         manifest=run_artifact_manifest,
     )
     assert research_note_to_row(research_note)
+    assert research_report_card_to_row(research_report_card)
     assert review_metadata_to_row(
         review_event_id="review-event-20260709-001",
         subject_type=ReviewSubjectType.EXPERIMENT_RUN,
@@ -120,6 +146,7 @@ def test_contract_backed_mapper_keys_match_table_columns(
     experiment_run: ExperimentRunRecord,
     data_snapshot_manifest: DataSnapshotManifest,
     research_note: ResearchNote,
+    research_report_card: ResearchReportCard,
 ) -> None:
     assert_row_matches_projected_table(
         experiment_run_to_row(experiment_run),
@@ -132,6 +159,10 @@ def test_contract_backed_mapper_keys_match_table_columns(
     assert_row_matches_projected_table(
         research_note_to_row(research_note),
         research_notes,
+    )
+    assert_row_matches_projected_table(
+        research_report_card_to_row(research_report_card),
+        research_report_cards,
     )
 
 
@@ -166,6 +197,7 @@ def test_contract_hash_and_raw_contract_match_contract_payloads(
     data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
     research_note: ResearchNote,
+    research_report_card: ResearchReportCard,
 ) -> None:
     experiment_row = experiment_run_to_row(experiment_run)
     snapshot_row = data_snapshot_manifest_to_row(data_snapshot_manifest)
@@ -174,12 +206,14 @@ def test_contract_hash_and_raw_contract_match_contract_payloads(
         manifest=run_artifact_manifest,
     )
     note_row = research_note_to_row(research_note)
+    report_card_row = research_report_card_to_row(research_report_card)
 
     for contract, row in (
         (experiment_run, experiment_row),
         (data_snapshot_manifest, snapshot_row),
         (run_artifact_manifest, artifact_rows.manifest),
         (research_note, note_row),
+        (research_report_card, report_card_row),
     ):
         assert row["contract_hash"] == contract_sha256(contract)
         assert row["raw_contract"] == contract.model_dump(mode="json")
@@ -292,6 +326,7 @@ def test_mappers_do_not_mutate_input_contracts(
     data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
     research_note: ResearchNote,
+    research_report_card: ResearchReportCard,
     review_metadata: ReviewMetadata,
 ) -> None:
     before = {
@@ -303,6 +338,7 @@ def test_mappers_do_not_mutate_input_contracts(
             run_artifact_manifest.model_dump(mode="json")
         ),
         "research_note": deepcopy(research_note.model_dump(mode="json")),
+        "research_report_card": deepcopy(research_report_card.model_dump(mode="json")),
         "review_metadata": deepcopy(review_metadata.model_dump(mode="json")),
     }
 
@@ -313,6 +349,7 @@ def test_mappers_do_not_mutate_input_contracts(
         manifest=run_artifact_manifest,
     )
     research_note_to_row(research_note)
+    research_report_card_to_row(research_report_card)
     review_metadata_to_row(
         review_event_id="review-event-20260709-001",
         subject_type=ReviewSubjectType.EXPERIMENT_RUN,
@@ -329,6 +366,9 @@ def test_mappers_do_not_mutate_input_contracts(
         run_artifact_manifest.model_dump(mode="json") == before["run_artifact_manifest"]
     )
     assert research_note.model_dump(mode="json") == before["research_note"]
+    assert (
+        research_report_card.model_dump(mode="json") == before["research_report_card"]
+    )
     assert review_metadata.model_dump(mode="json") == before["review_metadata"]
 
 
@@ -358,5 +398,6 @@ def test_mapper_module_does_not_import_table_metadata() -> None:
     assert "data_snapshot_manifests" not in module_names
     assert "run_artifact_manifests" not in module_names
     assert "run_artifact_entries" not in module_names
+    assert "research_report_cards" not in module_names
     assert "research_notes" not in module_names
     assert "review_events" not in module_names

@@ -256,6 +256,40 @@ add application/backtest integration, add migrations, add constraints, or add
 concurrency tests. The existing CI Postgres persistence smoke job is expanded
 to include the artifact aggregate live repository test.
 
+B1b1 adds durable deterministic `ResearchReportCard` persistence. It introduces
+the `research_report_cards` table with `report_card_id` as the natural
+deterministic evidence primary key, normalized source/query columns,
+`raw_contract`, and `contract_hash = contract_sha256(report_card)` as a
+lowercase 64-character SHA-256 hex digest over the entire canonical contract.
+The repository adds `record_research_report_card(report_card)` and
+`get_research_report_card(report_card_id)`. Writes verify the generic
+report-card identity and source coherence before SQL execution, return
+`CREATED` for first insert, return `REPLAYED` only for the same
+`report_card_id` and same whole-contract hash, and raise
+`ContractHashConflictError` for the same ID with changed canonical content.
+Source coherence loads the referenced persisted run, data snapshot, benchmark
+snapshot, and artifact manifest inside the caller-owned transaction; validates
+their `raw_contract`, `contract_hash`, and normalized columns before trusting
+them; and then requires report-card lineage, scope, assumptions, metrics,
+limitations, and artifact evidence to agree with those durable source
+contracts. Foreign-key existence alone is not sufficient evidence integrity.
+Caller/source mismatches raise `ResearchReportCardSourceCoherenceError`.
+Corrupt durable source anchors raise `PersistenceCorruptionError` and are not
+repaired. Readback validates `raw_contract`, recomputes `contract_hash`,
+verifies primary-key agreement, reruns generic identity verification, checks
+normalized columns against the validated payload, and reruns source-coherence
+validation before returning a card.
+
+Generic report-card identity verification now lives in
+`research_sdk.report_card_identity` and does not import persistence,
+experiment-recording, SQLAlchemy, psycopg, or `backtest_engine`. The
+backtest-engine deterministic ETF verifier keeps the
+`deterministic-etf-report-card-v1` policy allowlist and delegates generic ID
+recomputation to the SDK helper. B1b1 does not add ResearchNote contract
+changes, ResearchNote/report-card linkage, a finalized interpretation service,
+review-event changes, comparison queries, APIs, workers, real ETF data, paper
+trading, live trading, or CI trigger de-duplication.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
@@ -273,14 +307,19 @@ The persistence primitive boundaries now include:
 - `UnsupportedVersioningConflictError`
 - `DuplicateReviewEventError`
 - `AggregateIntegrityError`
+- `PersistenceCorruptionError`
+- `ResearchReportCardSourceCoherenceError`
 - `translate_constraint_violation(constraint_name=..., context=...)`
 - `translate_sqlalchemy_integrity_error(error=..., context=...)`
+- `validate_research_report_card_sources(connection, report_card)`
 - `SqlAlchemyExperimentLedgerRepository(connection)`
 - `build_experiment_run_replay_select(run_id=...)`
 - `build_data_snapshot_manifest_replay_select(snapshot_id=...)`
 - `build_run_artifact_manifest_replay_select(manifest_id=...)`
 - `build_run_artifact_entries_replay_select(manifest_id=...)`
 - `build_research_note_replay_select(note_id=...)`
+- `build_research_report_card_replay_select(report_card_id=...)`
+- `build_research_report_card_read_select(report_card_id=...)`
 
 These primitives define how validated contract payloads become stable
 `contract_hash` values for audit and idempotency metadata, how future
@@ -294,7 +333,8 @@ SQL, params, or database configuration.
 Pydantic contracts remain the validation boundary. Future repositories must
 accept validated contract objects such as `ExperimentRunRecord`,
 `DataSnapshotManifest`, `RunArtifactManifest`, `ResearchNote`, and
-`ReviewMetadata`. Repositories must not accept raw dictionaries as trusted
+`ReviewMetadata`. The report-card repository path also accepts
+`ResearchReportCard`. Repositories must not accept raw dictionaries as trusted
 contract input or hide validation rules that belong in Pydantic contracts.
 
 When repositories are added later, they should compute `contract_hash`
@@ -313,6 +353,13 @@ interpretation.
 
 `contract_hash` excludes database-generated fields such as `inserted_at`
 because those fields are not part of the Pydantic contract payload.
+
+Because `ResearchReportCard` rows are durable and readback verifies
+`contract_sha256(report_card)`, schema changes that alter canonical
+`model_dump(mode="json")` output must not be introduced under the same
+`schema_version` without an explicit migration or version-aware deserialization
+policy. Adding a defaulted field under the same schema version can make old
+durable rows appear corrupt even when the original row was valid.
 
 `contract_hash` is audit and idempotency metadata only. It is not artifact
 content hash verification, data file verification, parquet inspection, storage
@@ -728,6 +775,7 @@ overwritten.
 | `data_snapshot_manifests` | `snapshot_id` | Same `snapshot_id` and same `contract_hash` is replay. | Same `snapshot_id` and different `contract_hash` is conflict. | Initial persisted manifests are immutable. Snapshot replacement or correction requires a future explicit flow. |
 | `run_artifact_manifests` | Primary identity: `manifest_id`. Natural aggregate identity for the initial platform: `run_id`. | Same `manifest_id`, same `contract_hash`, same stored parent `run_id`, and matching complete entry projection is replay. | Same `manifest_id` and different `contract_hash` is conflict. Different `manifest_id` for the same `run_id` is conflict, regardless of whether the hash matches. Same `run_id` and same `contract_hash` under another `manifest_id` is duplicate alias, not replay. Same `run_id` and different `contract_hash` is unsupported manifest versioning and must reject. | Initial policy permits exactly one artifact-manifest aggregate per `run_id`. Multiple manifest versions are not permitted until an explicit version or supersession model is approved. |
 | `run_artifact_entries` | `(manifest_id, artifact_id)`, only inside the parent aggregate. | Entries have no independent replay path. Parent replay requires the same manifest hash and the exact complete projected entry set. | Missing entries, extra entries, or differing entry values indicate aggregate integrity failure. | Entries must never be written independently. No automatic repair, partial upsert, best-effort entry insertion, or independent entry mutation is allowed. |
+| `research_report_cards` | `report_card_id`, derived from B1a natural evidence identity inputs. | Same `report_card_id` and same `contract_hash` is replay after identity and source-coherence validation. Readback additionally validates `raw_contract`, identity recomputation, normalized column agreement, and source coherence. | Same `report_card_id` and different `contract_hash` is conflict. Caller/source mismatch is `ResearchReportCardSourceCoherenceError`. Corrupt stored report-card or source payload/hash/column mismatch is `PersistenceCorruptionError` on readback. | `report_card_id` intentionally excludes metrics and other non-identity fields, so persistence must compare whole-contract `contract_hash`. Foreign-key existence alone is not sufficient; the card must match the persisted run, snapshots, and artifact manifest. Report cards are immutable factual evidence and are not embedded into `ResearchNote` in B1b1. |
 | `research_notes` | `note_id` | Same `note_id` and same `contract_hash` is replay. | Same `note_id` and different `contract_hash` is conflict. | Persisted note versions are immutable. `updated_at` and `updated_by` are values inside one immutable note version; they are not authorization to mutate the stored row. Revisions require a new `note_id` using `parent_note_id` or `supersedes_note_id`. No silent note editing is allowed. |
 | `review_events` | `review_event_id` | No idempotent replay claim exists for now. | Duplicate `review_event_id` always rejects for now. | Events remain append-only. Do not compare `raw_review` directly to infer replay. A future standalone `ReviewEvent` contract with `schema_version` and `event_hash` is required before replay semantics can be approved. `ReviewMetadata` is audit/review metadata and is not trading or risk authorization. |
 

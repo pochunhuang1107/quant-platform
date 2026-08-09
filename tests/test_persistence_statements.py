@@ -18,6 +18,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
@@ -43,6 +44,15 @@ from research_sdk.persistence import (
     build_research_note_replay_select as exported_build_research_note_replay_select,
 )
 from research_sdk.persistence import (
+    build_research_report_card_insert as exported_build_report_card_insert,
+)
+from research_sdk.persistence import (
+    build_research_report_card_read_select as exported_build_report_card_read_select,
+)
+from research_sdk.persistence import (
+    build_research_report_card_replay_select as exported_report_card_replay_select,
+)
+from research_sdk.persistence import (
     build_review_event_insert as exported_build_review_event_insert,
 )
 from research_sdk.persistence import (
@@ -62,6 +72,7 @@ from research_sdk.persistence.mappers import (
     data_snapshot_manifest_to_row,
     experiment_run_to_row,
     research_note_to_row,
+    research_report_card_to_row,
     review_metadata_to_row,
     run_artifact_manifest_to_rows,
 )
@@ -77,6 +88,9 @@ from research_sdk.persistence.statements import (
     build_experiment_run_replay_select,
     build_research_note_insert,
     build_research_note_replay_select,
+    build_research_report_card_insert,
+    build_research_report_card_read_select,
+    build_research_report_card_replay_select,
     build_review_event_insert,
     build_run_artifact_entries_replay_select,
     build_run_artifact_manifest_advisory_lock_selects,
@@ -87,6 +101,7 @@ from research_sdk.persistence.tables import (
     data_snapshot_manifests,
     experiment_runs,
     research_notes,
+    research_report_cards,
     review_events,
     run_artifact_entries,
     run_artifact_manifests,
@@ -125,6 +140,27 @@ def run_artifact_manifest() -> RunArtifactManifest:
 @pytest.fixture
 def research_note() -> ResearchNote:
     return ResearchNote.model_validate(load_fixture("research_note.json"))
+
+
+@pytest.fixture
+def research_report_card() -> ResearchReportCard:
+    from research_sdk.report_card_identity import (
+        derive_research_report_card_id_from_fields,
+    )
+
+    payload = load_fixture("research_report_card.json")
+    lineage = payload["lineage"]
+    payload["report_card_id"] = derive_research_report_card_id_from_fields(
+        source_run_id=payload["source_run_id"],
+        schema_version=payload["schema_version"],
+        derivation_policy_version=payload["derivation_policy_version"],
+        data_snapshot_content_hash=lineage["data_snapshot_content_hash"],
+        benchmark_snapshot_content_hash=lineage["benchmark_snapshot_content_hash"],
+        config_hash=lineage["config_hash"],
+        parameter_hash=lineage["parameter_hash"],
+        artifact_manifest_hash=lineage["artifact_manifest_hash"],
+    )
+    return ResearchReportCard.model_validate(payload)
 
 
 @pytest.fixture
@@ -237,6 +273,18 @@ def test_statement_builders_import_from_statement_module() -> None:
         build_research_note_replay_select
     )
     assert "build_research_note_replay_select" in statements.__all__
+    assert statements.build_research_report_card_insert is (
+        build_research_report_card_insert
+    )
+    assert statements.build_research_report_card_replay_select is (
+        build_research_report_card_replay_select
+    )
+    assert statements.build_research_report_card_read_select is (
+        build_research_report_card_read_select
+    )
+    assert "build_research_report_card_insert" in statements.__all__
+    assert "build_research_report_card_replay_select" in statements.__all__
+    assert "build_research_report_card_read_select" in statements.__all__
     assert statements.build_review_event_insert is build_review_event_insert
 
 
@@ -265,6 +313,13 @@ def test_statement_builders_export_from_persistence_package() -> None:
     assert exported_build_research_note_insert is build_research_note_insert
     assert exported_build_research_note_replay_select is (
         build_research_note_replay_select
+    )
+    assert exported_build_report_card_insert is build_research_report_card_insert
+    assert exported_report_card_replay_select is (
+        build_research_report_card_replay_select
+    )
+    assert exported_build_report_card_read_select is (
+        build_research_report_card_read_select
     )
     assert exported_build_review_event_insert is build_review_event_insert
 
@@ -425,11 +480,13 @@ def test_replay_candidate_helper_rejects_unnamed_primary_key_constraint() -> Non
 def test_contract_builders_return_insert_objects_for_expected_tables(
     experiment_run: ExperimentRunRecord,
     data_snapshot_manifest: DataSnapshotManifest,
+    research_report_card: ResearchReportCard,
     research_note: ResearchNote,
     review_metadata: ReviewMetadata,
 ) -> None:
     experiment_statement = build_experiment_run_insert(experiment_run)
     snapshot_statement = build_data_snapshot_manifest_insert(data_snapshot_manifest)
+    report_card_statement = build_research_report_card_insert(research_report_card)
     note_statement = build_research_note_insert(research_note)
     review_statement = build_review_event_insert(
         review_event_id="review-event-20260709-001",
@@ -440,6 +497,7 @@ def test_contract_builders_return_insert_objects_for_expected_tables(
 
     assert experiment_statement.table is experiment_runs
     assert snapshot_statement.table is data_snapshot_manifests
+    assert report_card_statement.table is research_report_cards
     assert note_statement.table is research_notes
     assert review_statement.table is review_events
 
@@ -492,6 +550,22 @@ def test_contract_builders_return_insert_objects_for_expected_tables(
             "review_status",
             "title",
             "created_at",
+        ),
+    )
+    assert_replay_candidate_statement(
+        statement=report_card_statement,
+        table_name="research_report_cards",
+        conflict_constraint="pk_research_report_cards",
+        returning_columns=(
+            "research_report_cards.report_card_id",
+            "research_report_cards.contract_hash",
+            "research_report_cards.inserted_at",
+        ),
+        prohibited_returning_columns=(
+            "raw_contract",
+            "source_run_id",
+            "experiment_id",
+            "strategy_id",
         ),
     )
     assert_strict_insert_statement(
@@ -607,6 +681,69 @@ def test_research_note_replay_select_shape() -> None:
     assert "DELETE" not in sql
 
 
+def test_research_report_card_replay_select_shape() -> None:
+    report_card_id = "report-card-replay-select-sentinel"
+
+    statement = build_research_report_card_replay_select(report_card_id=report_card_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "report_card_id",
+        "contract_hash",
+        "inserted_at",
+    )
+    assert tuple(statement.get_final_froms()) == (research_report_cards,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "research_report_cards.report_card_id = %(report_card_id_1)s"
+    )
+    assert sql.startswith(
+        "SELECT research_report_cards.report_card_id, "
+        "research_report_cards.contract_hash, "
+        "research_report_cards.inserted_at FROM research_report_cards WHERE "
+        "research_report_cards.report_card_id = "
+    )
+    assert params == {"report_card_id_1": report_card_id}
+    assert report_card_id not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_research_report_card_read_select_shape() -> None:
+    report_card_id = "report-card-read-select-sentinel"
+
+    statement = build_research_report_card_read_select(report_card_id=report_card_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(statement.get_final_froms()) == (research_report_cards,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "research_report_cards.report_card_id = %(report_card_id_1)s"
+    )
+    assert (
+        "FROM research_report_cards WHERE research_report_cards.report_card_id ="
+        in (sql)
+    )
+    assert "research_report_cards.raw_contract" in sql
+    assert params == {"report_card_id_1": report_card_id}
+    assert report_card_id not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
 def test_run_artifact_manifest_replay_select_shape() -> None:
     manifest_id = "manifest-replay-select-sentinel"
 
@@ -700,6 +837,7 @@ def test_run_artifact_entries_replay_select_shape() -> None:
 def test_contract_builder_params_match_mapper_outputs(
     experiment_run: ExperimentRunRecord,
     data_snapshot_manifest: DataSnapshotManifest,
+    research_report_card: ResearchReportCard,
     research_note: ResearchNote,
     review_metadata: ReviewMetadata,
 ) -> None:
@@ -711,6 +849,9 @@ def test_contract_builder_params_match_mapper_outputs(
     ) == data_snapshot_manifest_to_row(data_snapshot_manifest)
     assert compiled_params(build_research_note_insert(research_note)) == (
         research_note_to_row(research_note)
+    )
+    assert compiled_params(build_research_report_card_insert(research_report_card)) == (
+        research_report_card_to_row(research_report_card)
     )
     assert compiled_params(
         build_review_event_insert(
@@ -731,6 +872,7 @@ def test_statement_builders_do_not_bind_inserted_at_or_accept_contract_hash_inpu
     experiment_run: ExperimentRunRecord,
     data_snapshot_manifest: DataSnapshotManifest,
     run_artifact_manifest: RunArtifactManifest,
+    research_report_card: ResearchReportCard,
     research_note: ResearchNote,
     review_metadata: ReviewMetadata,
 ) -> None:
@@ -743,6 +885,7 @@ def test_statement_builders_do_not_bind_inserted_at_or_accept_contract_hash_inpu
         build_experiment_run_insert(experiment_run),
         build_data_snapshot_manifest_insert(data_snapshot_manifest),
         grouped.manifest,
+        build_research_report_card_insert(research_report_card),
         build_research_note_insert(research_note),
         build_review_event_insert(
             review_event_id="review-event-20260709-001",
@@ -759,6 +902,7 @@ def test_statement_builders_do_not_bind_inserted_at_or_accept_contract_hash_inpu
     for builder in (
         build_experiment_run_insert,
         build_data_snapshot_manifest_insert,
+        build_research_report_card_insert,
         build_research_note_insert,
     ):
         assert "contract_hash" not in inspect.signature(builder).parameters

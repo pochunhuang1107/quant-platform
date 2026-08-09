@@ -89,5 +89,6 @@ jobs:
           tests/test_live_postgres_research_note_repository.py
           tests/test_live_postgres_review_event_repository.py
           tests/test_live_postgres_artifact_manifest_repository.py
+          tests/test_live_postgres_research_report_card_repository.py
           tests/test_live_postgres_repository_concurrency.py
           tests/test_live_postgres_backtest_engine_recording.py

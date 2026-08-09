@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.schema import CreateIndex, CreateTable
@@ -8,8 +8,10 @@ from sqlalchemy.schema import CreateIndex, CreateTable
 from research_sdk.persistence.metadata import metadata
 from research_sdk.persistence.tables import (
     LEDGER_TABLES,
+    REPORT_CARD_TABLES,
     RESEARCH_REVIEW_TABLES,
     research_notes,
+    research_report_cards,
     review_events,
 )
 
@@ -18,6 +20,7 @@ EXPECTED_TABLE_NAMES = {
     "data_snapshot_manifests",
     "run_artifact_manifests",
     "run_artifact_entries",
+    "research_report_cards",
     "research_notes",
     "review_events",
 }
@@ -102,6 +105,29 @@ EXPECTED_REVIEW_EVENT_CHECKS = {
     "ck_review_events_review_role_values",
 }
 
+EXPECTED_REPORT_CARD_FOREIGN_KEYS = {
+    "fk_report_cards_source_run_id": (
+        ("source_run_id",),
+        "experiment_runs",
+        ("run_id",),
+    ),
+    "fk_report_cards_data_snapshot_id": (
+        ("data_snapshot_id",),
+        "data_snapshot_manifests",
+        ("snapshot_id",),
+    ),
+    "fk_report_cards_benchmark_snapshot_id": (
+        ("benchmark_snapshot_id",),
+        "data_snapshot_manifests",
+        ("snapshot_id",),
+    ),
+    "fk_report_cards_artifact_manifest_id": (
+        ("artifact_manifest_id",),
+        "run_artifact_manifests",
+        ("manifest_id",),
+    ),
+}
+
 EXPECTED_INDEXES = {
     "research_notes": {
         "ix_research_notes_status_updated_at": ("status", "updated_at"),
@@ -137,11 +163,13 @@ EXPECTED_INDEXES = {
 
 def test_metadata_contains_current_approved_ledger_tables_only() -> None:
     assert set(metadata.tables) == EXPECTED_TABLE_NAMES
+    assert REPORT_CARD_TABLES == (research_report_cards,)
     assert RESEARCH_REVIEW_TABLES == (
         research_notes,
         review_events,
     )
     assert LEDGER_TABLES[-2:] == RESEARCH_REVIEW_TABLES
+    assert LEDGER_TABLES[-3] is research_report_cards
 
 
 def test_research_review_tables_have_expected_columns() -> None:
@@ -207,6 +235,20 @@ def test_research_review_tables_have_no_foreign_keys() -> None:
     assert all(column.foreign_keys == set() for column in review_events.c)
 
 
+def test_research_report_card_foreign_keys_target_current_tables() -> None:
+    actual_foreign_keys = {
+        constraint.name: (
+            tuple(element.parent.name for element in constraint.elements),
+            next(iter(constraint.elements)).column.table.name,
+            tuple(element.column.name for element in constraint.elements),
+        )
+        for constraint in research_report_cards.foreign_key_constraints
+        if isinstance(constraint, ForeignKeyConstraint)
+    }
+
+    assert actual_foreign_keys == EXPECTED_REPORT_CARD_FOREIGN_KEYS
+
+
 def test_research_review_tables_compile_for_postgresql_without_connection() -> None:
     dialect = postgresql.dialect()
 
@@ -218,3 +260,22 @@ def test_research_review_tables_compile_for_postgresql_without_connection() -> N
         for index in table.indexes:
             compiled_index = str(CreateIndex(index).compile(dialect=dialect))
             assert f"CREATE INDEX {index.name}" in compiled_index
+
+
+def test_research_report_card_table_compiles_for_postgresql_without_connection() -> (
+    None
+):
+    dialect = postgresql.dialect()
+
+    compiled_table = str(CreateTable(research_report_cards).compile(dialect=dialect))
+    assert "CREATE TABLE research_report_cards" in compiled_table
+
+    for constraint in research_report_cards.constraints:
+        assert constraint.name is not None
+        assert len(constraint.name) <= dialect.max_identifier_length
+
+    for index in research_report_cards.indexes:
+        assert index.name is not None
+        assert len(index.name) <= dialect.max_identifier_length
+        compiled_index = str(CreateIndex(index).compile(dialect=dialect))
+        assert f"CREATE INDEX {index.name}" in compiled_index

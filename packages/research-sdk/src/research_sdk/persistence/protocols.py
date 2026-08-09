@@ -8,6 +8,7 @@ from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
+    ResearchReportCard,
     ReviewMetadata,
     RunArtifactManifest,
 )
@@ -43,6 +44,16 @@ class ExperimentLedgerRepository(Protocol):
         self,
         note: ResearchNote,
     ) -> PersistenceWriteResult: ...
+
+    def record_research_report_card(
+        self,
+        report_card: ResearchReportCard,
+    ) -> PersistenceWriteResult: ...
+
+    def get_research_report_card(
+        self,
+        report_card_id: str,
+    ) -> ResearchReportCard | None: ...
 
     def append_review_event(
         self,

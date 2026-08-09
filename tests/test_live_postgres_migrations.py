@@ -22,13 +22,14 @@ from live_postgres_safety import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
-HEAD_REVISION = "0005_artifact_run_identity"
+HEAD_REVISION = "0006_research_report_cards"
 
 EXPECTED_TABLES = {
     "experiment_runs",
     "data_snapshot_manifests",
     "run_artifact_manifests",
     "run_artifact_entries",
+    "research_report_cards",
     "research_notes",
     "review_events",
 }
@@ -37,6 +38,7 @@ EXPECTED_JSONB_COLUMNS = {
     "experiment_runs": {"raw_contract"},
     "data_snapshot_manifests": {"raw_contract"},
     "run_artifact_manifests": {"raw_contract"},
+    "research_report_cards": {"raw_contract"},
     "research_notes": {"raw_contract"},
     "review_events": {"raw_review"},
 }
@@ -46,6 +48,7 @@ EXPECTED_PRIMARY_KEYS = {
     "data_snapshot_manifests": ("snapshot_id",),
     "run_artifact_manifests": ("manifest_id",),
     "run_artifact_entries": ("manifest_id", "artifact_id"),
+    "research_report_cards": ("report_card_id",),
     "research_notes": ("note_id",),
     "review_events": ("review_event_id",),
 }
@@ -126,6 +129,14 @@ EXPECTED_INDEXES = {
         ),
         "ix_run_artifact_entries_status": ("status",),
         "ix_run_artifact_entries_manifest_id": ("manifest_id",),
+    },
+    "research_report_cards": {
+        "ix_research_report_cards_source_run_id": ("source_run_id",),
+        "ix_research_report_cards_experiment_id": ("experiment_id",),
+        "ix_research_report_cards_strategy_id_strategy_version": (
+            "strategy_id",
+            "strategy_version",
+        ),
     },
     "research_notes": {
         "ix_research_notes_status_updated_at": ("status", "updated_at"),
@@ -218,6 +229,7 @@ def _assert_catalog_shape(connection: Connection) -> None:
     _assert_check_constraints(inspector)
     _assert_indexes(inspector)
     _assert_artifact_entry_foreign_key(inspector)
+    _assert_research_report_card_foreign_keys(inspector)
 
 
 def _assert_jsonb_columns(inspector: object) -> None:
@@ -303,4 +315,36 @@ def _assert_artifact_entry_foreign_key(inspector: object) -> None:
         and foreign_key["referred_table"] == "run_artifact_manifests"
         and foreign_key["referred_columns"] == ["manifest_id"]
         for foreign_key in foreign_keys
+    )
+
+
+def _assert_research_report_card_foreign_keys(inspector: object) -> None:
+    foreign_keys = {
+        foreign_key["name"]: (
+            tuple(foreign_key["constrained_columns"]),
+            foreign_key["referred_table"],
+            tuple(foreign_key["referred_columns"]),
+        )
+        for foreign_key in inspector.get_foreign_keys("research_report_cards")
+    }
+
+    assert foreign_keys["fk_report_cards_source_run_id"] == (
+        ("source_run_id",),
+        "experiment_runs",
+        ("run_id",),
+    )
+    assert foreign_keys["fk_report_cards_data_snapshot_id"] == (
+        ("data_snapshot_id",),
+        "data_snapshot_manifests",
+        ("snapshot_id",),
+    )
+    assert foreign_keys["fk_report_cards_benchmark_snapshot_id"] == (
+        ("benchmark_snapshot_id",),
+        "data_snapshot_manifests",
+        ("snapshot_id",),
+    )
+    assert foreign_keys["fk_report_cards_artifact_manifest_id"] == (
+        ("artifact_manifest_id",),
+        "run_artifact_manifests",
+        ("manifest_id",),
     )
