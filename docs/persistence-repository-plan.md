@@ -285,10 +285,51 @@ Generic report-card identity verification now lives in
 experiment-recording, SQLAlchemy, psycopg, or `backtest_engine`. The
 backtest-engine deterministic ETF verifier keeps the
 `deterministic-etf-report-card-v1` policy allowlist and delegates generic ID
-recomputation to the SDK helper. B1b1 does not add ResearchNote contract
+recomputation to the SDK helper. B1b1 did not add ResearchNote contract
 changes, ResearchNote/report-card linkage, a finalized interpretation service,
 review-event changes, comparison queries, APIs, workers, real ETF data, paper
 trading, live trading, or CI trigger de-duplication.
+
+B1b2 adds the finalized human-reviewed interpretation workflow without changing
+the `ResearchNote` contract. Linkage lives in the normalized
+`research_note_report_cards` table with primary key `(note_id, report_card_id)`,
+foreign keys to `research_notes` and `research_report_cards`, and an index on
+`report_card_id`. The repository adds
+`record_research_note_report_card_link()`, `get_report_card_ids_for_note()`,
+and `get_research_note()`. Link persistence treats an exact existing pair as
+`REPLAYED`; the link row has no `contract_hash` because it contains only the
+composite identity and database `inserted_at`.
+
+`get_research_note()` is a durable readback boundary. It validates
+`raw_contract` as `ResearchNote`, recomputes `contract_sha256(note)`, requires
+the stored hash to match, requires the requested `note_id` to match the raw
+contract, and compares every normalized `research_notes` column back to the
+validated contract projection. Corruption raises `PersistenceCorruptionError`;
+missing IDs return `None`.
+
+The authoritative application service is
+`record_finalized_research_interpretation()`. It opens one caller-owned
+transaction, loads the already persisted report card through
+`get_research_report_card()`, verifies finalized-v1 deterministic note identity,
+requires finalized experiment-result status and embedded approved `HUMAN_OWNER`
+review metadata, validates structured references against the card, validates
+parent and supersession targets through durable note readback, records the
+note, and records the note/card association. Generic `record_research_note()`
+remains permissive for drafts and agent-authored candidates; only the service
+creates authoritative finalized interpretation. Review events remain separate
+append-only audit history and are not approval authority. Reviewer IDs are
+trusted attribution, not authentication. The service grants no risk approval,
+paper-trading approval, live-trading approval, or trading authorization.
+
+Finalized-v1 note identity uses the prefix
+`research-note-finalized-v1-<sha256>` and includes the policy version,
+schema version, note type, linked report-card IDs, semantic interpretation
+fields, structured references, and parent/supersession IDs. It excludes
+`note_id`, timestamps, updater fields, embedded review metadata, body markdown,
+tags, and database `inserted_at`. Whole-contract `contract_hash` still protects
+all excluded immutable fields. Corrections create a new note and use
+`supersedes_note_id`; prior finalized rows are not mutated. Comparison notes
+with multiple report cards remain deferred.
 
 The persistence primitive boundaries now include:
 
@@ -777,6 +818,7 @@ overwritten.
 | `run_artifact_entries` | `(manifest_id, artifact_id)`, only inside the parent aggregate. | Entries have no independent replay path. Parent replay requires the same manifest hash and the exact complete projected entry set. | Missing entries, extra entries, or differing entry values indicate aggregate integrity failure. | Entries must never be written independently. No automatic repair, partial upsert, best-effort entry insertion, or independent entry mutation is allowed. |
 | `research_report_cards` | `report_card_id`, derived from B1a natural evidence identity inputs. | Same `report_card_id` and same `contract_hash` is replay after identity and source-coherence validation. Readback additionally validates `raw_contract`, identity recomputation, normalized column agreement, and source coherence. | Same `report_card_id` and different `contract_hash` is conflict. Caller/source mismatch is `ResearchReportCardSourceCoherenceError`. Corrupt stored report-card or source payload/hash/column mismatch is `PersistenceCorruptionError` on readback. | `report_card_id` intentionally excludes metrics and other non-identity fields, so persistence must compare whole-contract `contract_hash`. Foreign-key existence alone is not sufficient; the card must match the persisted run, snapshots, and artifact manifest. Report cards are immutable factual evidence and are not embedded into `ResearchNote` in B1b1. |
 | `research_notes` | `note_id` | Same `note_id` and same `contract_hash` is replay. | Same `note_id` and different `contract_hash` is conflict. | Persisted note versions are immutable. `updated_at` and `updated_by` are values inside one immutable note version; they are not authorization to mutate the stored row. Revisions require a new `note_id` using `parent_note_id` or `supersedes_note_id`. No silent note editing is allowed. |
+| `research_note_report_cards` | `(note_id, report_card_id)` | Same pair is replay. | Foreign-key violations reject; incompatible pre-existing links are rejected by the finalized interpretation service for the single-result workflow. | The table is many-to-many capable for future comparison notes, but B1b2 service policy requires exactly one linked report card. The link has no separate `contract_hash`. |
 | `review_events` | `review_event_id` | No idempotent replay claim exists for now. | Duplicate `review_event_id` always rejects for now. | Events remain append-only. Do not compare `raw_review` directly to infer replay. A future standalone `ReviewEvent` contract with `schema_version` and `event_hash` is required before replay semantics can be approved. `ReviewMetadata` is audit/review metadata and is not trading or risk authorization. |
 
 PR 26 makes the artifact-manifest one-manifest-per-run policy concurrency-safe

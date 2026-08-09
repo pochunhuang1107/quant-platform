@@ -40,12 +40,19 @@ EXPECTED_PROTOCOL_METHODS = {
     "record_data_snapshot_manifest",
     "record_run_artifact_manifest",
     "record_research_note",
+    "get_research_note",
+    "record_research_note_report_card_link",
+    "get_report_card_ids_for_note",
     "record_research_report_card",
     "get_research_report_card",
     "append_review_event",
 }
 
-WRITE_PROTOCOL_METHODS = EXPECTED_PROTOCOL_METHODS - {"get_research_report_card"}
+WRITE_PROTOCOL_METHODS = EXPECTED_PROTOCOL_METHODS - {
+    "get_research_note",
+    "get_report_card_ids_for_note",
+    "get_research_report_card",
+}
 
 
 class FakeExperimentLedgerRepository:
@@ -103,6 +110,32 @@ class FakeExperimentLedgerRepository:
                 contract_hash="3" * 64,
             ),
         )
+
+    def get_research_note(
+        self,
+        note_id: str,
+    ) -> ResearchNote | None:
+        return None
+
+    def record_research_note_report_card_link(
+        self,
+        *,
+        note_id: str,
+        report_card_id: str,
+    ) -> PersistenceWriteResult:
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.CREATED,
+            record=PersistedRecordMetadata(
+                table_name="research_note_report_cards",
+                primary_key={"note_id": note_id, "report_card_id": report_card_id},
+            ),
+        )
+
+    def get_report_card_ids_for_note(
+        self,
+        note_id: str,
+    ) -> tuple[str, ...]:
+        return ()
 
     def record_research_report_card(
         self,
@@ -205,6 +238,10 @@ def test_protocol_method_signatures_use_validated_contract_types() -> None:
         RunArtifactManifest
     )
     assert _type_hints("record_research_note")["note"] is ResearchNote
+    assert _type_hints("get_research_note")["note_id"] is str
+    assert _type_hints("record_research_note_report_card_link")["note_id"] is str
+    assert _type_hints("record_research_note_report_card_link")["report_card_id"] is str
+    assert _type_hints("get_report_card_ids_for_note")["note_id"] is str
     assert _type_hints("record_research_report_card")["report_card"] is (
         ResearchReportCard
     )
@@ -218,6 +255,8 @@ def test_protocol_method_return_types_use_persistence_write_result() -> None:
     assert _type_hints("get_research_report_card")["return"] == (
         ResearchReportCard | None
     )
+    assert _type_hints("get_research_note")["return"] == (ResearchNote | None)
+    assert _type_hints("get_report_card_ids_for_note")["return"] == tuple[str, ...]
 
 
 def test_artifact_manifest_signature_requires_keyword_only_fields() -> None:
@@ -238,6 +277,19 @@ def test_review_event_signature_requires_keyword_only_fields() -> None:
         "subject_id",
         "review",
     ):
+        assert signature.parameters[parameter_name].kind is (
+            inspect.Parameter.KEYWORD_ONLY
+        )
+
+
+def test_research_note_report_card_link_signature_requires_keyword_only_fields() -> (
+    None
+):
+    signature = inspect.signature(
+        ExperimentLedgerRepository.record_research_note_report_card_link
+    )
+
+    for parameter_name in ("note_id", "report_card_id"):
         assert signature.parameters[parameter_name].kind is (
             inspect.Parameter.KEYWORD_ONLY
         )

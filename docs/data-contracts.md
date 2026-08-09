@@ -248,9 +248,38 @@ the same `schema_version` without an explicit migration or version-aware
 deserialization policy.
 
 `research_note.md` remains a generated backtest artifact, while a persisted
-`ResearchNote` remains a separate human-reviewed interpretation record. There
-is no ResearchNote/report-card linkage or finalized ResearchNote workflow in
-this slice.
+`ResearchNote` remains a separate human-reviewed interpretation record. The
+`ResearchNote` contract remains unchanged: it has no report-card ID field.
+Durable linkage is stored instead in `research_note_report_cards`, a normalized
+association table keyed by `(note_id, report_card_id)`.
+
+The finalized single-result workflow derives note IDs with the
+`finalized-research-note-v1` policy and ID prefix
+`research-note-finalized-v1-`. The `research-note-finalized-v1-*` namespace is
+reserved for deterministic `FINALIZED` `EXPERIMENT_RESULT` identities; generic
+draft or candidate `ResearchNote` records should use ordinary caller-owned
+IDs. The natural ID includes semantic interpretation fields and linked
+report-card IDs, while review metadata, timestamps, body markdown, tags, and
+database timestamps remain outside natural identity. `contract_hash =
+contract_sha256(note)` still protects the complete immutable `ResearchNote`
+contract for replay/conflict detection.
+
+Only the finalized interpretation service establishes an authoritative
+human-reviewed interpretation. It requires a finalized experiment-result note,
+approved embedded review metadata, `HUMAN_OWNER` review role, reviewer ID,
+reviewed timestamp, and structured note references that cohere with the
+already persisted report card. Generic note persistence may still store drafts
+or agent-authored candidates, but those rows are not authoritative. Review
+events remain separate audit history and do not authorize finalization. The
+workflow does not grant strategy acceptance, risk approval, paper-trading
+approval, or live-trading approval.
+
+Supersession targets must already satisfy the same B1b2 authoritative identity
+and linkage requirements: finalized-v1 deterministic identity, `HUMAN_OWNER`
+approval, coherent report-card evidence, and durable note/report-card linkage.
+Human review metadata alone does not make an arbitrary caller-owned note ID an
+authoritative supersession target. Generic `parent_note_id` lineage remains
+broader and is not equivalent to supersession.
 
 ## Corporate Actions, Rolls, And Survivorship
 

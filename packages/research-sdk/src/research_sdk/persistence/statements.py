@@ -33,6 +33,7 @@ from research_sdk.persistence.mappers import (
 from research_sdk.persistence.tables import (
     data_snapshot_manifests,
     experiment_runs,
+    research_note_report_cards,
     research_notes,
     research_report_cards,
     review_events,
@@ -235,6 +236,63 @@ def build_research_note_replay_select(
     ).where(research_notes.c.note_id == note_id)
 
 
+def build_research_note_read_select(
+    *,
+    note_id: str,
+) -> Select[Any]:
+    """Build a non-executing durable readback lookup for a research note."""
+
+    return select(research_notes).where(research_notes.c.note_id == note_id)
+
+
+def build_research_note_report_card_link_insert(
+    *,
+    note_id: str,
+    report_card_id: str,
+) -> Insert:
+    """Build a non-executing insert for a note-to-report-card link."""
+
+    return _build_replay_candidate_insert(
+        table=research_note_report_cards,
+        row={"note_id": note_id, "report_card_id": report_card_id},
+        returning_columns=(
+            research_note_report_cards.c.note_id,
+            research_note_report_cards.c.report_card_id,
+            research_note_report_cards.c.inserted_at,
+        ),
+    )
+
+
+def build_research_note_report_card_link_replay_select(
+    *,
+    note_id: str,
+    report_card_id: str,
+) -> Select[Any]:
+    """Build a non-executing replay lookup for a note-report-card link."""
+
+    return select(
+        research_note_report_cards.c.note_id,
+        research_note_report_cards.c.report_card_id,
+        research_note_report_cards.c.inserted_at,
+    ).where(
+        research_note_report_cards.c.note_id == note_id,
+        research_note_report_cards.c.report_card_id == report_card_id,
+    )
+
+
+def build_report_card_ids_for_note_select(
+    *,
+    note_id: str,
+) -> Select[Any]:
+    """Build a non-executing lookup for report-card IDs linked to a note."""
+
+    return (
+        select(research_note_report_cards.c.report_card_id)
+        .where(research_note_report_cards.c.note_id == note_id)
+        .order_by(research_note_report_cards.c.report_card_id)
+    )
+
+
 def build_research_report_card_insert(
     report_card: ResearchReportCard,
 ) -> Insert:
@@ -369,7 +427,11 @@ __all__ = [
     "build_research_report_card_read_select",
     "build_research_report_card_replay_select",
     "build_research_note_insert",
+    "build_research_note_read_select",
+    "build_research_note_report_card_link_insert",
+    "build_research_note_report_card_link_replay_select",
     "build_research_note_replay_select",
+    "build_report_card_ids_for_note_select",
     "build_review_event_insert",
     "build_run_artifact_manifest_inserts",
     "build_run_artifact_manifest_replay_select",

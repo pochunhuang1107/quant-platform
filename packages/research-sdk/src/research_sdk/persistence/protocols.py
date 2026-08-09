@@ -45,6 +45,23 @@ class ExperimentLedgerRepository(Protocol):
         note: ResearchNote,
     ) -> PersistenceWriteResult: ...
 
+    def get_research_note(
+        self,
+        note_id: str,
+    ) -> ResearchNote | None: ...
+
+    def record_research_note_report_card_link(
+        self,
+        *,
+        note_id: str,
+        report_card_id: str,
+    ) -> PersistenceWriteResult: ...
+
+    def get_report_card_ids_for_note(
+        self,
+        note_id: str,
+    ) -> tuple[str, ...]: ...
+
     def record_research_report_card(
         self,
         report_card: ResearchReportCard,

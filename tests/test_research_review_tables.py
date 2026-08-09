@@ -10,6 +10,7 @@ from research_sdk.persistence.tables import (
     LEDGER_TABLES,
     REPORT_CARD_TABLES,
     RESEARCH_REVIEW_TABLES,
+    research_note_report_cards,
     research_notes,
     research_report_cards,
     review_events,
@@ -22,6 +23,7 @@ EXPECTED_TABLE_NAMES = {
     "run_artifact_entries",
     "research_report_cards",
     "research_notes",
+    "research_note_report_cards",
     "review_events",
 }
 
@@ -65,6 +67,12 @@ EXPECTED_REVIEW_EVENT_COLUMNS = {
     "review_notes_uri",
     "risk_approval_required",
     "raw_review",
+    "inserted_at",
+}
+
+EXPECTED_RESEARCH_NOTE_REPORT_CARD_COLUMNS = {
+    "note_id",
+    "report_card_id",
     "inserted_at",
 }
 
@@ -128,6 +136,19 @@ EXPECTED_REPORT_CARD_FOREIGN_KEYS = {
     ),
 }
 
+EXPECTED_RESEARCH_NOTE_REPORT_CARD_FOREIGN_KEYS = {
+    "fk_note_report_cards_note_id": (
+        ("note_id",),
+        "research_notes",
+        ("note_id",),
+    ),
+    "fk_note_report_cards_report_card_id": (
+        ("report_card_id",),
+        "research_report_cards",
+        ("report_card_id",),
+    ),
+}
+
 EXPECTED_INDEXES = {
     "research_notes": {
         "ix_research_notes_status_updated_at": ("status", "updated_at"),
@@ -142,6 +163,9 @@ EXPECTED_INDEXES = {
         ),
         "ix_research_notes_parent_note_id": ("parent_note_id",),
         "ix_research_notes_supersedes_note_id": ("supersedes_note_id",),
+    },
+    "research_note_report_cards": {
+        "ix_research_note_report_cards_report_card_id": ("report_card_id",),
     },
     "review_events": {
         "ix_review_events_subject_type_subject_id_inserted_at": (
@@ -166,14 +190,19 @@ def test_metadata_contains_current_approved_ledger_tables_only() -> None:
     assert REPORT_CARD_TABLES == (research_report_cards,)
     assert RESEARCH_REVIEW_TABLES == (
         research_notes,
+        research_note_report_cards,
         review_events,
     )
-    assert LEDGER_TABLES[-2:] == RESEARCH_REVIEW_TABLES
-    assert LEDGER_TABLES[-3] is research_report_cards
+    assert LEDGER_TABLES[-3:] == RESEARCH_REVIEW_TABLES
+    assert LEDGER_TABLES[-4] is research_report_cards
 
 
 def test_research_review_tables_have_expected_columns() -> None:
     assert set(research_notes.c.keys()) == EXPECTED_RESEARCH_NOTE_COLUMNS
+    assert (
+        set(research_note_report_cards.c.keys())
+        == EXPECTED_RESEARCH_NOTE_REPORT_CARD_COLUMNS
+    )
     assert set(review_events.c.keys()) == EXPECTED_REVIEW_EVENT_COLUMNS
 
 
@@ -189,6 +218,10 @@ def test_research_review_table_nullability_matches_scope() -> None:
 
 def test_research_review_table_primary_keys_match_contract_ids() -> None:
     assert [column.name for column in research_notes.primary_key] == ["note_id"]
+    assert [column.name for column in research_note_report_cards.primary_key] == [
+        "note_id",
+        "report_card_id",
+    ]
     assert [column.name for column in review_events.primary_key] == ["review_event_id"]
 
 
@@ -199,6 +232,7 @@ def test_research_review_json_columns_use_postgresql_jsonb() -> None:
 
 def test_research_review_inserted_at_columns_have_server_defaults() -> None:
     assert research_notes.c.inserted_at.server_default is not None
+    assert research_note_report_cards.c.inserted_at.server_default is not None
     assert review_events.c.inserted_at.server_default is not None
 
 
@@ -228,7 +262,7 @@ def test_research_review_indexes_are_named_and_target_expected_columns() -> None
         assert actual_indexes == EXPECTED_INDEXES[table.name]
 
 
-def test_research_review_tables_have_no_foreign_keys() -> None:
+def test_research_note_and_review_event_tables_have_no_foreign_keys() -> None:
     assert list(research_notes.foreign_key_constraints) == []
     assert list(review_events.foreign_key_constraints) == []
     assert all(column.foreign_keys == set() for column in research_notes.c)
@@ -249,13 +283,28 @@ def test_research_report_card_foreign_keys_target_current_tables() -> None:
     assert actual_foreign_keys == EXPECTED_REPORT_CARD_FOREIGN_KEYS
 
 
+def test_research_note_report_card_foreign_keys_target_current_tables() -> None:
+    actual_foreign_keys = {
+        constraint.name: (
+            tuple(element.parent.name for element in constraint.elements),
+            next(iter(constraint.elements)).column.table.name,
+            tuple(element.column.name for element in constraint.elements),
+        )
+        for constraint in research_note_report_cards.foreign_key_constraints
+        if isinstance(constraint, ForeignKeyConstraint)
+    }
+
+    assert actual_foreign_keys == EXPECTED_RESEARCH_NOTE_REPORT_CARD_FOREIGN_KEYS
+
+
 def test_research_review_tables_compile_for_postgresql_without_connection() -> None:
     dialect = postgresql.dialect()
 
     for table in RESEARCH_REVIEW_TABLES:
         compiled_table = str(CreateTable(table).compile(dialect=dialect))
         assert f"CREATE TABLE {table.name}" in compiled_table
-        assert "JSONB" in compiled_table
+        if table.name in {"research_notes", "review_events"}:
+            assert "JSONB" in compiled_table
 
         for index in table.indexes:
             compiled_index = str(CreateIndex(index).compile(dialect=dialect))

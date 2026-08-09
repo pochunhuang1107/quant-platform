@@ -38,10 +38,22 @@ from research_sdk.persistence import (
     build_experiment_run_replay_select as exported_build_experiment_run_replay_select,
 )
 from research_sdk.persistence import (
+    build_report_card_ids_for_note_select as exported_link_ids_select,
+)
+from research_sdk.persistence import (
     build_research_note_insert as exported_build_research_note_insert,
 )
 from research_sdk.persistence import (
+    build_research_note_read_select as exported_build_research_note_read_select,
+)
+from research_sdk.persistence import (
     build_research_note_replay_select as exported_build_research_note_replay_select,
+)
+from research_sdk.persistence import (
+    build_research_note_report_card_link_insert as exported_build_link_insert,
+)
+from research_sdk.persistence import (
+    build_research_note_report_card_link_replay_select as exported_link_replay_select,
 )
 from research_sdk.persistence import (
     build_research_report_card_insert as exported_build_report_card_insert,
@@ -86,8 +98,12 @@ from research_sdk.persistence.statements import (
     build_data_snapshot_manifest_replay_select,
     build_experiment_run_insert,
     build_experiment_run_replay_select,
+    build_report_card_ids_for_note_select,
     build_research_note_insert,
+    build_research_note_read_select,
     build_research_note_replay_select,
+    build_research_note_report_card_link_insert,
+    build_research_note_report_card_link_replay_select,
     build_research_report_card_insert,
     build_research_report_card_read_select,
     build_research_report_card_replay_select,
@@ -100,6 +116,7 @@ from research_sdk.persistence.statements import (
 from research_sdk.persistence.tables import (
     data_snapshot_manifests,
     experiment_runs,
+    research_note_report_cards,
     research_notes,
     research_report_cards,
     review_events,
@@ -273,6 +290,22 @@ def test_statement_builders_import_from_statement_module() -> None:
         build_research_note_replay_select
     )
     assert "build_research_note_replay_select" in statements.__all__
+    assert statements.build_research_note_read_select is (
+        build_research_note_read_select
+    )
+    assert "build_research_note_read_select" in statements.__all__
+    assert statements.build_research_note_report_card_link_insert is (
+        build_research_note_report_card_link_insert
+    )
+    assert "build_research_note_report_card_link_insert" in statements.__all__
+    assert statements.build_research_note_report_card_link_replay_select is (
+        build_research_note_report_card_link_replay_select
+    )
+    assert "build_research_note_report_card_link_replay_select" in statements.__all__
+    assert statements.build_report_card_ids_for_note_select is (
+        build_report_card_ids_for_note_select
+    )
+    assert "build_report_card_ids_for_note_select" in statements.__all__
     assert statements.build_research_report_card_insert is (
         build_research_report_card_insert
     )
@@ -314,6 +347,12 @@ def test_statement_builders_export_from_persistence_package() -> None:
     assert exported_build_research_note_replay_select is (
         build_research_note_replay_select
     )
+    assert exported_build_research_note_read_select is build_research_note_read_select
+    assert exported_build_link_insert is build_research_note_report_card_link_insert
+    assert exported_link_replay_select is (
+        build_research_note_report_card_link_replay_select
+    )
+    assert exported_link_ids_select is build_report_card_ids_for_note_select
     assert exported_build_report_card_insert is build_research_report_card_insert
     assert exported_report_card_replay_select is (
         build_research_report_card_replay_select
@@ -454,7 +493,11 @@ def test_table_primary_key_constraint_names_match_migrations() -> None:
     assert data_snapshot_manifests.primary_key.name == "pk_data_snapshot_manifests"
     assert run_artifact_manifests.primary_key.name == "pk_run_artifact_manifests"
     assert run_artifact_entries.primary_key.name == "pk_run_artifact_entries"
+    assert research_report_cards.primary_key.name == "pk_research_report_cards"
     assert research_notes.primary_key.name == "pk_research_notes"
+    assert research_note_report_cards.primary_key.name == (
+        "pk_research_note_report_cards"
+    )
     assert review_events.primary_key.name == "pk_review_events"
 
 
@@ -488,6 +531,10 @@ def test_contract_builders_return_insert_objects_for_expected_tables(
     snapshot_statement = build_data_snapshot_manifest_insert(data_snapshot_manifest)
     report_card_statement = build_research_report_card_insert(research_report_card)
     note_statement = build_research_note_insert(research_note)
+    link_statement = build_research_note_report_card_link_insert(
+        note_id=research_note.note_id,
+        report_card_id=research_report_card.report_card_id,
+    )
     review_statement = build_review_event_insert(
         review_event_id="review-event-20260709-001",
         subject_type=ReviewSubjectType.EXPERIMENT_RUN,
@@ -499,6 +546,7 @@ def test_contract_builders_return_insert_objects_for_expected_tables(
     assert snapshot_statement.table is data_snapshot_manifests
     assert report_card_statement.table is research_report_cards
     assert note_statement.table is research_notes
+    assert link_statement.table is research_note_report_cards
     assert review_statement.table is review_events
 
     assert_replay_candidate_statement(
@@ -567,6 +615,17 @@ def test_contract_builders_return_insert_objects_for_expected_tables(
             "experiment_id",
             "strategy_id",
         ),
+    )
+    assert_replay_candidate_statement(
+        statement=link_statement,
+        table_name="research_note_report_cards",
+        conflict_constraint="pk_research_note_report_cards",
+        returning_columns=(
+            "research_note_report_cards.note_id",
+            "research_note_report_cards.report_card_id",
+            "research_note_report_cards.inserted_at",
+        ),
+        prohibited_returning_columns=("raw_contract", "contract_hash"),
     )
     assert_strict_insert_statement(
         statement=review_statement,
@@ -672,6 +731,101 @@ def test_research_note_replay_select_shape() -> None:
     )
     assert params == {"note_id_1": note_id}
     assert note_id not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_research_note_read_select_shape() -> None:
+    note_id = "note-read-select-sentinel"
+
+    statement = build_research_note_read_select(note_id=note_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(statement.get_final_froms()) == (research_notes,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "research_notes.note_id = %(note_id_1)s"
+    )
+    assert "FROM research_notes WHERE research_notes.note_id =" in sql
+    assert "research_notes.raw_contract" in sql
+    assert params == {"note_id_1": note_id}
+    assert note_id not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_research_note_report_card_link_replay_select_shape() -> None:
+    note_id = "note-link-replay-select-sentinel"
+    report_card_id = "report-card-link-replay-select-sentinel"
+
+    statement = build_research_note_report_card_link_replay_select(
+        note_id=note_id,
+        report_card_id=report_card_id,
+    )
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "note_id",
+        "report_card_id",
+        "inserted_at",
+    )
+    assert tuple(statement.get_final_froms()) == (research_note_report_cards,)
+    assert statement.whereclause is not None
+    assert (
+        "research_note_report_cards.note_id = %(note_id_1)s "
+        "AND research_note_report_cards.report_card_id = %(report_card_id_1)s"
+    ) == str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT))
+    assert "FROM research_note_report_cards WHERE" in sql
+    assert params == {
+        "note_id_1": note_id,
+        "report_card_id_1": report_card_id,
+    }
+    assert note_id not in sql
+    assert report_card_id not in sql
+    assert "contract_hash" not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_report_card_ids_for_note_select_shape() -> None:
+    note_id = "note-link-read-select-sentinel"
+
+    statement = build_report_card_ids_for_note_select(note_id=note_id)
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == (
+        "report_card_id",
+    )
+    assert tuple(statement.get_final_froms()) == (research_note_report_cards,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "research_note_report_cards.note_id = %(note_id_1)s"
+    )
+    assert "FROM research_note_report_cards WHERE" in sql
+    assert "ORDER BY research_note_report_cards.report_card_id" in sql
+    assert params == {"note_id_1": note_id}
+    assert note_id not in sql
+    assert "contract_hash" not in sql
     assert "raw_contract" not in sql
     assert "SELECT *" not in sql
     assert " JOIN " not in sql
