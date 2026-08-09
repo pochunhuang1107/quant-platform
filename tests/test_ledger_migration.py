@@ -25,6 +25,7 @@ ARTIFACT_REVISION = "0003_artifact_tables"
 RESEARCH_REVIEW_REVISION = "0004_research_review_tables"
 ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION = "0005_artifact_run_identity"
 RESEARCH_REPORT_CARD_REVISION = "0006_research_report_cards"
+RESEARCH_NOTE_REPORT_CARD_REVISION = "0007_research_note_report_cards"
 
 APPROVED_TABLES = {
     "experiment_runs",
@@ -96,7 +97,7 @@ def test_alembic_script_directory_contains_ledger_anchor_revision() -> None:
     config = Config(str(ALEMBIC_INI))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == [RESEARCH_REPORT_CARD_REVISION]
+    assert script.get_heads() == [RESEARCH_NOTE_REPORT_CARD_REVISION]
 
     ledger_anchor = script.get_revision(LEDGER_ANCHOR_REVISION)
     assert ledger_anchor is not None
@@ -119,6 +120,10 @@ def test_alembic_script_directory_contains_ledger_anchor_revision() -> None:
     report_card_revision = script.get_revision(RESEARCH_REPORT_CARD_REVISION)
     assert report_card_revision is not None
     assert report_card_revision.down_revision == ARTIFACT_MANIFEST_RUN_IDENTITY_REVISION
+
+    note_report_card_revision = script.get_revision(RESEARCH_NOTE_REPORT_CARD_REVISION)
+    assert note_report_card_revision is not None
+    assert note_report_card_revision.down_revision == RESEARCH_REPORT_CARD_REVISION
 
 
 def test_ledger_anchor_migration_upgrade_scope(monkeypatch: Any) -> None:

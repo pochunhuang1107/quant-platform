@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Index,
+    PrimaryKeyConstraint,
     Table,
     Text,
     UniqueConstraint,
@@ -472,6 +473,40 @@ Index("ix_research_notes_parent_note_id", research_notes.c.parent_note_id)
 Index("ix_research_notes_supersedes_note_id", research_notes.c.supersedes_note_id)
 
 
+research_note_report_cards = Table(
+    "research_note_report_cards",
+    metadata,
+    Column("note_id", Text, nullable=False),
+    Column("report_card_id", Text, nullable=False),
+    Column(
+        "inserted_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    ),
+    ForeignKeyConstraint(
+        ["note_id"],
+        ["research_notes.note_id"],
+        name="fk_note_report_cards_note_id",
+    ),
+    ForeignKeyConstraint(
+        ["report_card_id"],
+        ["research_report_cards.report_card_id"],
+        name="fk_note_report_cards_report_card_id",
+    ),
+    PrimaryKeyConstraint(
+        "note_id",
+        "report_card_id",
+        name="pk_research_note_report_cards",
+    ),
+)
+
+Index(
+    "ix_research_note_report_cards_report_card_id",
+    research_note_report_cards.c.report_card_id,
+)
+
+
 review_events = Table(
     "review_events",
     metadata,
@@ -532,6 +567,7 @@ Index(
 
 RESEARCH_REVIEW_TABLES = (
     research_notes,
+    research_note_report_cards,
     review_events,
 )
 

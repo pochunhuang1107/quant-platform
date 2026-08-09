@@ -8,7 +8,7 @@ from typing import Any, Never
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, update
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.pool import NullPool
 
@@ -21,7 +21,10 @@ from live_postgres_safety import (
     validate_safe_postgres_test_url,
 )
 from research_sdk.contracts import ResearchNote, ReviewMetadata, RunArtifactManifest
-from research_sdk.persistence.errors import ContractHashConflictError
+from research_sdk.persistence.errors import (
+    ContractHashConflictError,
+    PersistenceCorruptionError,
+)
 from research_sdk.persistence.hashing import contract_sha256
 from research_sdk.persistence.mappers import ReviewSubjectType
 from research_sdk.persistence.results import (
@@ -217,6 +220,88 @@ def test_record_research_note_created_replayed_conflict_and_rollback(
             transaction.rollback()
 
     assert _count_research_notes(migrated_engine, research_note.note_id) == 0
+
+
+@pytest.mark.live_db
+def test_get_research_note_returns_none_for_missing_id(
+    migrated_engine: Engine,
+) -> None:
+    with migrated_engine.connect() as connection:
+        repository = _ResearchNoteRepository(connection)
+
+        assert repository.get_research_note("missing-note-id") is None
+
+
+@pytest.mark.live_db
+def test_get_research_note_validates_durable_readback_integrity(
+    migrated_engine: Engine,
+    research_note: ResearchNote,
+) -> None:
+    with migrated_engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            repository = _ResearchNoteRepository(connection)
+            repository.record_research_note(research_note)
+
+            assert repository.get_research_note(research_note.note_id) == research_note
+
+            connection.execute(
+                update(research_notes)
+                .where(research_notes.c.note_id == research_note.note_id)
+                .values(title="corrupt normalized title")
+            )
+            with pytest.raises(PersistenceCorruptionError) as exc_info:
+                repository.get_research_note(research_note.note_id)
+            assert exc_info.value.context.table_name == "research_notes"
+            assert exc_info.value.context.operation == "get_research_note"
+        finally:
+            transaction.rollback()
+
+
+@pytest.mark.live_db
+def test_get_research_note_rejects_contract_hash_corruption(
+    migrated_engine: Engine,
+    research_note: ResearchNote,
+) -> None:
+    with migrated_engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            repository = _ResearchNoteRepository(connection)
+            repository.record_research_note(research_note)
+
+            connection.execute(
+                update(research_notes)
+                .where(research_notes.c.note_id == research_note.note_id)
+                .values(contract_hash="0" * 64)
+            )
+            with pytest.raises(PersistenceCorruptionError):
+                repository.get_research_note(research_note.note_id)
+        finally:
+            transaction.rollback()
+
+
+@pytest.mark.live_db
+def test_get_research_note_rejects_raw_contract_corruption(
+    migrated_engine: Engine,
+    research_note: ResearchNote,
+) -> None:
+    with migrated_engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            repository = _ResearchNoteRepository(connection)
+            repository.record_research_note(research_note)
+
+            raw_contract = _stored_raw_contract(connection, research_note.note_id)
+            raw_contract["note_id"] = "wrong-note-id"
+            connection.execute(
+                update(research_notes)
+                .where(research_notes.c.note_id == research_note.note_id)
+                .values(raw_contract=raw_contract)
+            )
+            with pytest.raises(PersistenceCorruptionError):
+                repository.get_research_note(research_note.note_id)
+        finally:
+            transaction.rollback()
 
 
 def _require_live_database_url() -> str:

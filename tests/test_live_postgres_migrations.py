@@ -22,7 +22,7 @@ from live_postgres_safety import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = REPO_ROOT / "alembic.ini"
-HEAD_REVISION = "0006_research_report_cards"
+HEAD_REVISION = "0007_research_note_report_cards"
 
 EXPECTED_TABLES = {
     "experiment_runs",
@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "run_artifact_entries",
     "research_report_cards",
     "research_notes",
+    "research_note_report_cards",
     "review_events",
 }
 
@@ -50,6 +51,7 @@ EXPECTED_PRIMARY_KEYS = {
     "run_artifact_entries": ("manifest_id", "artifact_id"),
     "research_report_cards": ("report_card_id",),
     "research_notes": ("note_id",),
+    "research_note_report_cards": ("note_id", "report_card_id"),
     "review_events": ("review_event_id",),
 }
 
@@ -152,6 +154,9 @@ EXPECTED_INDEXES = {
         "ix_research_notes_parent_note_id": ("parent_note_id",),
         "ix_research_notes_supersedes_note_id": ("supersedes_note_id",),
     },
+    "research_note_report_cards": {
+        "ix_research_note_report_cards_report_card_id": ("report_card_id",),
+    },
     "review_events": {
         "ix_review_events_subject_type_subject_id_inserted_at": (
             "subject_type",
@@ -230,6 +235,7 @@ def _assert_catalog_shape(connection: Connection) -> None:
     _assert_indexes(inspector)
     _assert_artifact_entry_foreign_key(inspector)
     _assert_research_report_card_foreign_keys(inspector)
+    _assert_research_note_report_card_foreign_keys(inspector)
 
 
 def _assert_jsonb_columns(inspector: object) -> None:
@@ -347,4 +353,29 @@ def _assert_research_report_card_foreign_keys(inspector: object) -> None:
         ("artifact_manifest_id",),
         "run_artifact_manifests",
         ("manifest_id",),
+    )
+
+
+def _assert_research_note_report_card_foreign_keys(inspector: object) -> None:
+    foreign_keys = {
+        foreign_key["name"]: (
+            tuple(foreign_key["constrained_columns"]),
+            foreign_key["referred_table"],
+            tuple(foreign_key["referred_columns"]),
+            tuple(foreign_key.get("options", {}).items()),
+        )
+        for foreign_key in inspector.get_foreign_keys("research_note_report_cards")
+    }
+
+    assert foreign_keys["fk_note_report_cards_note_id"] == (
+        ("note_id",),
+        "research_notes",
+        ("note_id",),
+        (),
+    )
+    assert foreign_keys["fk_note_report_cards_report_card_id"] == (
+        ("report_card_id",),
+        "research_report_cards",
+        ("report_card_id",),
+        (),
     )

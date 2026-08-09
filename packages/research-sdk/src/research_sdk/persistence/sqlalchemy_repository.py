@@ -30,6 +30,7 @@ from research_sdk.persistence.errors import (
 from research_sdk.persistence.hashing import contract_sha256
 from research_sdk.persistence.mappers import (
     ReviewSubjectType,
+    research_note_to_row,
     research_report_card_to_row,
     run_artifact_manifest_to_rows,
 )
@@ -46,8 +47,12 @@ from research_sdk.persistence.statements import (
     build_data_snapshot_manifest_replay_select,
     build_experiment_run_insert,
     build_experiment_run_replay_select,
+    build_report_card_ids_for_note_select,
     build_research_note_insert,
+    build_research_note_read_select,
     build_research_note_replay_select,
+    build_research_note_report_card_link_insert,
+    build_research_note_report_card_link_replay_select,
     build_research_report_card_insert,
     build_research_report_card_read_select,
     build_research_report_card_replay_select,
@@ -368,6 +373,115 @@ class SqlAlchemyExperimentLedgerRepository:
             inserted_at=stored["inserted_at"],
         )
 
+    def get_research_note(
+        self,
+        note_id: str,
+    ) -> ResearchNote | None:
+        result = self._connection.execute(
+            build_research_note_read_select(note_id=note_id)
+        )
+        stored = result.mappings().one_or_none()
+        if stored is None:
+            return None
+
+        try:
+            note = ResearchNote.model_validate(stored["raw_contract"])
+            attempted_hash = contract_sha256(note)
+            if stored["contract_hash"] != attempted_hash:
+                _raise_research_note_integrity_error(note_id)
+            if note.note_id != note_id:
+                _raise_research_note_integrity_error(note_id)
+            expected_row = research_note_to_row(note)
+            for column_name in _RESEARCH_NOTE_NORMALIZED_COLUMNS:
+                if not _stored_value_matches_expected(
+                    stored_value=stored[column_name],
+                    expected_value=expected_row[column_name],
+                ):
+                    _raise_research_note_integrity_error(note_id)
+        except PersistenceCorruptionError:
+            raise
+        except Exception as exc:
+            raise PersistenceCorruptionError(
+                PersistenceErrorContext(
+                    table_name="research_notes",
+                    operation="get_research_note",
+                    logical_identity={"note_id": note_id},
+                )
+            ) from exc
+
+        return note
+
+    def record_research_note_report_card_link(
+        self,
+        *,
+        note_id: str,
+        report_card_id: str,
+    ) -> PersistenceWriteResult:
+        self._require_active_transaction()
+
+        result = self._connection.execute(
+            build_research_note_report_card_link_insert(
+                note_id=note_id,
+                report_card_id=report_card_id,
+            )
+        )
+        returned = result.mappings().one_or_none()
+        if returned is not None:
+            return PersistenceWriteResult(
+                disposition=PersistenceDisposition.CREATED,
+                record=PersistedRecordMetadata(
+                    table_name="research_note_report_cards",
+                    primary_key={
+                        "note_id": returned["note_id"],
+                        "report_card_id": returned["report_card_id"],
+                    },
+                    contract_hash=None,
+                    inserted_at=returned["inserted_at"],
+                ),
+            )
+
+        replay_result = self._connection.execute(
+            build_research_note_report_card_link_replay_select(
+                note_id=note_id,
+                report_card_id=report_card_id,
+            )
+        )
+        stored = replay_result.mappings().one_or_none()
+        if stored is None:
+            raise ReplayLookupError(
+                PersistenceErrorContext(
+                    table_name="research_note_report_cards",
+                    operation="record_research_note_report_card_link",
+                    logical_identity={
+                        "note_id": note_id,
+                        "report_card_id": report_card_id,
+                    },
+                    constraint_name="pk_research_note_report_cards",
+                )
+            )
+
+        return PersistenceWriteResult(
+            disposition=PersistenceDisposition.REPLAYED,
+            record=PersistedRecordMetadata(
+                table_name="research_note_report_cards",
+                primary_key={
+                    "note_id": stored["note_id"],
+                    "report_card_id": stored["report_card_id"],
+                },
+                contract_hash=None,
+                inserted_at=stored["inserted_at"],
+            ),
+        )
+
+    def get_report_card_ids_for_note(
+        self,
+        note_id: str,
+    ) -> tuple[str, ...]:
+        result = self._connection.execute(
+            build_report_card_ids_for_note_select(note_id=note_id)
+        )
+        return tuple(row["report_card_id"] for row in result.mappings())
+
     def record_research_report_card(
         self,
         report_card: ResearchReportCard,
@@ -580,6 +694,28 @@ _REPORT_CARD_NORMALIZED_COLUMNS = (
     "artifact_manifest_id",
 )
 
+_RESEARCH_NOTE_NORMALIZED_COLUMNS = (
+    "note_id",
+    "schema_version",
+    "note_type",
+    "status",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "updated_by",
+    "title",
+    "hypothesis_status",
+    "evidence_strength",
+    "decision_outcome",
+    "parent_note_id",
+    "supersedes_note_id",
+    "review_status",
+    "reviewer_id",
+    "review_role",
+    "reviewed_at",
+    "risk_approval_required",
+)
+
 
 def _raise_report_card_integrity_error(report_card_id: str) -> NoReturn:
     raise PersistenceCorruptionError(
@@ -589,6 +725,26 @@ def _raise_report_card_integrity_error(report_card_id: str) -> NoReturn:
             logical_identity={"report_card_id": report_card_id},
         )
     )
+
+
+def _raise_research_note_integrity_error(note_id: str) -> NoReturn:
+    raise PersistenceCorruptionError(
+        PersistenceErrorContext(
+            table_name="research_notes",
+            operation="get_research_note",
+            logical_identity={"note_id": note_id},
+        )
+    )
+
+
+def _stored_value_matches_expected(
+    *,
+    stored_value: object,
+    expected_value: object,
+) -> bool:
+    if isinstance(stored_value, datetime):
+        return _datetime_to_utc_json(stored_value) == expected_value
+    return stored_value == expected_value
 
 
 def _artifact_entry_projections_match(

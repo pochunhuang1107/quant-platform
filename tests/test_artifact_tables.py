@@ -21,6 +21,7 @@ EXPECTED_TABLE_NAMES = {
     "run_artifact_entries",
     "research_report_cards",
     "research_notes",
+    "research_note_report_cards",
     "review_events",
 }
 

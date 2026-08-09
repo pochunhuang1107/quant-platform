@@ -340,9 +340,24 @@ alter canonical `model_dump(mode="json")` output must not be introduced under
 the same `schema_version` without an explicit migration or version-aware
 deserialization policy.
 
-The completed artifact bundle is not mutated. ResearchNote/report-card linkage
-and a finalized human-reviewed `ResearchNote` workflow remain planned
-follow-up work.
+The completed artifact bundle is not mutated. Durable ResearchNote/report-card
+linkage is stored in `research_note_report_cards`, keyed by
+`(note_id, report_card_id)`, with foreign keys to the immutable note and
+report-card rows. The table is many-to-many capable, but the current finalized
+single-result workflow requires exactly one report card per authoritative
+interpretation.
+
+The `ResearchNote` contract itself is unchanged. Generic note persistence is a
+permissive primitive and may store drafts, review-pending notes, or
+agent-authored candidates. Only `record_finalized_research_interpretation`
+establishes authoritative interpretation by validating finalized-v1 note
+identity, embedded `APPROVED` `HUMAN_OWNER` review metadata, durable report-card
+readback, structured note/card reference coherence, and parent/supersession
+targets. Review events remain separate append-only audit history rather than
+approval authority. Reviewer IDs are workflow attribution, not authentication.
+This workflow grants no risk approval, paper-trading approval, live-trading
+approval, or trading authorization. Corrections create new notes linked through
+`supersedes_note_id`; finalized prior rows are not mutated.
 
 ## Schema Evolution
 

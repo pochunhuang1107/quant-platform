@@ -270,8 +270,31 @@ deserialization policy.
 A deterministic report card is factual evidence. A persisted `ResearchNote` is
 a separate human-reviewed interpretation. The generated `research_note.md`
 artifact, `ResearchReportCard`, and persisted `ResearchNote` are not
-interchangeable. ResearchNote/report-card linkage and the finalized
-`ResearchNote` workflow remain Phase 1B follow-up work.
+interchangeable.
+
+Finalized single-result interpretations now use a normalized
+`research_note_report_cards` association table. The `ResearchNote` contract
+remains unchanged; report-card linkage is not embedded into the contract, so
+existing note canonical serialization and whole-contract `contract_hash`
+semantics remain stable. Generic `record_research_note` remains a permissive
+low-level persistence primitive for drafts and candidates. The authoritative
+Phase 1B interpretation boundary is
+`record_finalized_research_interpretation`, which requires a finalized
+`EXPERIMENT_RESULT` note, `APPROVED` embedded review metadata, a nonblank
+reviewer ID, `HUMAN_OWNER` review role, reviewed timestamp, finalized-v1
+deterministic note identity, and strict structured reference coherence with
+the already persisted report card.
+
+The finalized-v1 note ID is `research-note-finalized-v1-<sha256>` over the
+semantic interpretation projection plus linked report-card IDs. Review
+metadata, timestamps, body markdown, tags, and database `inserted_at` are
+excluded from natural identity but remain protected by the immutable
+whole-contract hash. Review events remain separate append-only audit history
+and are not approval authority. Reviewer IDs are trusted workflow attribution,
+not authentication. This workflow confers no risk approval, paper-trading
+approval, live-trading approval, or strategy acceptance. Corrections create a
+new note and use `supersedes_note_id`; prior finalized rows are not mutated.
+Comparison notes with multiple report cards remain deferred.
 
 ## Roadmap Alignment
 
