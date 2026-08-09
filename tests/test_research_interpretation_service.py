@@ -393,7 +393,64 @@ def test_valid_finalized_v1_prior_note_may_be_superseded(
     )
 
     assert result.research_note_result.disposition is PersistenceDisposition.CREATED
-    assert repository.notes[prior_note.note_id].status == prior_note.status
+    assert repository.notes[prior_note.note_id] == prior_note
+
+
+@pytest.mark.parametrize(
+    ("reference_update", "match_text"),
+    [
+        ({"run_ids": ("wrong-run",)}, "run_ids"),
+        ({"experiment_ids": ("wrong-experiment",)}, "experiment_ids"),
+        ({"data_snapshot_ids": ("wrong-data-snapshot",)}, "data_snapshot_ids"),
+        (
+            {"benchmark_snapshot_ids": ("wrong-benchmark-snapshot",)},
+            "benchmark_snapshot_ids",
+        ),
+        ({"strategy_ids": ("wrong-strategy",)}, "strategy_ids"),
+        ({"artifact_manifest_uris": ("wrong-manifest-uri",)}, "artifact_manifest"),
+        ({"artifact_uris": ("s3://unrelated-artifact.parquet",)}, "artifact_uris"),
+        ({"feature_snapshot_ids": ("feature-snapshot-001",)}, "feature_snapshot"),
+    ],
+)
+def test_finalized_v1_prior_note_with_false_references_cannot_be_superseded(
+    report_card: ResearchReportCard,
+    finalized_note: ResearchNote,
+    reference_update: dict[str, tuple[str, ...]],
+    match_text: str,
+) -> None:
+    references = finalized_note.references.model_copy(update=reference_update)
+    prior_note = _with_note_identity(
+        finalized_note.model_copy(
+            update={
+                "title": "Prior interpretation",
+                "references": references,
+            }
+        ),
+        report_card.report_card_id,
+    )
+    assert prior_note.note_id == derive_finalized_research_note_id(
+        note=prior_note,
+        report_card_ids=(report_card.report_card_id,),
+    )
+    repository = _FakeRepository(report_card=report_card)
+    repository.notes[prior_note.note_id] = prior_note
+    repository.links[prior_note.note_id] = (report_card.report_card_id,)
+    successor = _with_note_identity(
+        finalized_note.model_copy(update={"supersedes_note_id": prior_note.note_id}),
+        report_card.report_card_id,
+    )
+
+    with pytest.raises(
+        FinalizedResearchInterpretationValidationError, match=match_text
+    ):
+        record_finalized_research_interpretation(
+            bundle=FinalizedResearchInterpretationBundle(
+                note=successor,
+                report_card_id=report_card.report_card_id,
+            ),
+            transaction_factory=_transaction_factory(),
+            repository_factory=lambda _connection: repository,
+        )
 
 
 def test_arbitrary_id_prior_note_is_not_valid_supersession_authority(
@@ -544,6 +601,34 @@ def test_generic_parent_note_without_finalized_v1_identity_remains_allowed(
     )
 
     assert result.research_note_result.disposition is PersistenceDisposition.CREATED
+
+
+def test_caller_owned_finalized_human_owner_parent_without_link_remains_lineage(
+    report_card: ResearchReportCard,
+    finalized_note: ResearchNote,
+) -> None:
+    parent_note = finalized_note.model_copy(
+        update={"note_id": "caller-owned-finalized-human-owner-parent"}
+    )
+    repository = _FakeRepository(report_card=report_card)
+    repository.notes[parent_note.note_id] = parent_note
+    successor = _with_note_identity(
+        finalized_note.model_copy(update={"parent_note_id": parent_note.note_id}),
+        report_card.report_card_id,
+    )
+
+    result = record_finalized_research_interpretation(
+        bundle=FinalizedResearchInterpretationBundle(
+            note=successor,
+            report_card_id=report_card.report_card_id,
+        ),
+        transaction_factory=_transaction_factory(),
+        repository_factory=lambda _connection: repository,
+    )
+
+    assert result.research_note_result.disposition is PersistenceDisposition.CREATED
+    assert repository.notes[parent_note.note_id] == parent_note
+    assert repository.links.get(parent_note.note_id, ()) == ()
 
 
 def test_authoritative_finalized_v1_parent_linked_to_same_card_is_allowed(

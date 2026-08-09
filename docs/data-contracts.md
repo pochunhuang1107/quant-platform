@@ -276,10 +276,12 @@ approval, or live-trading approval.
 
 Supersession targets must already satisfy the same B1b2 authoritative identity
 and linkage requirements: finalized-v1 deterministic identity, `HUMAN_OWNER`
-approval, coherent report-card evidence, and durable note/report-card linkage.
-Human review metadata alone does not make an arbitrary caller-owned note ID an
-authoritative supersession target. Generic `parent_note_id` lineage remains
-broader and is not equivalent to supersession.
+approval, valid review chronology, durable linkage to exactly the same report
+card, and structured note/report-card evidence-reference coherence. Human
+review metadata or deterministic identity alone do not make an arbitrary
+caller-owned note ID an authoritative supersession target. Generic
+`parent_note_id` lineage remains broader and is not equivalent to replacement
+authority.
 
 ## Corporate Actions, Rolls, And Survivorship
 

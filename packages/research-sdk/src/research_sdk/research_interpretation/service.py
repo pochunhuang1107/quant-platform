@@ -70,7 +70,7 @@ def record_finalized_research_interpretation(
         _validate_parent_and_supersession(
             repository=repository,
             note=bundle.note,
-            report_card_id=bundle.report_card_id,
+            report_card=report_card,
         )
         _validate_existing_links(
             repository=repository,
@@ -194,19 +194,14 @@ def _validate_parent_and_supersession(
     *,
     repository: ExperimentLedgerRepository,
     note: ResearchNote,
-    report_card_id: str,
+    report_card: ResearchReportCard,
 ) -> None:
+    report_card_id = report_card.report_card_id
     if note.parent_note_id is not None:
         parent_note = repository.get_research_note(note.parent_note_id)
         if parent_note is None:
             raise FinalizedResearchInterpretationValidationError(
                 "parent_note_id must reference an existing research note"
-            )
-        if _has_finalized_human_owner_review(parent_note):
-            parent_links = repository.get_report_card_ids_for_note(parent_note.note_id)
-            _require(
-                parent_links == (report_card_id,),
-                "finalized human-owner parent note must link to the same report card",
             )
 
     if note.supersedes_note_id is not None:
@@ -215,10 +210,7 @@ def _validate_parent_and_supersession(
             raise FinalizedResearchInterpretationValidationError(
                 "supersedes_note_id must reference an existing research note"
             )
-        _require(
-            _has_finalized_human_owner_review(superseded_note),
-            "superseded note must be a finalized human-owner approved interpretation",
-        )
+        _validate_human_owner_finalization(superseded_note)
         superseded_links = repository.get_report_card_ids_for_note(
             superseded_note.note_id
         )
@@ -235,6 +227,10 @@ def _validate_parent_and_supersession(
             raise FinalizedResearchInterpretationValidationError(
                 "superseded note must be an authoritative finalized-v1 interpretation"
             ) from exc
+        _validate_structured_references(
+            note=superseded_note,
+            report_card=report_card,
+        )
 
 
 def _validate_existing_links(
@@ -263,19 +259,6 @@ def _validate_disposition_coherence(
             "finalized interpretation write disposition combination is not "
             f"supported: {joined}"
         )
-
-
-def _has_finalized_human_owner_review(note: ResearchNote) -> bool:
-    return (
-        note.note_type is ResearchNoteType.EXPERIMENT_RESULT
-        and note.status is ResearchNoteStatus.FINALIZED
-        and note.review.review_status is ReviewStatus.APPROVED
-        and note.review.review_role is ReviewRole.HUMAN_OWNER
-        and note.review.reviewer_id is not None
-        and bool(note.review.reviewer_id.strip())
-        and note.review.reviewed_at is not None
-        and note.review.reviewed_at >= note.updated_at
-    )
 
 
 def _require_optional_exact(
