@@ -9,9 +9,14 @@ from sqlalchemy.sql.dml import Insert
 from sqlalchemy.sql.selectable import Select
 
 from research_sdk.contracts import (
+    ArtifactFormat,
+    ArtifactStatus,
     DataSnapshotManifest,
     ExperimentRunRecord,
+    HashAlgorithm,
+    ReportCardArtifactEvidenceEntry,
     ResearchReportCard,
+    RunArtifactEntry,
     RunArtifactManifest,
 )
 from research_sdk.contracts.enums import ArtifactKind, ExperimentRunStatus
@@ -162,6 +167,126 @@ def test_record_research_report_card_rejects_source_corruption_before_insert(
         repository.record_research_report_card(report_card)
 
     assert "research_report_cards" not in connection.inserted_tables
+
+
+def test_record_research_report_card_rejects_optional_evidence_missing_from_manifest(
+    source_fixture: tuple[Any, ResearchReportCard],
+) -> None:
+    records, report_card = source_fixture
+    rows = _source_rows(
+        run=records.run,
+        snapshot=records.snapshot,
+        manifest_id=records.manifest_id,
+        artifact_manifest=records.artifact_manifest,
+    )
+    optional_entry = _optional_manifest_entry(report_card.evidence.artifact_root_uri)
+    candidate = _with_evidence_artifacts(
+        report_card,
+        (
+            *report_card.evidence.artifacts,
+            _report_card_evidence_entry(optional_entry),
+        ),
+    )
+    connection = _FakeConnection(rows)
+    repository = SqlAlchemyExperimentLedgerRepository(connection)  # type: ignore[arg-type]
+
+    with pytest.raises(ResearchReportCardSourceCoherenceError):
+        repository.record_research_report_card(candidate)
+
+    assert "research_report_cards" not in connection.inserted_tables
+
+
+def test_record_research_report_card_rejects_optional_evidence_manifest_mismatch(
+    source_fixture: tuple[Any, ResearchReportCard],
+) -> None:
+    records, report_card = source_fixture
+    rows = _source_rows(
+        run=records.run,
+        snapshot=records.snapshot,
+        manifest_id=records.manifest_id,
+        artifact_manifest=records.artifact_manifest,
+    )
+    optional_entry = _optional_manifest_entry(report_card.evidence.artifact_root_uri)
+    report_card = _add_optional_manifest_source(
+        records=records,
+        report_card=report_card,
+        rows=rows,
+        optional_entry=optional_entry,
+    )
+    mismatched_evidence = _report_card_evidence_entry(optional_entry).model_copy(
+        update={"content_hash": f"sha256:{'b' * 64}"}
+    )
+    candidate = _with_evidence_artifacts(
+        report_card,
+        (*report_card.evidence.artifacts, mismatched_evidence),
+    )
+    connection = _FakeConnection(rows)
+    repository = SqlAlchemyExperimentLedgerRepository(connection)  # type: ignore[arg-type]
+
+    with pytest.raises(ResearchReportCardSourceCoherenceError):
+        repository.record_research_report_card(candidate)
+
+    assert "research_report_cards" not in connection.inserted_tables
+
+
+def test_record_research_report_card_accepts_matching_optional_evidence(
+    source_fixture: tuple[Any, ResearchReportCard],
+) -> None:
+    records, report_card = source_fixture
+    rows = _source_rows(
+        run=records.run,
+        snapshot=records.snapshot,
+        manifest_id=records.manifest_id,
+        artifact_manifest=records.artifact_manifest,
+    )
+    optional_entry = _optional_manifest_entry(report_card.evidence.artifact_root_uri)
+    report_card = _add_optional_manifest_source(
+        records=records,
+        report_card=report_card,
+        rows=rows,
+        optional_entry=optional_entry,
+    )
+    candidate = _with_evidence_artifacts(
+        report_card,
+        (
+            *report_card.evidence.artifacts,
+            _report_card_evidence_entry(optional_entry),
+        ),
+    )
+    connection = _FakeConnection(rows)
+    repository = SqlAlchemyExperimentLedgerRepository(connection)  # type: ignore[arg-type]
+
+    repository.record_research_report_card(candidate)
+
+    assert connection.inserted_tables == ["research_report_cards"]
+
+
+def test_record_research_report_card_accepts_optional_manifest_artifact_omission(
+    source_fixture: tuple[Any, ResearchReportCard],
+) -> None:
+    records, report_card = source_fixture
+    rows = _source_rows(
+        run=records.run,
+        snapshot=records.snapshot,
+        manifest_id=records.manifest_id,
+        artifact_manifest=records.artifact_manifest,
+    )
+    optional_entry = _optional_manifest_entry(report_card.evidence.artifact_root_uri)
+    report_card = _add_optional_manifest_source(
+        records=records,
+        report_card=report_card,
+        rows=rows,
+        optional_entry=optional_entry,
+    )
+    connection = _FakeConnection(rows)
+    repository = SqlAlchemyExperimentLedgerRepository(connection)  # type: ignore[arg-type]
+
+    repository.record_research_report_card(report_card)
+
+    assert optional_entry.artifact_id not in {
+        entry.artifact_id for entry in report_card.evidence.artifacts
+    }
+    assert connection.inserted_tables == ["research_report_cards"]
 
 
 def test_get_research_report_card_reruns_source_coherence_validation(
@@ -343,6 +468,77 @@ def _with_evidence_entry(
         update={
             "evidence": report_card.evidence.model_copy(update={"artifacts": entries})
         }
+    )
+
+
+def _with_evidence_artifacts(
+    report_card: ResearchReportCard,
+    artifacts: tuple[ReportCardArtifactEvidenceEntry, ...],
+) -> ResearchReportCard:
+    return report_card.model_copy(
+        update={
+            "evidence": report_card.evidence.model_copy(update={"artifacts": artifacts})
+        }
+    )
+
+
+def _optional_manifest_entry(artifact_root_uri: str) -> RunArtifactEntry:
+    return RunArtifactEntry(
+        artifact_id="diagnostic-source-summary",
+        artifact_kind=ArtifactKind.DIAGNOSTIC,
+        filename="diagnostic-source-summary.json",
+        uri=f"{artifact_root_uri}/diagnostic-source-summary.json",
+        format=ArtifactFormat.JSON,
+        status=ArtifactStatus.PRODUCED,
+        hash_algorithm=HashAlgorithm.SHA256,
+        content_hash=f"sha256:{'a' * 64}",
+        size_bytes=321,
+        row_count=7,
+        created_at=datetime(2026, 8, 8, tzinfo=UTC),
+        validator_version="validator-0.1.0",
+    )
+
+
+def _report_card_evidence_entry(
+    artifact: RunArtifactEntry,
+) -> ReportCardArtifactEvidenceEntry:
+    assert artifact.content_hash is not None
+    assert artifact.size_bytes is not None
+    return ReportCardArtifactEvidenceEntry(
+        artifact_id=artifact.artifact_id,
+        artifact_kind=artifact.artifact_kind,
+        filename=artifact.filename,
+        uri=artifact.uri,
+        format=artifact.format,
+        status=artifact.status,
+        content_hash=artifact.content_hash,
+        size_bytes=artifact.size_bytes,
+        row_count=artifact.row_count,
+        validator_version=artifact.validator_version,
+    )
+
+
+def _add_optional_manifest_source(
+    *,
+    records: Any,
+    report_card: ResearchReportCard,
+    rows: dict[str, dict[str, dict[str, Any]]],
+    optional_entry: RunArtifactEntry,
+) -> ResearchReportCard:
+    artifact_manifest = records.artifact_manifest.model_copy(
+        update={"artifacts": (*records.artifact_manifest.artifacts, optional_entry)}
+    )
+    artifact_manifest_hash = f"sha256:{contract_sha256(artifact_manifest)}"
+    run = records.run.model_copy(
+        update={"artifact_manifest_hash": artifact_manifest_hash}
+    )
+    rows["experiment_runs"][run.run_id] = experiment_run_to_row(run)
+    rows["run_artifact_manifests"][records.manifest_id] = run_artifact_manifest_to_rows(
+        manifest_id=records.manifest_id,
+        manifest=artifact_manifest,
+    ).manifest
+    return _reidentified(
+        _with_lineage(report_card, artifact_manifest_hash=artifact_manifest_hash)
     )
 
 

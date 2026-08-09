@@ -13,7 +13,9 @@ from sqlalchemy.engine import Connection
 from research_sdk.contracts import (
     DataSnapshotManifest,
     ExperimentRunRecord,
+    ReportCardArtifactEvidenceEntry,
     ResearchReportCard,
+    RunArtifactEntry,
     RunArtifactManifest,
 )
 from research_sdk.contracts.artifacts import REQUIRED_ARTIFACT_SPECS
@@ -51,6 +53,18 @@ _APPROVED_REPORT_CARD_METRIC_KEYS = frozenset(
         "number_of_trades",
         "observation_count",
     }
+)
+_ARTIFACT_EVIDENCE_FIELD_NAMES: tuple[str, ...] = (
+    "artifact_id",
+    "artifact_kind",
+    "filename",
+    "uri",
+    "format",
+    "status",
+    "content_hash",
+    "size_bytes",
+    "row_count",
+    "validator_version",
 )
 
 
@@ -440,35 +454,44 @@ def _validate_artifact_manifest_coherence(
         report_card,
     )
 
+    manifest_entries_by_id = {
+        artifact.artifact_id: artifact for artifact in artifact_manifest.artifacts
+    }
+    for report_entry in sorted(
+        evidence.artifacts,
+        key=lambda entry: entry.artifact_id,
+    ):
+        manifest_entry = manifest_entries_by_id.get(report_entry.artifact_id)
+        _require_coherent(manifest_entry is not None, report_card)
+        assert manifest_entry is not None
+        _validate_report_artifact_evidence_entry(
+            report_entry=report_entry,
+            manifest_entry=manifest_entry,
+            report_card=report_card,
+        )
+
     for artifact_kind in sorted(REQUIRED_ARTIFACT_SPECS, key=lambda kind: kind.value):
-        report_entry = report_entries_by_kind[artifact_kind]
-        manifest_entry = manifest_required_by_kind[artifact_kind]
         _require_coherent(
-            report_entry.artifact_id == manifest_entry.artifact_id, report_card
-        )
-        _require_coherent(
-            report_entry.artifact_kind == manifest_entry.artifact_kind, report_card
-        )
-        _require_coherent(report_entry.filename == manifest_entry.filename, report_card)
-        _require_coherent(report_entry.uri == manifest_entry.uri, report_card)
-        _require_coherent(report_entry.format == manifest_entry.format, report_card)
-        _require_coherent(report_entry.status == manifest_entry.status, report_card)
-        _require_coherent(
-            report_entry.content_hash == manifest_entry.content_hash, report_card
-        )
-        _require_coherent(
-            report_entry.size_bytes == manifest_entry.size_bytes, report_card
-        )
-        _require_coherent(
-            report_entry.row_count == manifest_entry.row_count, report_card
-        )
-        _require_coherent(
-            report_entry.validator_version == manifest_entry.validator_version,
+            report_entries_by_kind[artifact_kind].artifact_id
+            == manifest_required_by_kind[artifact_kind].artifact_id,
             report_card,
         )
 
     config_entry = report_entries_by_kind[ArtifactKind.CONFIG]
     _require_coherent(config_entry.content_hash == run.config_hash, report_card)
+
+
+def _validate_report_artifact_evidence_entry(
+    *,
+    report_entry: ReportCardArtifactEvidenceEntry,
+    manifest_entry: RunArtifactEntry,
+    report_card: ResearchReportCard,
+) -> None:
+    for field_name in _ARTIFACT_EVIDENCE_FIELD_NAMES:
+        _require_coherent(
+            getattr(report_entry, field_name) == getattr(manifest_entry, field_name),
+            report_card,
+        )
 
 
 def _require_date_range_covered(
