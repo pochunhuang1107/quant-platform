@@ -359,6 +359,37 @@ This workflow grants no risk approval, paper-trading approval, live-trading
 approval, or trading authorization. Corrections create new notes linked through
 `supersedes_note_id`; finalized prior rows are not mutated.
 
+## Compatible Report-Card Comparison
+
+C2a implements only the pure deterministic comparison engine for two supplied
+report cards. It canonicalizes and validates each supplied contract and verifies
+its natural `report_card_id` before assessment. Stale or malformed source-card
+identity is an input-integrity failure rather than a compatibility result. It
+is read-only in the strictest sense: it adds no repository method, migration,
+SQL, write path, comparison table, note workflow, artifact parsing, or raw
+backtest-object comparison.
+
+The primary comparison authority is the persisted `ResearchReportCard` contract
+once C2b adds the read-only query service. C2a itself accepts objects already
+validated by the caller. It assesses whether the two cards share required
+research context, reports observed strategy/config/parameter lineage
+differences without causal claims, and emits safe non-annualized deltas for
+total return, excess return, maximum drawdown, and trade count.
+
+C2a intentionally does not expose review-state visibility because
+`ResearchReportCard` does not contain linked note review metadata. The planned
+C2b follow-up should add a reverse read such as
+`get_research_note_ids_for_report_card(report_card_id)` using the existing
+`research_note_report_cards` index, then load each note through validated
+`get_research_note(...)` and expose deterministic review facts: note ID, note
+type, note status, review status, review role, reviewer ID, reviewed timestamp,
+and decision. C2b should not choose a best note, create or update notes, or add
+comparison persistence merely to provide read-only visibility.
+C2b should call C2a only after B1b1 durable report-card readback has validated
+the persisted card payload, natural identity, normalized columns, and source
+coherence against persisted run, snapshot, benchmark, and artifact-manifest
+records.
+
 ## Schema Evolution
 
 - Ledger schemas use explicit `schema_version` values.

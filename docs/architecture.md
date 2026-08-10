@@ -272,6 +272,58 @@ a separate human-reviewed interpretation. The generated `research_note.md`
 artifact, `ResearchReportCard`, and persisted `ResearchNote` are not
 interchangeable.
 
+## Deterministic Report-Card Comparison
+
+`research_sdk.report_card_comparison` adds the pure C2a comparison boundary for
+two supplied `ResearchReportCard` objects. Before assessment, C2a
+canonicalizes each supplied card through `ResearchReportCard.model_validate`
+over its JSON dump and verifies the natural `report_card_id` with the pure
+`research_sdk.report_card_identity` helper. Stale, malformed, or structurally
+invalid source cards are input-integrity failures, not incompatibility
+assessments. It does not load persistence, SQLAlchemy, psycopg,
+`research_sdk.experiment_recording`, `backtest_engine`, raw artifacts, files,
+network services, or clocks.
+
+The comparison policy versions are explicit and independent:
+`research-comparison-compatibility-v1` for context assessment and
+`research-comparison-metrics-v1` for numeric deltas. Comparison identity uses
+`report-card-comparison-v1-<sha256>` over the comparison schema version, both
+policy versions, and the ordered baseline and candidate report-card IDs.
+Baseline/candidate order is meaningful, and deltas are `candidate - baseline`.
+
+C2a distinguishes three statuses. `STRICT_COMPATIBLE` means required research
+context and observed strategy/config lineage fields match.
+`CONTEXT_COMPATIBLE` means required research context matches but one or more of
+`strategy_id`, `strategy_version`, `config_hash`, or `parameter_hash` differs.
+Those opaque lineage differences are reported as evidence facts only; current
+hashes do not prove that exactly one strategy parameter changed or establish
+causal attribution. `INCOMPATIBLE` means a required context dimension differs,
+such as dates, frequency, data or benchmark snapshots, benchmark total return,
+costs, slippage, leakage assumptions, random seed, engine version, source
+limitations, or use restrictions.
+
+Metrics-v1 compares only non-annualized authoritative report-card facts:
+`total_return`, `excess_return`, `maximum_drawdown`, and
+`number_of_trades`. Benchmark total return and observation count are context
+invariants. Realized commission, realized slippage, and ending equity are not
+compared in C2a because the report-card contract does not expose the initial
+capital basis as structured evidence. CAGR, Sharpe, volatility, annualized
+volatility, ranking, winner selection, and investment recommendations remain
+out of scope.
+Exported comparison value objects independently validate metric deltas as
+deterministic `candidate - baseline` arithmetic and require compatibility
+difference codes to match their canonical category, field path, and policy
+order.
+
+This pure C2a layer does not satisfy the full Slice 2 review-state visibility
+criterion. The intended C2b follow-up is a read-only persisted-query service
+that accepts report-card IDs, loads validated report cards through durable
+readback, runs C2a, and separately exposes linked `ResearchNote` review-state
+facts without choosing a best note or creating comparison persistence.
+C2b must also supply B1b1 durable readback and source-coherence authority before
+invoking C2a; C2a does not independently validate PostgreSQL state, persisted
+source manifests, or artifact bytes.
+
 Finalized single-result interpretations now use a normalized
 `research_note_report_cards` association table. The `ResearchNote` contract
 remains unchanged; report-card linkage is not embedded into the contract, so

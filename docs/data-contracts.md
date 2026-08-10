@@ -283,6 +283,60 @@ caller-owned note ID an authoritative supersession target. Generic
 `parent_note_id` lineage remains broader and is not equivalent to replacement
 authority.
 
+## Report-Card Comparison Contract
+
+`ResearchReportCardComparison` is a pure C2a value object over two supplied
+`ResearchReportCard` contracts. C2a revalidates each supplied card through the
+public report-card contract and verifies its deterministic `report_card_id`
+before assessing compatibility. Persisted report cards remain the authority for
+numeric evidence; comparison does not parse artifacts or trust in-memory
+backtest-private objects. A stale or malformed report-card identity is an
+input-integrity error, not an `INCOMPATIBLE` assessment.
+
+The compatibility assessment reports `STRICT_COMPATIBLE`,
+`CONTEXT_COMPATIBLE`, or `INCOMPATIBLE`. Required context includes contract and
+derivation policy, asset class, semantic universe identity and symbols, date
+range, frequency, observation count, data snapshot ID/hash, benchmark
+ID/snapshot/hash, benchmark total return, cost model, slippage model, lookback,
+lag, leakage review, random seed, adjustment policy, temporal coverage,
+corporate actions, survivorship, universe membership, calendar, timezone,
+engine version, git commit, source limitations, and use restrictions.
+`asset_universe.as_of` is not a required v1 equality dimension because current
+deterministic mapping may derive it from run execution time.
+
+Observed non-context lineage differences are limited to `strategy_id`,
+`strategy_version`, `config_hash`, and `parameter_hash`. They are reported
+deterministically but are not interpreted as proof of a one-variable controlled
+experiment. In the current deterministic ETF infrastructure,
+`parameter_hash` covers the complete resolved backtest config and `config_hash`
+covers an even broader config artifact, so opaque hash differences cannot
+identify the exact changed parameter.
+
+Metrics-v1 emits only `candidate - baseline` deltas for `total_return`,
+`excess_return`, `maximum_drawdown`, and `number_of_trades`. Decimal arithmetic
+uses canonical report-card strings, `Decimal`, twelve-place ratio scale, exact
+integer count subtraction, no tolerance, and negative-zero normalization.
+Direct comparison contract construction validates those arithmetic facts and
+rejects compatibility differences whose code, field path, category, or order is
+not canonical.
+Benchmark total return and observation count are context invariants rather
+than performance deltas. Money deltas are deferred until initial capital or
+capital basis is structured comparison evidence. Annualized and
+risk-adjusted metrics remain deferred until explicit calendar,
+annualization, and risk-free-rate policies exist.
+
+The comparison carries deterministic limitations and preserves the exact
+report-card use restrictions. Mixed use restrictions are incompatible in v1;
+the comparison does not union restrictions and does not rank, select, approve,
+or recommend strategies.
+
+The same `report_card_id` must not represent two different full report-card
+contracts. Same ID plus exact same contract remains valid for same-card
+STRICT-compatible zero-delta checks; same ID plus different content is rejected
+as invalid source evidence. C2b will add durable B1b1 readback and
+source-coherence validation before invoking C2a; C2a does not itself validate
+PostgreSQL source rows or manifest coherence.
+
 ## Corporate Actions, Rolls, And Survivorship
 
 - Restatements: retain revision metadata and document whether the run uses first-available or latest-known data.
