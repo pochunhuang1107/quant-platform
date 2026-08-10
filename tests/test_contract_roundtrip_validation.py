@@ -8,6 +8,8 @@ from pydantic import ValidationError
 
 from research_sdk.contracts import (
     BaseContractModel,
+    DailyMarketDataPolicy,
+    DailyMarketDataQualityReport,
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
@@ -56,6 +58,16 @@ ROUNDTRIP_CASES = (
         DataSnapshotManifest,
         "data_snapshot_manifest.schema.json",
         "data_snapshot_manifest.json",
+    ),
+    RoundtripCase(
+        DailyMarketDataPolicy,
+        "daily_market_data_policy.schema.json",
+        "daily_market_data_policy.json",
+    ),
+    RoundtripCase(
+        DailyMarketDataQualityReport,
+        "daily_market_data_quality_report.schema.json",
+        "daily_market_data_quality_report.json",
     ),
     RoundtripCase(
         ResearchReportCard,
@@ -164,6 +176,14 @@ def test_contract_examples_reject_unknown_top_level_fields(
         ),
         (
             ROUNDTRIP_CASES[6],
+            {},
+        ),
+        (
+            ROUNDTRIP_CASES[7],
+            {},
+        ),
+        (
+            ROUNDTRIP_CASES[8],
             {
                 ("created_at",): "2026-07-09T09:00:00Z",
                 ("updated_at",): "2026-07-09T09:30:00Z",
@@ -176,6 +196,8 @@ def test_contract_examples_reject_unknown_top_level_fields(
         "ExperimentRunRecord",
         "RunArtifactManifest",
         "DataSnapshotManifest",
+        "DailyMarketDataPolicy",
+        "DailyMarketDataQualityReport",
         "ResearchReportCard",
         "ResearchNote",
     ],
@@ -195,8 +217,8 @@ def test_contract_examples_normalize_json_arrays_to_tuples() -> None:
     experiment = ExperimentRunRecord.model_validate(load_fixture(ROUNDTRIP_CASES[2]))
     artifacts = RunArtifactManifest.model_validate(load_fixture(ROUNDTRIP_CASES[3]))
     snapshot = DataSnapshotManifest.model_validate(load_fixture(ROUNDTRIP_CASES[4]))
-    report_card = ResearchReportCard.model_validate(load_fixture(ROUNDTRIP_CASES[5]))
-    note = ResearchNote.model_validate(load_fixture(ROUNDTRIP_CASES[6]))
+    report_card = ResearchReportCard.model_validate(load_fixture(ROUNDTRIP_CASES[7]))
+    note = ResearchNote.model_validate(load_fixture(ROUNDTRIP_CASES[8]))
 
     assert experiment.asset_universe.symbols == ("AAPL", "MSFT")
     assert isinstance(experiment.asset_universe.symbols, tuple)

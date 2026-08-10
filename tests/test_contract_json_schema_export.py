@@ -6,11 +6,14 @@ from research_sdk.contracts import (
     ArtifactKind,
     ArtifactStatus,
     AssetClass,
+    DailyMarketDataQualityCode,
+    DailyMarketDataQualityStatus,
     DataAdjustmentPolicy,
     DataSnapshotKind,
     DataSnapshotStatus,
     DataSourceType,
     DecisionOutcome,
+    DistributionTreatment,
     EvidenceStrength,
     ExperimentRunStatus,
     FailureLabel,
@@ -43,6 +46,8 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "experiment_run_record.schema.json",
         "run_artifact_manifest.schema.json",
         "data_snapshot_manifest.schema.json",
+        "daily_market_data_policy.schema.json",
+        "daily_market_data_quality_report.schema.json",
         "research_report_card.schema.json",
         "research_note.schema.json",
     }
@@ -344,6 +349,78 @@ def test_research_note_schema_contains_contract_definitions() -> None:
     assert "ResearchNoteReferences" in schema_defs
     assert "ResearchDecision" in schema_defs
     assert "ReviewMetadata" in schema_defs
+
+
+def test_daily_market_data_policy_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_policy.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "policy_id",
+        "asset_class",
+        "frequency",
+        "calendar",
+        "timezone",
+        "adjustment_policy",
+        "distribution_treatment",
+        "corporate_action_policy",
+        "universe_membership_policy",
+        "survivorship_policy",
+        "delisting_policy",
+        "canonicalization_version",
+        "quality_policy_version",
+    }
+
+
+def test_daily_market_data_policy_schema_contains_contract_definitions() -> None:
+    schema = load_schema("daily_market_data_policy.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["AssetClass"]["enum"]) == {  # type: ignore[index]
+        asset_class.value for asset_class in AssetClass
+    }
+    assert set(schema_defs["DataAdjustmentPolicy"]["enum"]) == {  # type: ignore[index]
+        policy.value for policy in DataAdjustmentPolicy
+    }
+    assert set(schema_defs["DistributionTreatment"]["enum"]) == {  # type: ignore[index]
+        treatment.value for treatment in DistributionTreatment
+    }
+
+
+def test_daily_market_data_quality_report_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_quality_report.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "policy_id",
+        "quality_policy_version",
+        "canonicalization_version",
+        "instrument",
+        "content_hash",
+        "expected_start_date",
+        "expected_end_date",
+        "expected_session_count",
+        "observed_session_count",
+        "duplicate_row_count",
+        "status",
+    }
+
+
+def test_daily_market_data_quality_report_schema_contains_contract_definitions() -> (
+    None
+):
+    schema = load_schema("daily_market_data_quality_report.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert "DailyMarketDataInstrument" in schema_defs
+    assert set(schema_defs["DailyMarketDataQualityStatus"]["enum"]) == {  # type: ignore[index]
+        status.value for status in DailyMarketDataQualityStatus
+    }
+    assert set(schema_defs["DailyMarketDataQualityCode"]["enum"]) == {  # type: ignore[index]
+        code.value for code in DailyMarketDataQualityCode
+    }
 
 
 def test_research_report_card_schema_contains_expected_fields() -> None:

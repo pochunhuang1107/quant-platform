@@ -1,0 +1,24 @@
+{
+  "canonicalization_version": "daily-market-data-canonical-v1",
+  "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "duplicate_session_dates": [],
+  "duplicate_row_count": 0,
+  "expected_end_date": "2026-01-05",
+  "expected_session_count": 2,
+  "expected_start_date": "2026-01-02",
+  "fatal_violations": [],
+  "instrument": {
+    "instrument_id": "instrument-us-etf-qqq-xnas",
+    "symbol": "QQQ",
+    "venue": "XNAS"
+  },
+  "missing_session_dates": [],
+  "observed_session_count": 2,
+  "policy_id": "daily-market-data-etf-execution-v1",
+  "quality_policy_version": "daily-market-data-quality-v1",
+  "schema_version": "1.0.0",
+  "status": "pass",
+  "unexpected_session_dates": [],
+  "warnings": [],
+  "zero_volume_dates": []
+}

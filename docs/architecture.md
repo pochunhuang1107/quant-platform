@@ -134,6 +134,73 @@ structure in `docs/roadmap-v0.2.md`.
 - Agents can implement and test but cannot approve financial conclusions, risk exceptions, paper trading, or live trading.
 - Formal approval can only be granted by Po-Chun Huang for now.
 
+## Daily Market-Data Policy Boundary
+
+Slice 3 introduces a provider-neutral daily market-data policy layer in
+`research_sdk.contracts.daily_market_data` and pure helpers under
+`research_sdk.daily_market_data`. This layer is additive around
+`DataSnapshotManifest`; the generic durable snapshot envelope is unchanged.
+
+The terminology is:
+
+- Raw source evidence: provider or source output preserved as received for
+  provenance.
+- Curated dataset: deterministically normalized daily bars suitable for
+  research validation.
+- Research snapshot: immutable selected curated content referenced by an
+  experiment through `DataSnapshotManifest`.
+
+The S3a policy supports ETF daily execution-bar validation only. It records the
+asset class, frequency, calendar, timezone, adjustment policy, distribution
+treatment, corporate-action policy, universe-membership policy, survivorship
+policy, delisting policy, canonicalization version, and quality policy version.
+It does not choose a provider, calendar library, storage backend, benchmark
+calculation, strategy, parameter set, or real experiment.
+
+Canonical daily market-data content hashes are semantic SHA-256 hashes over the
+platform instrument reference and canonical daily bars sorted by session date
+and row content. The hash excludes provider name, source URI, storage URI,
+retrieval timestamps, policy ID, quality status, file bytes, Parquet metadata,
+strategy, benchmark, costs, and slippage. File-byte and storage-integrity hashes
+remain separate metadata concerns for later snapshot creation work.
+
+Quality validation is deterministic and pure. The caller supplies nonempty,
+unique expected session dates; S3a canonicalizes valid caller order but does not
+infer weekdays, use a calendar library, consult system locale, call a provider,
+read files, inspect object storage, or open a database. For ETF daily v1,
+duplicate sessions, missing expected sessions, unexpected sessions, and
+zero-volume sessions are fatal. Quality report fatal codes are exact derived
+facts, warnings are empty in S3a v1, and `duplicate_row_count` records physical
+duplicate rows beyond the first row for each duplicated session date. The
+quality report also records expected coverage start/end, and manifest
+compatibility requires `DataSnapshotManifest.time_range` to match that coverage.
+The service never forward-fills missing bars or synthesizes prices.
+
+S3a manifest compatibility is intentionally single-instrument: the manifest's
+explicit symbols must be exactly the one quality-report symbol, and
+`row_count` means one observed daily bar row for that instrument. Multi-symbol
+curated snapshots are deferred. Current `AssetUniverseReference` cannot prove
+the daily-market-data `instrument_id` or venue, so those remain policy-layer
+facts until a later identity/reference contract extends the manifest boundary.
+
+The intended auditable economic direction for the first fully meaningful daily
+ETF research path remains raw OHLCV plus explicit corporate-action and
+distribution evidence with explicit cash distributions. Total-return-adjusted
+series are not accepted as tradable execution OHLC in S3a. If a future selected
+window contains an unsupported split or corporate action, the real-data workflow
+must fail closed until support exists.
+
+Passing `DailyMarketDataQualityReport` is necessary but not sufficient to call a
+dataset real historical research evidence. Provider provenance, immutable
+snapshot creation, source licensing, and durable storage remain later S3 work.
+Historical backtest evidence still does not imply paper-trading or live-trading
+authority.
+
+For comparable QQQ strategy runs, the intended structured report-card benchmark
+remains SPY under one explicit economic return policy. QQQ buy-and-hold should
+be recorded as a separate baseline experiment/run and compared through C2b, not
+used to replace the shared `BenchmarkReference`.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ
