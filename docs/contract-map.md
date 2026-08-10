@@ -20,6 +20,8 @@ execution, approval workflows, trading, or external validation.
 | `ExperimentRunRecord` | `research_sdk.contracts.ledger.ExperimentRunRecord` | `packages/research-sdk/src/research_sdk/contracts/ledger.py` | `packages/research-sdk/schema/experiment_run_record.schema.json` | `tests/fixtures/contracts/experiment_run_record.json` | Reproducible experiment/run ledger record. |
 | `RunArtifactManifest` | `research_sdk.contracts.artifacts.RunArtifactManifest` | `packages/research-sdk/src/research_sdk/contracts/artifacts.py` | `packages/research-sdk/schema/run_artifact_manifest.schema.json` | `tests/fixtures/contracts/run_artifact_manifest.json` | Declared manifest of expected run artifacts. |
 | `DataSnapshotManifest` | `research_sdk.contracts.data_snapshots.DataSnapshotManifest` | `packages/research-sdk/src/research_sdk/contracts/data_snapshots.py` | `packages/research-sdk/schema/data_snapshot_manifest.schema.json` | `tests/fixtures/contracts/data_snapshot_manifest.json` | Reproducible point-in-time dataset snapshot metadata. |
+| `DailyMarketDataPolicy` | `research_sdk.contracts.daily_market_data.DailyMarketDataPolicy` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data.py` | `packages/research-sdk/schema/daily_market_data_policy.schema.json` | `tests/fixtures/contracts/daily_market_data_policy.json` | Provider-neutral daily market-data policy for curated execution bars. |
+| `DailyMarketDataQualityReport` | `research_sdk.contracts.daily_market_data.DailyMarketDataQualityReport` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data.py` | `packages/research-sdk/schema/daily_market_data_quality_report.schema.json` | `tests/fixtures/contracts/daily_market_data_quality_report.json` | Deterministic quality evidence for one canonical daily instrument dataset. |
 | `ResearchNote` | `research_sdk.contracts.research_notes.ResearchNote` | `packages/research-sdk/src/research_sdk/contracts/research_notes.py` | `packages/research-sdk/schema/research_note.schema.json` | `tests/fixtures/contracts/research_note.json` | Structured research note and decision record. |
 
 ## Contract Responsibility Map
@@ -31,6 +33,8 @@ execution, approval workflows, trading, or external validation.
 | `ExperimentRunRecord` | Backtest/research runner after Phase 1 integration. | Comparison UI, report generation, research review workflow, future ledger persistence. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Database persistence, run execution, artifact writing, trading approval, external ID existence checks. |
 | `RunArtifactManifest` | Backtest/research runner and artifact writer after Phase 1 integration. | Artifact validators, report generation, research review workflow, future storage indexing. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Artifact/file IO, storage reads or writes, hash verification, parquet inspection, artifact upload. |
 | `DataSnapshotManifest` | Data engine after Phase 1 integration. | Backtest/research runner, feature generation, experiment ledger, leakage review. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Data ingestion, vendor API calls, storage IO, content hash verification, data quality scans, external snapshot existence checks. |
+| `DailyMarketDataPolicy` | Research/data policy layer before curated snapshot creation. | Data engine, snapshot validation, leakage review, future backtest input adapters. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Provider selection, provider calls, storage adapters, calendar-source integration, benchmark calculation, strategy execution, split/dividend accounting. |
+| `DailyMarketDataQualityReport` | Pure daily market-data quality service after canonical bars and expected sessions are supplied. | Snapshot validation, experiment gate checks, future report generation. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Calendar derivation, provider/source provenance, storage inspection, file-byte verification, real-data authority, paper/live approval. |
 | `ResearchNote` | Research authoring and report generation tools later. | Research review workflow, comparison UI, reports, future search/indexing after approval. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Markdown rendering/parsing, LLM summarization, embeddings, semantic memory, knowledge graph behavior, agent workflow execution. |
 
 ## Contract Relationships
@@ -39,6 +43,10 @@ execution, approval workflows, trading, or external validation.
 DataSnapshotManifest
   snapshot_id
     -> ExperimentRunRecord.data_snapshot_id
+
+DailyMarketDataPolicy + DailyMarketDataQualityReport
+  policy_id + content_hash + coverage + observed_session_count + one symbol
+    -> validate single-instrument DataSnapshotManifest metadata before experiment use
 
 RunArtifactManifest
   artifact_root_uri + artifacts[]
@@ -74,6 +82,8 @@ Current schema files:
 - `packages/research-sdk/schema/experiment_run_record.schema.json`
 - `packages/research-sdk/schema/run_artifact_manifest.schema.json`
 - `packages/research-sdk/schema/data_snapshot_manifest.schema.json`
+- `packages/research-sdk/schema/daily_market_data_policy.schema.json`
+- `packages/research-sdk/schema/daily_market_data_quality_report.schema.json`
 - `packages/research-sdk/schema/research_note.schema.json`
 
 Current fixture files:
@@ -83,6 +93,8 @@ Current fixture files:
 - `tests/fixtures/contracts/experiment_run_record.json`
 - `tests/fixtures/contracts/run_artifact_manifest.json`
 - `tests/fixtures/contracts/data_snapshot_manifest.json`
+- `tests/fixtures/contracts/daily_market_data_policy.json`
+- `tests/fixtures/contracts/daily_market_data_quality_report.json`
 - `tests/fixtures/contracts/research_note.json`
 
 `tests/test_contract_roundtrip_validation.py` asserts that the fixture/schema
@@ -92,7 +104,8 @@ contract matrix matches `SCHEMA_EXPORTS`.
 
 Supporting models appear inside top-level contracts and should not be treated as
 standalone top-level contracts unless they receive their own schema and fixture.
-Current supporting models include `RunArtifactEntry`, `AssetUniverseReference`,
+Current supporting models include `RunArtifactEntry`,
+`DailyMarketDataInstrument`, `CanonicalDailyBar`, `AssetUniverseReference`,
 `BenchmarkReference`, `RunEnvironment`, `RandomSeedMetadata`, `TimeRange`,
 `ResearchHypothesis`, `ResearchNoteReferences`, and `ResearchDecision`.
 

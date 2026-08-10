@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "DailyMarketDataInstrument": {
+      "additionalProperties": false,
+      "description": "Platform-facing provider-neutral instrument reference.",
+      "properties": {
+        "instrument_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "symbol": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "venue": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "instrument_id",
+        "symbol",
+        "venue"
+      ],
+      "title": "DailyMarketDataInstrument",
+      "type": "object"
+    },
+    "DailyMarketDataQualityCode": {
+      "description": "Stable machine-readable daily market-data quality codes.",
+      "enum": [
+        "duplicate_session",
+        "missing_session",
+        "unexpected_session",
+        "zero_volume"
+      ],
+      "title": "DailyMarketDataQualityCode",
+      "type": "string"
+    },
+    "DailyMarketDataQualityStatus": {
+      "description": "Deterministic quality report status.",
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "title": "DailyMarketDataQualityStatus",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deterministic dataset-level quality facts for one daily instrument.",
+  "properties": {
+    "canonicalization_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "duplicate_row_count": {
+      "minimum": 0,
+      "title": "Duplicate Row Count",
+      "type": "integer"
+    },
+    "duplicate_session_dates": {
+      "default": [],
+      "items": {
+        "format": "date",
+        "type": "string"
+      },
+      "title": "Duplicate Session Dates",
+      "type": "array"
+    },
+    "expected_end_date": {
+      "format": "date",
+      "title": "Expected End Date",
+      "type": "string"
+    },
+    "expected_session_count": {
+      "exclusiveMinimum": 0,
+      "title": "Expected Session Count",
+      "type": "integer"
+    },
+    "expected_start_date": {
+      "format": "date",
+      "title": "Expected Start Date",
+      "type": "string"
+    },
+    "fatal_violations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DailyMarketDataQualityCode"
+      },
+      "title": "Fatal Violations",
+      "type": "array"
+    },
+    "instrument": {
+      "$ref": "#/$defs/DailyMarketDataInstrument"
+    },
+    "missing_session_dates": {
+      "default": [],
+      "items": {
+        "format": "date",
+        "type": "string"
+      },
+      "title": "Missing Session Dates",
+      "type": "array"
+    },
+    "observed_session_count": {
+      "minimum": 0,
+      "title": "Observed Session Count",
+      "type": "integer"
+    },
+    "policy_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "quality_policy_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "status": {
+      "$ref": "#/$defs/DailyMarketDataQualityStatus"
+    },
+    "unexpected_session_dates": {
+      "default": [],
+      "items": {
+        "format": "date",
+        "type": "string"
+      },
+      "title": "Unexpected Session Dates",
+      "type": "array"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DailyMarketDataQualityCode"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "zero_volume_dates": {
+      "default": [],
+      "items": {
+        "format": "date",
+        "type": "string"
+      },
+      "title": "Zero Volume Dates",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "policy_id",
+    "quality_policy_version",
+    "canonicalization_version",
+    "instrument",
+    "content_hash",
+    "expected_start_date",
+    "expected_end_date",
+    "expected_session_count",
+    "observed_session_count",
+    "duplicate_row_count",
+    "status"
+  ],
+  "title": "DailyMarketDataQualityReport",
+  "type": "object"
+}

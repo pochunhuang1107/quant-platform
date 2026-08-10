@@ -1,0 +1,16 @@
+{
+  "adjustment_policy": "raw",
+  "asset_class": "etfs",
+  "calendar": "XNYS",
+  "canonicalization_version": "daily-market-data-canonical-v1",
+  "corporate_action_policy": "raw OHLCV plus explicit corporate-action evidence",
+  "delisting_policy": "unsupported for ETF S3a; fail closed if encountered",
+  "distribution_treatment": "explicit_cash",
+  "frequency": "daily",
+  "policy_id": "daily-market-data-etf-execution-v1",
+  "quality_policy_version": "daily-market-data-quality-v1",
+  "schema_version": "1.0.0",
+  "survivorship_policy": "static named instrument; no survivorship-free claim",
+  "timezone": "America/New_York",
+  "universe_membership_policy": "static explicit instrument universe"
+}

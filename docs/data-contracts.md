@@ -78,6 +78,110 @@ Validation expectations:
 - Timestamps are unique per `symbol`, `timestamp`, and bar frequency.
 - Adjustment policy is explicit: raw, split-adjusted, total-return, continuous, or other documented policy.
 
+## Provider-Neutral Daily Market Data
+
+Slice 3 adds provider-neutral daily market-data contracts in
+`research_sdk.contracts.daily_market_data`. These contracts do not replace
+`DataSnapshotManifest`; they define an additive policy and quality layer that a
+future curated snapshot must satisfy before it can be used by experiments.
+
+`DailyMarketDataInstrument` records the platform-facing stable
+`instrument_id`, requested/display `symbol`, and normalized listing `venue`.
+Provider IDs, FIGI, CUSIP, security-master tables, credentials, and adapter
+metadata remain outside this contract.
+
+`CanonicalDailyBar` records structural daily OHLCV facts only:
+
+- `session_date`
+- `open`
+- `high`
+- `low`
+- `close`
+- `volume`
+
+OHLC values are `Decimal`, finite, and positive. Binary floating point is not
+accepted. `volume` must be nonnegative. Validation requires `high >= low`,
+`high >= open`, `high >= close`, `low <= open`, and `low <= close`. The bar has
+no adjusted close, provider fields, file paths, ingestion timestamps, strategy
+state, benchmark state, cost fields, or slippage fields.
+
+`DailyMarketDataPolicy` records the versioned policy for daily market data:
+`policy_id`, `asset_class`, `frequency`, `calendar`, `timezone`,
+`adjustment_policy`, `distribution_treatment`, `corporate_action_policy`,
+`universe_membership_policy`, `survivorship_policy`, `delisting_policy`,
+`canonicalization_version`, and `quality_policy_version`. S3a v1 supports only
+`AssetClass.ETFS` and `frequency = daily`. It accepts tradable execution OHLC
+policies such as `raw` and `split_adjusted`, but rejects `total_return` and
+`continuous` as execution-bar policies. Distribution treatment is explicit:
+`explicit_cash` means economic distributions must be represented separately as
+cash evidence later; `excluded_price_return_only` means the data supports
+price-return-only research and must not be confused with total return.
+
+The intended first fully meaningful real research path is raw OHLCV plus
+explicit corporate-action/distribution evidence and explicit cash
+distributions. S3a documents that direction but does not implement provider
+ingestion, split accounting, dividend accounting, benchmark calculation, or
+engine execution changes. Unsupported corporate actions in a later selected
+window must fail closed until support exists.
+
+`derive_daily_market_data_content_hash(...)` computes a semantic
+`sha256:<64 lowercase hex>` hash over only the canonicalization domain/version,
+instrument reference, and canonical daily bar records. Caller bar order does not
+matter. Equivalent Decimal numeric values such as `100`, `100.0`, and
+`100.000000` canonicalize identically. The hash excludes provider name, source
+URI, `data_root_uri`, retrieval timestamps, policy ID, quality result, warning
+text, file bytes, Parquet metadata, compression settings, strategy, benchmark,
+costs, and slippage.
+
+`DailyMarketDataQualityReport` records deterministic facts for one instrument:
+policy and version fields, instrument, content hash, expected coverage
+start/end, expected and observed session counts, duplicate-row count,
+missing/unexpected/duplicate/zero-volume dates, fatal violations, warnings, and
+`pass` or `fail` status. It has no `generated_at` field. Direct construction
+rejects noncanonical date ordering, duplicate dates, duplicate quality codes,
+noncanonical code ordering, nonempty warnings under S3a v1, fatal codes that do
+not exactly match their date evidence, status that does not match implied fatal
+evidence, invalid coverage date order, and count arithmetic that does not hold.
+The count invariant is:
+
+```text
+observed_session_count
+==
+expected_session_count
+- len(missing_session_dates)
++ len(unexpected_session_dates)
++ duplicate_row_count
+```
+
+`duplicate_row_count` is the sum of extra physical rows beyond the first row for
+each duplicated observed session date.
+
+The pure quality service receives explicit `expected_session_dates` from the
+caller. They must be nonempty, unique, and actual `date` values. Caller order
+may be arbitrary and is canonicalized internally. The service does not add a
+calendar library, infer weekdays, call network APIs, read files, use system
+locale, use current date, or inspect storage. For ETF daily v1, duplicate
+sessions, missing expected sessions, unexpected sessions, and zero-volume
+sessions are fatal. It never forward-fills missing bars or synthesizes prices.
+
+`validate_daily_market_data_snapshot_manifest(...)` checks coherence between a
+generic `DataSnapshotManifest`, a `DailyMarketDataPolicy`, and a passing
+`DailyMarketDataQualityReport` without inspecting external storage. It verifies
+manifest kind/status, asset class, frequency, calendar, timezone, adjustment
+policy, universe/corporate-action/survivorship/delisting policies, content
+hash, row count, manifest `TimeRange` equality with quality expected coverage,
+policy linkage, quality status, and exact single-instrument symbol coherence.
+For S3a v1, `asset_universe.symbols` must be exactly the one quality-report
+symbol, and `row_count` means one observed daily bar row for that instrument.
+Multi-instrument curated snapshots are deferred. Current
+`AssetUniverseReference` cannot prove stronger stable-ID or venue semantics, so
+instrument stable identity remains a daily-market-data policy-layer fact.
+
+Passing quality is necessary but not sufficient for real historical research
+authority. Provider provenance, immutable snapshot creation, source licensing,
+and storage evidence remain later Slice 3 work. Historical backtests remain
+research evidence only and do not imply paper-trading or live-trading authority.
+
 ## Synthetic Daily ETF Fixture Contract
 
 The first deterministic backtest-engine slice uses

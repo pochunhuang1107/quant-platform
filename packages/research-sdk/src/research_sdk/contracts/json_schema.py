@@ -11,6 +11,10 @@ from typing import Final
 
 from research_sdk.contracts.artifacts import RunArtifactManifest
 from research_sdk.contracts.base import BaseContractModel
+from research_sdk.contracts.daily_market_data import (
+    DailyMarketDataPolicy,
+    DailyMarketDataQualityReport,
+)
 from research_sdk.contracts.data_snapshots import DataSnapshotManifest
 from research_sdk.contracts.ledger import ExperimentRunRecord
 from research_sdk.contracts.report_cards import ResearchReportCard
@@ -24,6 +28,8 @@ SCHEMA_EXPORTS: Final[dict[str, type[BaseContractModel]]] = {
     "experiment_run_record.schema.json": ExperimentRunRecord,
     "run_artifact_manifest.schema.json": RunArtifactManifest,
     "data_snapshot_manifest.schema.json": DataSnapshotManifest,
+    "daily_market_data_policy.schema.json": DailyMarketDataPolicy,
+    "daily_market_data_quality_report.schema.json": DailyMarketDataQualityReport,
     "research_report_card.schema.json": ResearchReportCard,
     "research_note.schema.json": ResearchNote,
 }
