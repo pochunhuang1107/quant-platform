@@ -376,19 +376,28 @@ research context, reports observed strategy/config/parameter lineage
 differences without causal claims, and emits safe non-annualized deltas for
 total return, excess return, maximum drawdown, and trade count.
 
-C2a intentionally does not expose review-state visibility because
-`ResearchReportCard` does not contain linked note review metadata. The planned
-C2b follow-up should add a reverse read such as
-`get_research_note_ids_for_report_card(report_card_id)` using the existing
-`research_note_report_cards` index, then load each note through validated
-`get_research_note(...)` and expose deterministic review facts: note ID, note
-type, note status, review status, review role, reviewer ID, reviewed timestamp,
-and decision. C2b should not choose a best note, create or update notes, or add
-comparison persistence merely to provide read-only visibility.
-C2b should call C2a only after B1b1 durable report-card readback has validated
-the persisted card payload, natural identity, normalized columns, and source
-coherence against persisted run, snapshot, benchmark, and artifact-manifest
-records.
+C2b adds the persisted read-only query boundary for the Slice 2
+review-state-visibility criterion. It accepts ordered baseline/candidate
+report-card IDs, loads both cards through validated
+`get_research_report_card(...)` durable readback, invokes C2a, reverse reads
+linked notes with `get_research_note_ids_for_report_card(report_card_id)`, and
+then loads every linked note through validated `get_research_note(...)`.
+Missing requested cards are query not-found errors. Corrupt report cards,
+corrupt notes, or impossible missing linked notes are integrity failures, not
+"no review state".
+
+The reverse read uses the existing `research_note_report_cards(report_card_id)`
+index and returns `note_id` values in ascending order. C2b preserves that order
+for review-state projection and rejects duplicate or nonascending repository
+output. It does not join full note rows because durable note readback remains
+the integrity boundary.
+
+C2b exposes direct persisted review facts only. It does not query
+`review_events`, classify authoritative interpretations, derive current or
+best notes, mutate ResearchNotes, append review events, persist comparisons, or
+rank strategies. C2a comparison identity remains stable for the immutable card
+pair; linked review visibility is a read-time projection that may include more
+notes after future append-only note/link writes.
 
 ## Schema Evolution
 

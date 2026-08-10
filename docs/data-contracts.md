@@ -333,9 +333,35 @@ or recommend strategies.
 The same `report_card_id` must not represent two different full report-card
 contracts. Same ID plus exact same contract remains valid for same-card
 STRICT-compatible zero-delta checks; same ID plus different content is rejected
-as invalid source evidence. C2b will add durable B1b1 readback and
-source-coherence validation before invoking C2a; C2a does not itself validate
-PostgreSQL source rows or manifest coherence.
+as invalid source evidence. C2b adds durable B1b1 readback and source-coherence
+validation before invoking C2a; C2a does not itself validate PostgreSQL source
+rows or manifest coherence.
+
+## Persisted Report-Card Comparison Query
+
+`ResearchReportCardComparisonQueryResult` is the C2b read-time projection over
+an ordered persisted baseline/candidate report-card pair. It always carries the
+ordered baseline and candidate report-card IDs, the C2a compatibility
+assessment, an optional C2a `ResearchReportCardComparison`, and linked
+ResearchNote review-state tuples for each side. `comparison` is present only
+when C2a status is `STRICT_COMPATIBLE` or `CONTEXT_COMPATIBLE`; incompatible
+pairs retain the assessment but do not contain numeric metric deltas.
+
+`LinkedResearchNoteReviewState` is factual metadata copied from durable
+ResearchNote readback. It exposes note identity, note type/status, title,
+updated timestamp, evidence strength, structured research decision outcome,
+embedded review status, reviewer metadata, review decision text, optional
+approval metadata, risk-approval-required metadata, and parent/supersession
+IDs. It deliberately excludes interpretation prose, results summary, body
+markdown, generated summaries, ranking, authority booleans, current-note
+selection, and preferred-note selection.
+
+Review-state tuples are deterministic and must be ordered by ascending
+`note_id`. C2b does not silently sort contradictory direct construction or
+repository output. Review events remain outside C2b v1; review-state visibility
+comes from `ResearchNote.review`. `risk_approval_required` is metadata only and
+does not grant risk approval, paper-trading approval, live-trading approval, or
+trading authorization.
 
 ## Corporate Actions, Rolls, And Survivorship
 

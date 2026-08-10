@@ -331,6 +331,33 @@ all excluded immutable fields. Corrections create a new note and use
 `supersedes_note_id`; prior finalized rows are not mutated. Comparison notes
 with multiple report cards remain deferred.
 
+C2b adds one read-only reverse association method:
+`get_research_note_ids_for_report_card(report_card_id)`. The SQLAlchemy
+implementation uses the existing `research_note_report_cards` table and
+`ix_research_note_report_cards_report_card_id` index, selects only `note_id`,
+filters by `report_card_id`, orders by `note_id`, and does not require an
+active write transaction. No migration is required because the composite
+primary key prevents duplicate note/report-card pairs and the existing reverse
+index supports the lookup.
+
+The C2b service depends on a separate narrow structural read protocol with only
+`get_research_report_card(...)`, `get_research_note(...)`, and
+`get_research_note_ids_for_report_card(...)`. It does not depend on the broad
+write-capable ledger protocol and does not add write methods to that protocol.
+The service loads report cards through B1b1 durable readback, invokes the pure
+C2a comparison authority, then loads every linked note through durable
+ResearchNote readback before projecting review-state facts. Missing requested
+cards are query not-found errors. Linked note IDs that cannot be read back are
+query-integrity failures and are not silently skipped.
+
+C2b does not add comparison persistence, query-result identity, review-event
+queries, ResearchNote mutation, current-note derivation, authoritative-note
+classification, strategy ranking, risk approval, paper-trading approval, live
+trading approval, or trading authorization. `risk_approval_required` remains
+persisted metadata only. The C2a comparison identity for two immutable report
+cards is stable, while C2b review-state visibility is a read-time projection
+that can grow when new immutable notes and links are appended later.
+
 The persistence primitive boundaries now include:
 
 - `canonical_contract_json(contract)`
