@@ -125,6 +125,32 @@ class _FailingConnection:
         return object()
 
 
+class _MappingResult:
+    def __init__(self, rows: tuple[dict[str, object], ...]) -> None:
+        self._rows = rows
+
+    def mappings(self) -> _MappingResult:
+        return self
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _ReadOnlyConnection:
+    def __init__(self, rows: tuple[dict[str, object], ...]) -> None:
+        self.rows = rows
+        self.executed_statements: list[object] = []
+        self.in_transaction_calls = 0
+
+    def in_transaction(self) -> bool:
+        self.in_transaction_calls += 1
+        return False
+
+    def execute(self, statement: object) -> _MappingResult:
+        self.executed_statements.append(statement)
+        return _MappingResult(self.rows)
+
+
 def load_fixture(filename: str) -> dict[str, Any]:
     return json.loads((FIXTURE_DIR / filename).read_text(encoding="utf-8"))
 
@@ -213,6 +239,11 @@ def test_sqlalchemy_repository_is_directly_instantiable() -> None:
     )
     assert not getattr(
         SqlAlchemyExperimentLedgerRepository.record_run_artifact_manifest,
+        "__isabstractmethod__",
+        False,
+    )
+    assert not getattr(
+        SqlAlchemyExperimentLedgerRepository.get_research_note_ids_for_report_card,
         "__isabstractmethod__",
         False,
     )
@@ -313,6 +344,7 @@ def test_source_defines_no_operational_calls_assignments_or_class_members() -> N
         "build_research_report_card_insert",
         "build_research_report_card_read_select",
         "build_research_report_card_replay_select",
+        "build_research_note_ids_for_report_card_select",
         "build_research_note_insert",
         "build_research_note_replay_select",
         "build_review_event_insert",
@@ -547,6 +579,24 @@ def test_append_review_event_reraises_untranslated_integrity_error(
         )
 
     assert exc_info.value is original_error
+
+
+def test_get_research_note_ids_for_report_card_reads_without_write_transaction() -> (
+    None
+):
+    connection = _ReadOnlyConnection(
+        (
+            {"note_id": "note-a"},
+            {"note_id": "note-c"},
+        )
+    )
+    repository = SqlAlchemyExperimentLedgerRepository(cast(Connection, connection))
+
+    note_ids = repository.get_research_note_ids_for_report_card("report-card-a")
+
+    assert note_ids == ("note-a", "note-c")
+    assert len(connection.executed_statements) == 1
+    assert connection.in_transaction_calls == 0
 
 
 def _assert_signature_shape_matches(

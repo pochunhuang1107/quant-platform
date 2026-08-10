@@ -48,6 +48,7 @@ from research_sdk.persistence.statements import (
     build_experiment_run_insert,
     build_experiment_run_replay_select,
     build_report_card_ids_for_note_select,
+    build_research_note_ids_for_report_card_select,
     build_research_note_insert,
     build_research_note_read_select,
     build_research_note_replay_select,
@@ -481,6 +482,17 @@ class SqlAlchemyExperimentLedgerRepository:
             build_report_card_ids_for_note_select(note_id=note_id)
         )
         return tuple(row["report_card_id"] for row in result.mappings())
+
+    def get_research_note_ids_for_report_card(
+        self,
+        report_card_id: str,
+    ) -> tuple[str, ...]:
+        result = self._connection.execute(
+            build_research_note_ids_for_report_card_select(
+                report_card_id=report_card_id
+            )
+        )
+        return tuple(row["note_id"] for row in result.mappings())
 
     def record_research_report_card(
         self,

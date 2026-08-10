@@ -41,6 +41,9 @@ from research_sdk.persistence import (
     build_report_card_ids_for_note_select as exported_link_ids_select,
 )
 from research_sdk.persistence import (
+    build_research_note_ids_for_report_card_select as exported_note_ids_select,
+)
+from research_sdk.persistence import (
     build_research_note_insert as exported_build_research_note_insert,
 )
 from research_sdk.persistence import (
@@ -99,6 +102,7 @@ from research_sdk.persistence.statements import (
     build_experiment_run_insert,
     build_experiment_run_replay_select,
     build_report_card_ids_for_note_select,
+    build_research_note_ids_for_report_card_select,
     build_research_note_insert,
     build_research_note_read_select,
     build_research_note_replay_select,
@@ -306,6 +310,10 @@ def test_statement_builders_import_from_statement_module() -> None:
         build_report_card_ids_for_note_select
     )
     assert "build_report_card_ids_for_note_select" in statements.__all__
+    assert statements.build_research_note_ids_for_report_card_select is (
+        build_research_note_ids_for_report_card_select
+    )
+    assert "build_research_note_ids_for_report_card_select" in statements.__all__
     assert statements.build_research_report_card_insert is (
         build_research_report_card_insert
     )
@@ -353,6 +361,7 @@ def test_statement_builders_export_from_persistence_package() -> None:
         build_research_note_report_card_link_replay_select
     )
     assert exported_link_ids_select is build_report_card_ids_for_note_select
+    assert exported_note_ids_select is build_research_note_ids_for_report_card_select
     assert exported_build_report_card_insert is build_research_report_card_insert
     assert exported_report_card_replay_select is (
         build_research_report_card_replay_select
@@ -825,6 +834,36 @@ def test_report_card_ids_for_note_select_shape() -> None:
     assert "ORDER BY research_note_report_cards.report_card_id" in sql
     assert params == {"note_id_1": note_id}
     assert note_id not in sql
+    assert "contract_hash" not in sql
+    assert "raw_contract" not in sql
+    assert "SELECT *" not in sql
+    assert " JOIN " not in sql
+    assert " FOR UPDATE" not in sql
+    assert "INSERT" not in sql
+    assert "UPDATE" not in sql
+    assert "DELETE" not in sql
+
+
+def test_research_note_ids_for_report_card_select_shape() -> None:
+    report_card_id = "report-card-link-read-select-sentinel"
+
+    statement = build_research_note_ids_for_report_card_select(
+        report_card_id=report_card_id
+    )
+    sql = normalized_sql(statement)
+    params = compiled_params(statement)
+
+    assert isinstance(statement, Select)
+    assert tuple(column.name for column in statement.selected_columns) == ("note_id",)
+    assert tuple(statement.get_final_froms()) == (research_note_report_cards,)
+    assert statement.whereclause is not None
+    assert str(statement.whereclause.compile(dialect=POSTGRESQL_DIALECT)) == (
+        "research_note_report_cards.report_card_id = %(report_card_id_1)s"
+    )
+    assert "FROM research_note_report_cards WHERE" in sql
+    assert "ORDER BY research_note_report_cards.note_id" in sql
+    assert params == {"report_card_id_1": report_card_id}
+    assert report_card_id not in sql
     assert "contract_hash" not in sql
     assert "raw_contract" not in sql
     assert "SELECT *" not in sql

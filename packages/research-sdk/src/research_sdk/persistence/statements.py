@@ -293,6 +293,19 @@ def build_report_card_ids_for_note_select(
     )
 
 
+def build_research_note_ids_for_report_card_select(
+    *,
+    report_card_id: str,
+) -> Select[Any]:
+    """Build a non-executing lookup for note IDs linked to a report card."""
+
+    return (
+        select(research_note_report_cards.c.note_id)
+        .where(research_note_report_cards.c.report_card_id == report_card_id)
+        .order_by(research_note_report_cards.c.note_id)
+    )
+
+
 def build_research_report_card_insert(
     report_card: ResearchReportCard,
 ) -> Insert:
@@ -431,6 +444,7 @@ __all__ = [
     "build_research_note_report_card_link_insert",
     "build_research_note_report_card_link_replay_select",
     "build_research_note_replay_select",
+    "build_research_note_ids_for_report_card_select",
     "build_report_card_ids_for_note_select",
     "build_review_event_insert",
     "build_run_artifact_manifest_inserts",

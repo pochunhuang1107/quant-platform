@@ -315,14 +315,31 @@ deterministic `candidate - baseline` arithmetic and require compatibility
 difference codes to match their canonical category, field path, and policy
 order.
 
-This pure C2a layer does not satisfy the full Slice 2 review-state visibility
-criterion. The intended C2b follow-up is a read-only persisted-query service
-that accepts report-card IDs, loads validated report cards through durable
-readback, runs C2a, and separately exposes linked `ResearchNote` review-state
-facts without choosing a best note or creating comparison persistence.
-C2b must also supply B1b1 durable readback and source-coherence authority before
-invoking C2a; C2a does not independently validate PostgreSQL state, persisted
-source manifests, or artifact bytes.
+`research_sdk.report_card_comparison_query` adds the C2b persisted read-only
+query boundary for ordered baseline/candidate report-card IDs. It loads each
+card through `get_research_report_card(...)`, so B1b1 durable readback remains
+the authority for persisted contract validity, report-card natural identity,
+normalized columns, and source coherence before C2a runs. Missing report-card
+inputs are query not-found errors rather than `INCOMPATIBLE` compatibility
+results.
+
+C2b calls C2a for compatibility and, only for compatible pairs, numeric
+comparison output. For incompatible pairs, it preserves the C2a deterministic
+compatibility assessment and returns no numeric comparison. It then reverse
+reads linked ResearchNote IDs through
+`get_research_note_ids_for_report_card(...)` and loads every linked note
+through durable `get_research_note(...)` readback before projecting direct
+review-state facts. The query does not join raw note rows, skip corrupt links,
+query review events, choose a current or best note, classify authoritative
+interpretations, rank strategies, or persist comparison results.
+
+C2b review visibility is a read-time projection. Because immutable notes and
+links may be appended later, the same report-card pair can retain the same C2a
+comparison identity while returning additional linked review-state rows in a
+later query. C2b therefore adds no query-result natural identity and no
+generated timestamp. `risk_approval_required` is exposed only as persisted
+metadata; it is not risk approval, paper-trading approval, live-trading
+approval, trading authorization, or strategy acceptance.
 
 Finalized single-result interpretations now use a normalized
 `research_note_report_cards` association table. The `ResearchNote` contract
