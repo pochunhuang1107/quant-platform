@@ -385,6 +385,78 @@ final snapshot directories, and authoritative files. TOCTOU hardening with
 `openat`/`O_NOFOLLOW` is intentionally out of scope for this
 workstation/cooperating-process v1 trust model.
 
+## Daily Market-Data Economic Evidence Semantics
+
+Slice 3 S3c1 freezes pure provider-neutral corporate-action economic evidence
+semantics and a candidate versioned daily ETF research-data profile. It does
+not add a provider, select a vendor, ingest real data, call a network API,
+change S3b1 snapshot identity, add `corporate-actions.jsonl`, change S3b2
+local storage, write persistence rows, modify the backtest engine, implement
+corporate-action accounting, or declare any snapshot research-ready.
+
+The long-term complete daily ETF economic policy remains raw tradable OHLCV
+plus explicit split evidence, explicit cash-distribution evidence, and later
+backtest accounting for split quantities and cash entitlements. S3c1 defines
+the evidence language only. S3c2 must bind this evidence into a new versioned
+snapshot identity and readiness gate before any real snapshot can be called
+research usable.
+
+S3c1 corporate-action events are limited to `cash_distribution`, `split`, and
+`unsupported`. Unsupported events intentionally preserve fail-closed evidence
+for provider event types that the platform cannot economically model. Event
+economic dates and source availability are distinct: a cash distribution uses
+`ex_date`, a split or unsupported event uses `effective_date`, and every event
+also records `source_available_at`, the earliest recorded source-evidence
+availability time supplied by the captured source. Source availability is not
+inferred from ex-date, effective date, payment date, or historical bar date.
+
+`DailyMarketDataCorporateActionEvidence` records complete checked evidence for
+one platform instrument over one explicit coverage period from one source
+capture/vintage. It records source dataset/version/type/reference, source
+hash/size, source observation, ingestion, availability, creation facts,
+canonicalization version, events, and limitations. It does not embed raw
+provider bytes; future adapters must derive source hashes and sizes from exact
+source bytes. Raw source-capture storage and retention semantics remain
+deferred until an approved provider/export and license posture exist.
+
+The new evidence completeness states are `checked_no_events` and
+`checked_events_captured`. Unsupported event support is derived from event
+contents rather than from completeness state, keeping evidence completeness
+separate from engine economic capability. The v1
+`DailyMarketDataSnapshotProvenance.corporate_action_evidence_status` enum is
+unchanged; a separate S3c1 evidence object does not retroactively alter any
+S3b1/S3b2 v1 snapshot identity.
+
+`derive_daily_market_data_corporate_action_content_hash(...)` computes a
+semantic hash over the corporate-action economic projection, including the
+hash domain/version, instrument identity, coverage dates, and canonical events.
+For cash distributions the projection includes event type, instrument ID,
+ex-date, canonical Decimal amount, and currency. For splits it includes event
+type, instrument ID, effective date, and reduced split ratio. For unsupported
+events it includes event type, instrument ID, effective date, and provider
+event type. Event IDs, source references, and source timestamps remain lineage
+facts in the evidence contract and are excluded from this semantic economic
+hash. Empty checked evidence still hashes the instrument and coverage period so
+different no-event windows remain distinct.
+
+`DailyMarketDataResearchProfile` is a deterministic policy contract, not human
+approval. The first candidate profile expresses ETF daily USD raw OHLCV,
+explicit cash distributions, next-expected-session bar availability, checked
+corporate-action evidence, supported cash-distribution and split events, no
+unsupported events, fixed preselected ETF instruments, no historical
+constituent reconstruction, and full instrument coverage for the tested period.
+Provider selection, calendar authority, source licensing, paid data spend,
+research interpretation, strategy promotion, paper trading, and live trading
+remain human-owner decisions.
+
+The pure economic evidence/profile coherence helper validates only that
+supplied policy, sessions, provenance, quality, corporate-action evidence, and
+profile facts are mutually compatible. A successful check is not snapshot
+research readiness, not provider approval, not license approval, not benchmark
+compatibility, not backtest-accounting readiness, and not strategy readiness.
+S3b1/S3b2 v1 bundles remain infrastructure artifacts for explicit-economics
+research until S3c2 introduces a versioned identity/bundle binding.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ

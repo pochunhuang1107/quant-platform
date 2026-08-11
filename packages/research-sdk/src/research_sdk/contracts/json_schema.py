@@ -15,6 +15,10 @@ from research_sdk.contracts.daily_market_data import (
     DailyMarketDataPolicy,
     DailyMarketDataQualityReport,
 )
+from research_sdk.contracts.daily_market_data_economics import (
+    DailyMarketDataCorporateActionEvidence,
+    DailyMarketDataResearchProfile,
+)
 from research_sdk.contracts.daily_market_data_snapshots import (
     DailyMarketDataExpectedSessions,
     DailyMarketDataSnapshotBundleManifest,
@@ -35,6 +39,10 @@ SCHEMA_EXPORTS: Final[dict[str, type[BaseContractModel]]] = {
     "data_snapshot_manifest.schema.json": DataSnapshotManifest,
     "daily_market_data_policy.schema.json": DailyMarketDataPolicy,
     "daily_market_data_quality_report.schema.json": DailyMarketDataQualityReport,
+    "daily_market_data_corporate_action_evidence.schema.json": (
+        DailyMarketDataCorporateActionEvidence
+    ),
+    "daily_market_data_research_profile.schema.json": DailyMarketDataResearchProfile,
     "daily_market_data_expected_sessions.schema.json": (
         DailyMarketDataExpectedSessions
     ),

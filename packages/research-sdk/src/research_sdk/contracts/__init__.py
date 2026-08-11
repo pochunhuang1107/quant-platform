@@ -14,6 +14,16 @@ from research_sdk.contracts.daily_market_data import (
     DailyMarketDataQualityStatus,
     DistributionTreatment,
 )
+from research_sdk.contracts.daily_market_data_economics import (
+    DailyMarketDataBarAvailabilityPolicy,
+    DailyMarketDataCashDistribution,
+    DailyMarketDataCorporateActionEventType,
+    DailyMarketDataCorporateActionEvidence,
+    DailyMarketDataCorporateActionEvidenceCompleteness,
+    DailyMarketDataResearchProfile,
+    DailyMarketDataSplit,
+    DailyMarketDataUnsupportedCorporateAction,
+)
 from research_sdk.contracts.daily_market_data_snapshots import (
     CORPORATE_ACTION_NOT_INTEGRATED_LIMITATION,
     DATA_ROOT_URI_PREFIX,
@@ -97,6 +107,11 @@ __all__ = [
     "DATA_ROOT_URI_PREFIX",
     "DataAdjustmentPolicy",
     "DailyMarketDataExpectedSessions",
+    "DailyMarketDataBarAvailabilityPolicy",
+    "DailyMarketDataCashDistribution",
+    "DailyMarketDataCorporateActionEventType",
+    "DailyMarketDataCorporateActionEvidence",
+    "DailyMarketDataCorporateActionEvidenceCompleteness",
     "DailyMarketDataInstrument",
     "DailyMarketDataPolicy",
     "DailyMarketDataQualityCode",
@@ -106,6 +121,9 @@ __all__ = [
     "DailyMarketDataSnapshotFileEntry",
     "DailyMarketDataSnapshotFileRole",
     "DailyMarketDataSnapshotProvenance",
+    "DailyMarketDataResearchProfile",
+    "DailyMarketDataSplit",
+    "DailyMarketDataUnsupportedCorporateAction",
     "DataSnapshotKind",
     "DataSnapshotManifest",
     "DataSnapshotStatus",

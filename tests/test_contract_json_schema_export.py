@@ -6,6 +6,8 @@ from research_sdk.contracts import (
     ArtifactKind,
     ArtifactStatus,
     AssetClass,
+    DailyMarketDataBarAvailabilityPolicy,
+    DailyMarketDataCorporateActionEvidenceCompleteness,
     DailyMarketDataQualityCode,
     DailyMarketDataQualityStatus,
     DailyMarketDataSnapshotFileRole,
@@ -49,6 +51,8 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "data_snapshot_manifest.schema.json",
         "daily_market_data_policy.schema.json",
         "daily_market_data_quality_report.schema.json",
+        "daily_market_data_corporate_action_evidence.schema.json",
+        "daily_market_data_research_profile.schema.json",
         "daily_market_data_expected_sessions.schema.json",
         "daily_market_data_snapshot_provenance.schema.json",
         "daily_market_data_snapshot_bundle_manifest.schema.json",
@@ -424,6 +428,98 @@ def test_daily_market_data_quality_report_schema_contains_contract_definitions()
     }
     assert set(schema_defs["DailyMarketDataQualityCode"]["enum"]) == {  # type: ignore[index]
         code.value for code in DailyMarketDataQualityCode
+    }
+
+
+def test_daily_market_data_corporate_action_evidence_schema_fields() -> None:
+    schema = load_schema("daily_market_data_corporate_action_evidence.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "evidence_policy_version",
+        "completeness",
+        "instrument",
+        "coverage_start_date",
+        "coverage_end_date",
+        "source_dataset",
+        "source_version",
+        "source_type",
+        "source_reference",
+        "source_content_hash",
+        "source_size_bytes",
+        "source_observed_at",
+        "ingestion_completed_at",
+        "available_at",
+        "created_at",
+        "created_by",
+        "canonicalization_version",
+        "known_limitations",
+    }
+
+
+def test_daily_market_data_corporate_action_evidence_schema_contains_definitions() -> (
+    None
+):
+    schema = load_schema("daily_market_data_corporate_action_evidence.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert "DailyMarketDataInstrument" in schema_defs
+    assert "DailyMarketDataCashDistribution" in schema_defs
+    assert "DailyMarketDataSplit" in schema_defs
+    assert "DailyMarketDataUnsupportedCorporateAction" in schema_defs
+    assert set(
+        schema_defs["DailyMarketDataCorporateActionEvidenceCompleteness"]["enum"]
+    ) == {status.value for status in DailyMarketDataCorporateActionEvidenceCompleteness}  # type: ignore[index]
+
+
+def test_daily_market_data_research_profile_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_research_profile.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "profile_id",
+        "profile_policy_version",
+        "asset_class",
+        "frequency",
+        "required_currency",
+        "permitted_temporal_coverage",
+        "adjustment_policy",
+        "distribution_treatment",
+        "daily_bar_availability_policy",
+        "allowed_corporate_action_completeness",
+        "supported_corporate_action_event_types",
+        "unsupported_events_allowed",
+        "corporate_action_coverage_requirement",
+        "calendar",
+        "timezone",
+        "session_source_id",
+        "session_source_version",
+        "universe_membership_policy",
+        "survivorship_policy",
+        "delisting_policy",
+    }
+
+
+def test_daily_market_data_research_profile_schema_contains_definitions() -> None:
+    schema = load_schema("daily_market_data_research_profile.schema.json")
+    schema_defs = schema["$defs"]  # type: ignore[index]
+
+    assert set(schema_defs["AssetClass"]["enum"]) == {  # type: ignore[index]
+        asset_class.value for asset_class in AssetClass
+    }
+    assert set(schema_defs["DataAdjustmentPolicy"]["enum"]) == {  # type: ignore[index]
+        policy.value for policy in DataAdjustmentPolicy
+    }
+    assert set(schema_defs["DistributionTreatment"]["enum"]) == {  # type: ignore[index]
+        treatment.value for treatment in DistributionTreatment
+    }
+    assert set(schema_defs["TemporalCoverage"]["enum"]) == {  # type: ignore[index]
+        coverage.value for coverage in TemporalCoverage
+    }
+    assert set(schema_defs["DailyMarketDataBarAvailabilityPolicy"]["enum"]) == {  # type: ignore[index]
+        policy.value for policy in DailyMarketDataBarAvailabilityPolicy
     }
 
 

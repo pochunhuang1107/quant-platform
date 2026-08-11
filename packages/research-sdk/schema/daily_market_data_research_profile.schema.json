@@ -1,0 +1,195 @@
+{
+  "$defs": {
+    "AssetClass": {
+      "description": "Supported high-level asset classes for research contracts.",
+      "enum": [
+        "equities",
+        "etfs",
+        "futures",
+        "fx",
+        "crypto",
+        "indices",
+        "options",
+        "mixed"
+      ],
+      "title": "AssetClass",
+      "type": "string"
+    },
+    "DailyMarketDataBarAvailabilityPolicy": {
+      "description": "Daily-bar information availability policy for research data profiles.",
+      "enum": [
+        "next_expected_session"
+      ],
+      "title": "DailyMarketDataBarAvailabilityPolicy",
+      "type": "string"
+    },
+    "DailyMarketDataCorporateActionEventType": {
+      "description": "Provider-neutral event vocabulary for S3c1 economic evidence.",
+      "enum": [
+        "cash_distribution",
+        "split",
+        "unsupported"
+      ],
+      "title": "DailyMarketDataCorporateActionEventType",
+      "type": "string"
+    },
+    "DailyMarketDataCorporateActionEvidenceCompleteness": {
+      "description": "Whether checked corporate-action source evidence is complete.",
+      "enum": [
+        "checked_no_events",
+        "checked_events_captured"
+      ],
+      "title": "DailyMarketDataCorporateActionEvidenceCompleteness",
+      "type": "string"
+    },
+    "DataAdjustmentPolicy": {
+      "description": "Adjustment policy labels for data snapshot manifests.",
+      "enum": [
+        "raw",
+        "split_adjusted",
+        "total_return",
+        "continuous",
+        "other"
+      ],
+      "title": "DataAdjustmentPolicy",
+      "type": "string"
+    },
+    "DistributionTreatment": {
+      "description": "Explicit distribution handling for daily market-data research policy.",
+      "enum": [
+        "explicit_cash",
+        "excluded_price_return_only"
+      ],
+      "title": "DistributionTreatment",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "TemporalCoverage": {
+      "description": "Point-in-time semantics for a data snapshot.",
+      "enum": [
+        "point_in_time",
+        "first_available",
+        "latest_known",
+        "mixed",
+        "not_applicable"
+      ],
+      "title": "TemporalCoverage",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Versioned deterministic requirements for daily ETF research data.",
+  "properties": {
+    "adjustment_policy": {
+      "$ref": "#/$defs/DataAdjustmentPolicy"
+    },
+    "allowed_corporate_action_completeness": {
+      "items": {
+        "$ref": "#/$defs/DailyMarketDataCorporateActionEvidenceCompleteness"
+      },
+      "minItems": 1,
+      "title": "Allowed Corporate Action Completeness",
+      "type": "array"
+    },
+    "asset_class": {
+      "$ref": "#/$defs/AssetClass"
+    },
+    "calendar": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "corporate_action_coverage_requirement": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "daily_bar_availability_policy": {
+      "$ref": "#/$defs/DailyMarketDataBarAvailabilityPolicy"
+    },
+    "delisting_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "distribution_treatment": {
+      "$ref": "#/$defs/DistributionTreatment"
+    },
+    "frequency": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "permitted_temporal_coverage": {
+      "items": {
+        "$ref": "#/$defs/TemporalCoverage"
+      },
+      "minItems": 1,
+      "title": "Permitted Temporal Coverage",
+      "type": "array"
+    },
+    "profile_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "profile_policy_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "required_currency": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "session_source_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "session_source_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "supported_corporate_action_event_types": {
+      "items": {
+        "$ref": "#/$defs/DailyMarketDataCorporateActionEventType"
+      },
+      "minItems": 1,
+      "title": "Supported Corporate Action Event Types",
+      "type": "array"
+    },
+    "survivorship_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "timezone": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "universe_membership_policy": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "unsupported_events_allowed": {
+      "title": "Unsupported Events Allowed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "profile_id",
+    "profile_policy_version",
+    "asset_class",
+    "frequency",
+    "required_currency",
+    "permitted_temporal_coverage",
+    "adjustment_policy",
+    "distribution_treatment",
+    "daily_bar_availability_policy",
+    "allowed_corporate_action_completeness",
+    "supported_corporate_action_event_types",
+    "unsupported_events_allowed",
+    "corporate_action_coverage_requirement",
+    "calendar",
+    "timezone",
+    "session_source_id",
+    "session_source_version",
+    "universe_membership_policy",
+    "survivorship_policy",
+    "delisting_policy"
+  ],
+  "title": "DailyMarketDataResearchProfile",
+  "type": "object"
+}
