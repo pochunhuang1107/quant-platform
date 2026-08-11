@@ -8,6 +8,7 @@ from research_sdk.contracts import (
     AssetClass,
     DailyMarketDataQualityCode,
     DailyMarketDataQualityStatus,
+    DailyMarketDataSnapshotFileRole,
     DataAdjustmentPolicy,
     DataSnapshotKind,
     DataSnapshotStatus,
@@ -48,6 +49,9 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "data_snapshot_manifest.schema.json",
         "daily_market_data_policy.schema.json",
         "daily_market_data_quality_report.schema.json",
+        "daily_market_data_expected_sessions.schema.json",
+        "daily_market_data_snapshot_provenance.schema.json",
+        "daily_market_data_snapshot_bundle_manifest.schema.json",
         "research_report_card.schema.json",
         "research_note.schema.json",
     }
@@ -420,6 +424,69 @@ def test_daily_market_data_quality_report_schema_contains_contract_definitions()
     }
     assert set(schema_defs["DailyMarketDataQualityCode"]["enum"]) == {  # type: ignore[index]
         code.value for code in DailyMarketDataQualityCode
+    }
+
+
+def test_daily_market_data_expected_sessions_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_expected_sessions.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "session_source_id",
+        "session_source_version",
+        "calendar",
+        "timezone",
+        "session_dates",
+    }
+
+
+def test_daily_market_data_snapshot_provenance_schema_contains_expected_fields() -> (
+    None
+):
+    schema = load_schema("daily_market_data_snapshot_provenance.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert {
+        "schema_version",
+        "provenance_policy_version",
+        "created_at",
+        "created_by",
+        "source_dataset",
+        "source_version",
+        "source_type",
+        "source_reference",
+        "source_content_hash",
+        "source_size_bytes",
+        "parser_version",
+        "temporal_coverage",
+        "as_of",
+        "ingestion_completed_at",
+        "available_at",
+        "source_instrument_reference",
+        "currency",
+        "known_limitations",
+        "corporate_action_evidence_status",
+    }.issubset(set(schema["required"]))  # type: ignore[arg-type]
+
+
+def test_daily_market_data_bundle_manifest_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_snapshot_bundle_manifest.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "bundle_format_version",
+        "snapshot_id",
+        "semantic_content_hash",
+        "policy_hash",
+        "expected_sessions_hash",
+        "provenance_hash",
+        "files",
+    }
+    schema_defs = schema["$defs"]  # type: ignore[index]
+    assert set(schema_defs["DailyMarketDataSnapshotFileRole"]["enum"]) == {  # type: ignore[index]
+        role.value for role in DailyMarketDataSnapshotFileRole
     }
 
 

@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "DailyMarketDataSnapshotFileEntry": {
+      "additionalProperties": false,
+      "description": "Storage-byte integrity facts for one authoritative bundle payload.",
+      "properties": {
+        "media_type": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "relative_path": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "role": {
+          "$ref": "#/$defs/DailyMarketDataSnapshotFileRole"
+        },
+        "row_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Count"
+        },
+        "sha256": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "role",
+        "media_type",
+        "sha256",
+        "size_bytes"
+      ],
+      "title": "DailyMarketDataSnapshotFileEntry",
+      "type": "object"
+    },
+    "DailyMarketDataSnapshotFileRole": {
+      "description": "Authoritative file roles in an S3b daily market-data snapshot bundle.",
+      "enum": [
+        "bars",
+        "expected_sessions",
+        "policy",
+        "provenance",
+        "quality_report",
+        "snapshot_manifest"
+      ],
+      "title": "DailyMarketDataSnapshotFileRole",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Dataset-specific manifest for an immutable daily market-data bundle.",
+  "properties": {
+    "bundle_format_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "expected_sessions_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/DailyMarketDataSnapshotFileEntry"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "policy_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "provenance_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "semantic_content_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "snapshot_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    }
+  },
+  "required": [
+    "schema_version",
+    "bundle_format_version",
+    "snapshot_id",
+    "semantic_content_hash",
+    "policy_hash",
+    "expected_sessions_hash",
+    "provenance_hash",
+    "files"
+  ],
+  "title": "DailyMarketDataSnapshotBundleManifest",
+  "type": "object"
+}

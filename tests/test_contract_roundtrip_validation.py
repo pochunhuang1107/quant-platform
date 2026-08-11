@@ -8,8 +8,11 @@ from pydantic import ValidationError
 
 from research_sdk.contracts import (
     BaseContractModel,
+    DailyMarketDataExpectedSessions,
     DailyMarketDataPolicy,
     DailyMarketDataQualityReport,
+    DailyMarketDataSnapshotBundleManifest,
+    DailyMarketDataSnapshotProvenance,
     DataSnapshotManifest,
     ExperimentRunRecord,
     ResearchNote,
@@ -68,6 +71,21 @@ ROUNDTRIP_CASES = (
         DailyMarketDataQualityReport,
         "daily_market_data_quality_report.schema.json",
         "daily_market_data_quality_report.json",
+    ),
+    RoundtripCase(
+        DailyMarketDataExpectedSessions,
+        "daily_market_data_expected_sessions.schema.json",
+        "daily_market_data_expected_sessions.json",
+    ),
+    RoundtripCase(
+        DailyMarketDataSnapshotProvenance,
+        "daily_market_data_snapshot_provenance.schema.json",
+        "daily_market_data_snapshot_provenance.json",
+    ),
+    RoundtripCase(
+        DailyMarketDataSnapshotBundleManifest,
+        "daily_market_data_snapshot_bundle_manifest.schema.json",
+        "daily_market_data_snapshot_bundle_manifest.json",
     ),
     RoundtripCase(
         ResearchReportCard,
@@ -185,6 +203,23 @@ def test_contract_examples_reject_unknown_top_level_fields(
         (
             ROUNDTRIP_CASES[8],
             {
+                ("created_at",): "2026-01-06T00:00:00Z",
+                ("as_of",): "2026-01-05T00:00:00Z",
+                ("ingestion_completed_at",): "2026-01-06T00:00:00Z",
+                ("available_at",): "2026-01-06T00:00:00Z",
+            },
+        ),
+        (
+            ROUNDTRIP_CASES[9],
+            {},
+        ),
+        (
+            ROUNDTRIP_CASES[10],
+            {},
+        ),
+        (
+            ROUNDTRIP_CASES[11],
+            {
                 ("created_at",): "2026-07-09T09:00:00Z",
                 ("updated_at",): "2026-07-09T09:30:00Z",
                 ("review", "reviewed_at"): "2026-07-09T09:35:00Z",
@@ -198,6 +233,9 @@ def test_contract_examples_reject_unknown_top_level_fields(
         "DataSnapshotManifest",
         "DailyMarketDataPolicy",
         "DailyMarketDataQualityReport",
+        "DailyMarketDataExpectedSessions",
+        "DailyMarketDataSnapshotProvenance",
+        "DailyMarketDataSnapshotBundleManifest",
         "ResearchReportCard",
         "ResearchNote",
     ],
@@ -217,8 +255,8 @@ def test_contract_examples_normalize_json_arrays_to_tuples() -> None:
     experiment = ExperimentRunRecord.model_validate(load_fixture(ROUNDTRIP_CASES[2]))
     artifacts = RunArtifactManifest.model_validate(load_fixture(ROUNDTRIP_CASES[3]))
     snapshot = DataSnapshotManifest.model_validate(load_fixture(ROUNDTRIP_CASES[4]))
-    report_card = ResearchReportCard.model_validate(load_fixture(ROUNDTRIP_CASES[7]))
-    note = ResearchNote.model_validate(load_fixture(ROUNDTRIP_CASES[8]))
+    report_card = ResearchReportCard.model_validate(load_fixture(ROUNDTRIP_CASES[10]))
+    note = ResearchNote.model_validate(load_fixture(ROUNDTRIP_CASES[11]))
 
     assert experiment.asset_universe.symbols == ("AAPL", "MSFT")
     assert isinstance(experiment.asset_universe.symbols, tuple)
