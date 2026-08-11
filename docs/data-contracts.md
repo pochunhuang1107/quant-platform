@@ -301,6 +301,112 @@ corporate-action/distribution evidence is not integrated. Synthetic fixtures use
 currency, and infrastructure-only limitations; they are not historical
 performance evidence.
 
+## Local Daily Market-Data Snapshot Storage
+
+S3b2 adds operational local filesystem storage for immutable S3b1 daily
+market-data snapshot bundles. It does not add or modify a contract,
+`DataSnapshotManifest`, JSON schema, semantic hash, snapshot identity input,
+provider adapter, network call, S3/Athena integration, database persistence,
+migration, calendar provider, corporate-action event source, backtest-engine
+production path, strategy, real market data, paper-trading behavior, or
+live-trading behavior.
+
+The publisher receives only a caller-owned `snapshot_root` and an already
+planned `DailyMarketDataSnapshotPlan`. It first runs the pure S3b1 verifier on
+`plan.as_file_map()` and requires the verified snapshot ID to equal
+`plan.snapshot_id` before any filesystem mutation. Invalid or corrupted plan
+state cannot create the root, `daily-market-data`, `.staging`, or any bundle
+file.
+
+The required local mapping is:
+
+```text
+<snapshot_root>/daily-market-data/<snapshot_id>/
+```
+
+This is the filesystem realization of the S3b1 portable
+`data_root_uri = daily-market-data/<snapshot_id>`. The caller may pass a
+relative or absolute root; S3b2 resolves it for I/O only. The root path is not
+persisted in any of the seven files and is not part of snapshot identity, file
+hashes, manifest content, or provenance. A complete
+`daily-market-data/<snapshot_id>` directory can be copied under another root and
+verified there without changing identity or manifest bytes.
+
+S3b2 writes exactly the seven S3b1 authoritative files:
+
+- `bars.jsonl`
+- `expected-sessions.json`
+- `policy.json`
+- `provenance.json`
+- `quality-report.json`
+- `snapshot-manifest.json`
+- `bundle-manifest.json`
+
+No success marker, current/latest pointer, lock metadata, publication manifest,
+repair record, or eighth sidecar is added. The exact bytes from
+`plan.as_file_map()` are the storage authority. Publication uses exclusive file
+creation and never deserializes, reserializes, reorders internal content,
+normalizes newlines, decodes/re-encodes, or pretty-prints bundle files.
+
+Publication stages under:
+
+```text
+<snapshot_root>/daily-market-data/.staging/<snapshot_id>.<pid>.<random>/
+```
+
+The staging directory is on the same filesystem as the final snapshot directory
+so `os.rename(staging_path, final_path)` can provide atomic final visibility.
+S3b2 deliberately uses `os.rename`, not `os.replace`, and does not add lock
+files, global locks, database locks, or platform-specific native rename
+bindings. The v1 trust model is a caller-owned cooperating local root. S3b2 does
+not claim hostile-actor hard no-replace semantics against an arbitrary local
+actor racing an empty destination directory into existence between precheck and
+rename.
+
+Every staged file is flushed and `fsync`ed after writing. S3b2 also attempts
+directory `fsync` on the staging directory after file writes and on the
+`daily-market-data` parent after final rename. Unsupported directory `fsync`
+errno results are allowed as best-effort continuation; other directory `fsync`
+errors fail publication. Atomic visibility and crash durability are separate:
+the rename boundary prevents cooperating readers from observing a partially
+written final directory, while fsync attempts improve but do not exhaustively
+prove power-loss durability.
+
+Before final rename, S3b2 reads the staged directory back, requires the exact
+seven-file set with no extras, rejects symlinks and non-regular authoritative
+files, runs the pure S3b1 verifier on the exact bytes, requires the verified
+snapshot ID to match the plan, and requires every staged byte to equal the plan
+bytes. After a successful rename, S3b2 performs required final readback
+verification and exact-byte comparison again. If final verification fails after
+rename, S3b2 raises a disk verification error and does not delete or repair the
+published immutable directory.
+
+Idempotency is exact-byte based. If the final snapshot already exists,
+publication performs no staging or overwrite. It verifies the existing bundle,
+requires the verified snapshot ID to match the requested plan, and requires all
+seven authoritative bytes to equal the plan. If so, publication returns
+`ALREADY_PRESENT`. Any missing file, extra file, symlink, non-regular file,
+failed verification, wrong snapshot ID, or byte difference is a conflict. S3b2
+does not repair, merge, overwrite, rename aside, or delete existing final
+snapshots. Corrections require a new S3b1 plan and snapshot ID.
+
+The read-only local verifier validates the S3b1 snapshot ID shape, validates the
+root without creating it, resolves the fixed `daily-market-data/<snapshot_id>`
+path, rejects path anomalies and symlinks, reads exactly seven regular files,
+passes exact bytes to the pure S3b1 verifier, and requires the verified snapshot
+ID to match the request. It never writes, creates directories, normalizes,
+repairs, deletes, or cleans staging. S3b2 refuses symlinks for the root,
+managed parent, staging parent, final snapshot directory, and authoritative
+files. `openat`/`O_NOFOLLOW` TOCTOU hardening is deferred because S3b2 v1 is
+workstation/cooperating-process infrastructure rather than a hardened
+multi-user storage daemon.
+
+S3b2 cleans up only the exact staging directory created by the current
+invocation on pre-rename failure. It never scans `.staging`, deletes unrelated
+staging children, or performs global orphan cleanup. Crash-created staging
+directories may remain and are non-authoritative until a future explicit
+maintenance command or manual cleanup handles them.
+
 ## Synthetic Daily ETF Fixture Contract
 
 The first deterministic backtest-engine slice uses

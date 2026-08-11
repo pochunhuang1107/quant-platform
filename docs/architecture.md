@@ -285,6 +285,106 @@ S3b1 because explanatory mixed-coverage authority is not yet modeled. Currency
 is explicit in provenance and the manifest; the synthetic US ETF fixture uses
 USD, but the core contracts remain provider and country neutral.
 
+## Daily Market-Data Local Snapshot Storage
+
+Slice 3 S3b2 adds local filesystem publication and read-only verification for
+already planned S3b1 daily market-data snapshot bundles. It is operational
+storage code only. S3b1 still owns identity, deterministic bytes, bundle
+filenames, `DataSnapshotManifest` contents, and pure semantic verification.
+S3b2 does not add a durable contract, schema export, provider, calendar source,
+corporate-action event data, database persistence, backtest-engine integration,
+strategy behavior, real historical evidence, paper-trading authority, or
+live-trading authority.
+
+Publication accepts a caller-owned `snapshot_root` and an already valid
+`DailyMarketDataSnapshotPlan`. Before creating the root, managed parent,
+staging directory, or any file, S3b2 verifies `plan.as_file_map()` through the
+pure S3b1 verifier and requires the verified snapshot ID to equal
+`plan.snapshot_id`. Invalid copied or corrupted plan state therefore produces
+no filesystem mutation.
+
+The local path mapping is fixed:
+
+```text
+<snapshot_root>/daily-market-data/<snapshot_id>/
+```
+
+This corresponds exactly to the portable S3b1
+`DataSnapshotManifest.data_root_uri` value `daily-market-data/<snapshot_id>`.
+The caller may provide a relative or absolute root; S3b2 normalizes it for I/O,
+but the physical root path never enters snapshot identity, bundle bytes,
+manifests, or hashes. Published bundles can be moved under another caller-owned
+root and reverified by resolving the same relative mapping there.
+
+S3b2 publishes exactly the seven S3b1 files: `bars.jsonl`,
+`expected-sessions.json`, `policy.json`, `provenance.json`,
+`quality-report.json`, `snapshot-manifest.json`, and
+`bundle-manifest.json`. There is no `_SUCCESS`, `READY`, `COMPLETED`, `latest`,
+`current`, lock metadata, publication manifest, or eighth sidecar. The
+publisher writes the exact bytes from the plan, using exclusive file creation,
+without deserializing, reserializing, newline normalization, or pretty-printing.
+
+Staging lives in the private operational namespace:
+
+```text
+<snapshot_root>/daily-market-data/.staging/<snapshot_id>.<pid>.<random>/
+```
+
+Staging randomness is only an operational collision-avoidance detail and never
+enters persisted files or research identity. S3b2 removes only the exact staging
+directory created by the current invocation on pre-publication failures. It
+does not scan `.staging`, delete stale siblings, or implement orphan cleanup;
+hard-crash staging directories may remain for future explicit maintenance or
+manual cleanup.
+
+Publication flushes and `fsync`s every staged file after writing. It also
+attempts to `fsync` the staging directory after all files are written and the
+`daily-market-data` parent after final publication. Unsupported directory
+`fsync` errors are treated as best-effort continuation; other directory `fsync`
+errors fail publication. Atomic visibility is required, and the fsync attempts
+improve crash durability, but S3b2 does not claim exhaustive power-loss
+durability guarantees.
+
+After writing staging files, S3b2 reads the exact staged directory back, rejects
+missing or extra entries, rejects symlinked or non-regular authoritative files,
+runs the pure S3b1 verifier, requires the staged snapshot ID to equal the plan
+ID, and requires every staged byte to equal the plan bytes. Only then does it
+publish with `os.rename(staging_path, final_path)`. It deliberately does not
+use `os.replace`, platform-specific `renameat2` bindings, lock files, global
+locks, or database locks. The v1 trust model is a caller-owned, cooperating
+local snapshot root; it does not claim hostile-actor hard no-replace semantics
+against an arbitrary local actor racing an empty destination directory into
+existence between the precheck and rename.
+
+Existing final snapshots are immutable. If the final path already exists,
+publication never overwrites it. S3b2 verifies the existing bundle and requires
+exact byte-for-byte equality with the requested plan before returning
+idempotent `ALREADY_PRESENT`. Semantic equivalence alone is insufficient. Any
+missing file, extra file, symlink, non-regular file, verification failure, wrong
+snapshot ID, or same-ID byte difference is a conflict; S3b2 does not repair,
+replace, merge, rename aside, or delete the published path. Concurrent
+cooperating publication of the same snapshot is handled by independent staging:
+one `os.rename` creates the final directory, and a loser that sees an expected
+destination collision verifies exact final bytes and returns `ALREADY_PRESENT`
+or reports conflict. Different snapshot IDs publish independently.
+
+After a successful rename, S3b2 performs required final on-disk verification
+through the read-only local verifier and again requires exact final bytes to
+match the plan. If this rare post-rename verification fails, S3b2 raises a disk
+verification error and does not delete or repair the final directory; an
+unexpectedly bad immutable published path requires manual investigation.
+
+The read-only local verifier validates the S3b1 snapshot ID shape, validates
+the supplied root without creating anything, resolves
+`daily-market-data/<snapshot_id>`, rejects symlink or path anomalies, reads only
+the exact seven regular authoritative files, passes those exact bytes to the
+pure S3b1 verifier, and requires the verified snapshot ID to match the request.
+It never creates, rewrites, repairs, normalizes, deletes, or cleans up files.
+S3b2 refuses symlinks for the snapshot root, `daily-market-data`, `.staging`,
+final snapshot directories, and authoritative files. TOCTOU hardening with
+`openat`/`O_NOFOLLOW` is intentionally out of scope for this
+workstation/cooperating-process v1 trust model.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ
