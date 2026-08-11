@@ -1,0 +1,50 @@
+{
+  "$defs": {
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Exact expected-session authority used for daily data quality validation.",
+  "properties": {
+    "calendar": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "session_dates": {
+      "items": {
+        "format": "date",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Session Dates",
+      "type": "array"
+    },
+    "session_source_id": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "session_source_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "timezone": {
+      "$ref": "#/$defs/NonEmptyString"
+    }
+  },
+  "required": [
+    "schema_version",
+    "session_source_id",
+    "session_source_version",
+    "calendar",
+    "timezone",
+    "session_dates"
+  ],
+  "title": "DailyMarketDataExpectedSessions",
+  "type": "object"
+}

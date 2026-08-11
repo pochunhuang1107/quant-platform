@@ -201,6 +201,90 @@ remains SPY under one explicit economic return policy. QQQ buy-and-hold should
 be recorded as a separate baseline experiment/run and compared through C2b, not
 used to replace the shared `BenchmarkReference`.
 
+## Daily Market-Data Snapshot Planning
+
+Slice 3 S3b1 adds a pure immutable snapshot-planning layer around the S3a daily
+market-data authority. It does not publish files, create temp directories,
+rename paths atomically, call providers, read storage, write persistence rows,
+modify the backtest engine, or establish real historical research authority.
+
+The S3b1 curated source format is canonicalizable UTF-8 JSON Lines: one daily
+bar object per line, exact OHLCV fields, `YYYY-MM-DD` session dates, Decimal
+OHLC strings, integer volume, no unknown keys, no comments, no nulls, and no
+JSON floating-point OHLC values. The planner parses the exact source bytes,
+hashes those same bytes for provenance, then renders canonical published
+`bars.jsonl` bytes with sorted rows, deterministic keys, canonical Decimal
+strings, LF line endings, and one final newline. Duplicate JSON object keys and
+non-standard JSON constants such as NaN and Infinity fail closed; source
+evidence is never interpreted with last-key-wins JSON behavior. Source row order
+may differ from canonical storage order; that preserves the same S3a semantic
+content hash while changing source-byte provenance and therefore the S3b1
+snapshot vintage.
+
+S3b1 keeps identities separate. The S3a semantic content hash remains the
+market-data content authority. S3b1 adds deterministic hashes for the complete
+daily-market-data policy contract, the exact expected-session authority
+contract, and the full source/capture provenance contract. Snapshot IDs use:
+
+```text
+daily-market-data-snapshot-v1-<sha256>
+```
+
+over the semantic content hash, policy hash, expected-session hash, and
+provenance hash. Provenance timestamps are part of the provenance hash, so a
+later ingestion can produce a distinct immutable snapshot vintage even when
+OHLCV values are unchanged. Output roots, temporary paths, hostnames, local
+usernames, repository checkout paths, `data_root_uri`, storage format version,
+file byte hashes, bundle-manifest bytes, file counts, and sizes are excluded
+from snapshot identity.
+
+Parser version and provenance-policy version are planner-owned facts. Callers
+cannot assert a parser version or provenance-policy version different from the
+S3b1 code path that actually parsed the source bytes and built the persisted
+provenance contract. Public canonical sidecar serialization revalidates the
+supplied contract through its own JSON representation before rendering, so
+copied Pydantic model state that bypassed validators cannot be persisted as
+authoritative bundle bytes.
+
+The S3b1 `DataSnapshotManifest.data_root_uri` is the portable relative logical
+path `daily-market-data/<snapshot_id>`. S3b2 will resolve that under a caller
+owned local snapshot root. No custom URI scheme and no absolute developer path
+is introduced. `DataSnapshotManifest.file_count` and `size_bytes` describe only
+the curated data payload, currently `bars.jsonl`; the dataset-specific bundle
+manifest records sidecar file hashes and sizes.
+
+An S3b1 bundle plan contains exactly `bars.jsonl`, `expected-sessions.json`,
+`policy.json`, `provenance.json`, `quality-report.json`,
+`snapshot-manifest.json`, and `bundle-manifest.json`. The bundle manifest is a
+dataset-specific contract, not `RunArtifactManifest`; it records payload file
+roles, relative paths, media types, byte SHA-256 hashes, sizes, and the bars
+row count. It deliberately omits a self-entry and self-hash for
+`bundle-manifest.json`.
+
+In-memory readback verification accepts only a mapping of filenames to bytes.
+It verifies the exact file set, storage hashes, canonical JSON/JSONL bytes,
+policy/session/provenance hashes, S3a semantic hash, rerun quality evidence,
+`DataSnapshotManifest` compatibility, S3b1 single-instrument universe rule,
+portable data-root rule, payload size semantics, and snapshot ID coherence. It
+can prove internal bundle consistency offline, but it cannot prove that
+recorded upstream source facts are truthful when raw source evidence is not
+embedded, and it is not cryptographic authenticity against an attacker who can
+rewrite the whole unanchored bundle.
+
+Corporate-action/distribution evidence remains an explicit boundary. S3b1 does
+not add a corporate-action event schema, evidence sidecar, source bytes, or
+economic accounting. The provenance contract can represent future
+`checked_no_events` and `events_present_unsupported` states, but the S3b1
+planner only publishes `not_integrated` because it has no dedicated
+corporate-action evidence input to verify checked claims. The synthetic S3b1
+fixture uses `not_integrated` and must disclose that corporate-action/
+distribution evidence is not integrated. A future real RAW plus explicit-cash
+research gate must reject `not_integrated` until event evidence and accounting
+support are deliberately implemented. `TemporalCoverage.MIXED` is deferred in
+S3b1 because explanatory mixed-coverage authority is not yet modeled. Currency
+is explicit in provenance and the manifest; the synthetic US ETF fixture uses
+USD, but the core contracts remain provider and country neutral.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ

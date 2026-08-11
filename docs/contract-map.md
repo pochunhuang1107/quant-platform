@@ -22,6 +22,9 @@ execution, approval workflows, trading, or external validation.
 | `DataSnapshotManifest` | `research_sdk.contracts.data_snapshots.DataSnapshotManifest` | `packages/research-sdk/src/research_sdk/contracts/data_snapshots.py` | `packages/research-sdk/schema/data_snapshot_manifest.schema.json` | `tests/fixtures/contracts/data_snapshot_manifest.json` | Reproducible point-in-time dataset snapshot metadata. |
 | `DailyMarketDataPolicy` | `research_sdk.contracts.daily_market_data.DailyMarketDataPolicy` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data.py` | `packages/research-sdk/schema/daily_market_data_policy.schema.json` | `tests/fixtures/contracts/daily_market_data_policy.json` | Provider-neutral daily market-data policy for curated execution bars. |
 | `DailyMarketDataQualityReport` | `research_sdk.contracts.daily_market_data.DailyMarketDataQualityReport` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data.py` | `packages/research-sdk/schema/daily_market_data_quality_report.schema.json` | `tests/fixtures/contracts/daily_market_data_quality_report.json` | Deterministic quality evidence for one canonical daily instrument dataset. |
+| `DailyMarketDataExpectedSessions` | `research_sdk.contracts.daily_market_data_snapshots.DailyMarketDataExpectedSessions` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data_snapshots.py` | `packages/research-sdk/schema/daily_market_data_expected_sessions.schema.json` | `tests/fixtures/contracts/daily_market_data_expected_sessions.json` | Exact expected-session authority used for daily market-data quality validation. |
+| `DailyMarketDataSnapshotProvenance` | `research_sdk.contracts.daily_market_data_snapshots.DailyMarketDataSnapshotProvenance` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data_snapshots.py` | `packages/research-sdk/schema/daily_market_data_snapshot_provenance.schema.json` | `tests/fixtures/contracts/daily_market_data_snapshot_provenance.json` | Source/capture lineage bound into immutable daily market-data snapshot identity. |
+| `DailyMarketDataSnapshotBundleManifest` | `research_sdk.contracts.daily_market_data_snapshots.DailyMarketDataSnapshotBundleManifest` | `packages/research-sdk/src/research_sdk/contracts/daily_market_data_snapshots.py` | `packages/research-sdk/schema/daily_market_data_snapshot_bundle_manifest.schema.json` | `tests/fixtures/contracts/daily_market_data_snapshot_bundle_manifest.json` | Dataset-specific file-integrity manifest for an S3b1 daily market-data snapshot bundle. |
 | `ResearchNote` | `research_sdk.contracts.research_notes.ResearchNote` | `packages/research-sdk/src/research_sdk/contracts/research_notes.py` | `packages/research-sdk/schema/research_note.schema.json` | `tests/fixtures/contracts/research_note.json` | Structured research note and decision record. |
 
 ## Contract Responsibility Map
@@ -35,6 +38,9 @@ execution, approval workflows, trading, or external validation.
 | `DataSnapshotManifest` | Data engine after Phase 1 integration. | Backtest/research runner, feature generation, experiment ledger, leakage review. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Data ingestion, vendor API calls, storage IO, content hash verification, data quality scans, external snapshot existence checks. |
 | `DailyMarketDataPolicy` | Research/data policy layer before curated snapshot creation. | Data engine, snapshot validation, leakage review, future backtest input adapters. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Provider selection, provider calls, storage adapters, calendar-source integration, benchmark calculation, strategy execution, split/dividend accounting. |
 | `DailyMarketDataQualityReport` | Pure daily market-data quality service after canonical bars and expected sessions are supplied. | Snapshot validation, experiment gate checks, future report generation. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Calendar derivation, provider/source provenance, storage inspection, file-byte verification, real-data authority, paper/live approval. |
+| `DailyMarketDataExpectedSessions` | Caller or future calendar/session authority adapter. | S3b1 snapshot planner, quality verification, readback verifier. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Calendar derivation, exchange-calendar provider selection, holiday inference, network/source lookup. |
+| `DailyMarketDataSnapshotProvenance` | S3b1 snapshot planner from caller-supplied source/capture facts and exact source bytes. | Snapshot identity, manifest construction, readback verifier, future audit tools. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Source truth verification, raw vendor evidence archival, credential management, licensing enforcement, corporate-action accounting. |
+| `DailyMarketDataSnapshotBundleManifest` | S3b1 pure planner after final bundle payload bytes are rendered. | S3b1 in-memory verifier and later S3b2 local filesystem verifier. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Filesystem publication, atomic rename, object storage, external signature/anchoring, artifact-run manifest semantics. |
 | `ResearchNote` | Research authoring and report generation tools later. | Research review workflow, comparison UI, reports, future search/indexing after approval. | Pydantic validation, JSON schema export, committed schema sync, roundtrip fixture tests, focused model tests. | Markdown rendering/parsing, LLM summarization, embeddings, semantic memory, knowledge graph behavior, agent workflow execution. |
 
 ## Contract Relationships
@@ -47,6 +53,15 @@ DataSnapshotManifest
 DailyMarketDataPolicy + DailyMarketDataQualityReport
   policy_id + content_hash + coverage + observed_session_count + one symbol
     -> validate single-instrument DataSnapshotManifest metadata before experiment use
+
+DailyMarketDataExpectedSessions + DailyMarketDataSnapshotProvenance
+  policy/session/provenance hashes + S3a semantic content hash
+    -> daily-market-data-snapshot-v1-* natural identity
+    -> DataSnapshotManifest constructed by pure S3b1 planner
+
+DailyMarketDataSnapshotBundleManifest
+  payload file byte hashes and sizes, excluding bundle-manifest.json itself
+    -> pure in-memory readback verification of S3b1 bundle bytes
 
 RunArtifactManifest
   artifact_root_uri + artifacts[]
@@ -84,6 +99,9 @@ Current schema files:
 - `packages/research-sdk/schema/data_snapshot_manifest.schema.json`
 - `packages/research-sdk/schema/daily_market_data_policy.schema.json`
 - `packages/research-sdk/schema/daily_market_data_quality_report.schema.json`
+- `packages/research-sdk/schema/daily_market_data_expected_sessions.schema.json`
+- `packages/research-sdk/schema/daily_market_data_snapshot_provenance.schema.json`
+- `packages/research-sdk/schema/daily_market_data_snapshot_bundle_manifest.schema.json`
 - `packages/research-sdk/schema/research_note.schema.json`
 
 Current fixture files:
@@ -95,6 +113,9 @@ Current fixture files:
 - `tests/fixtures/contracts/data_snapshot_manifest.json`
 - `tests/fixtures/contracts/daily_market_data_policy.json`
 - `tests/fixtures/contracts/daily_market_data_quality_report.json`
+- `tests/fixtures/contracts/daily_market_data_expected_sessions.json`
+- `tests/fixtures/contracts/daily_market_data_snapshot_provenance.json`
+- `tests/fixtures/contracts/daily_market_data_snapshot_bundle_manifest.json`
 - `tests/fixtures/contracts/research_note.json`
 
 `tests/test_contract_roundtrip_validation.py` asserts that the fixture/schema
@@ -105,7 +126,8 @@ contract matrix matches `SCHEMA_EXPORTS`.
 Supporting models appear inside top-level contracts and should not be treated as
 standalone top-level contracts unless they receive their own schema and fixture.
 Current supporting models include `RunArtifactEntry`,
-`DailyMarketDataInstrument`, `CanonicalDailyBar`, `AssetUniverseReference`,
+`DailyMarketDataInstrument`, `CanonicalDailyBar`,
+`DailyMarketDataSnapshotFileEntry`, `AssetUniverseReference`,
 `BenchmarkReference`, `RunEnvironment`, `RandomSeedMetadata`, `TimeRange`,
 `ResearchHypothesis`, `ResearchNoteReferences`, and `ResearchDecision`.
 

@@ -1,0 +1,11 @@
+{
+  "calendar": "XNYS",
+  "schema_version": "1.0.0",
+  "session_dates": [
+    "2026-01-02",
+    "2026-01-05"
+  ],
+  "session_source_id": "synthetic-session-fixture-v1",
+  "session_source_version": "2026-01-fixture",
+  "timezone": "America/New_York"
+}
