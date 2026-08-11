@@ -1,0 +1,59 @@
+{
+  "canonicalization_version": "daily-market-data-corporate-actions-v1",
+  "completeness": "checked_events_captured",
+  "coverage_end_date": "2026-01-05",
+  "coverage_start_date": "2026-01-02",
+  "created_at": "2026-01-06T00:00:00Z",
+  "created_by": "agent-codex",
+  "events": [
+    {
+      "amount": "0.25",
+      "announced_at": "2026-01-01T15:00:00Z",
+      "currency": "USD",
+      "distribution_classification": "synthetic cash distribution",
+      "event_id": "synthetic-event-cash-20260103",
+      "event_type": "cash_distribution",
+      "ex_date": "2026-01-03",
+      "instrument_id": "instrument-us-etf-qqq-xnas",
+      "payable_date": "2026-01-08",
+      "record_date": "2026-01-04",
+      "schema_version": "1.0.0",
+      "source_available_at": "2026-01-01T16:00:00Z",
+      "source_event_reference": "synthetic/actions/cash-20260103"
+    },
+    {
+      "denominator": 1,
+      "effective_date": "2026-01-04",
+      "event_id": "synthetic-event-split-20260104",
+      "event_type": "split",
+      "instrument_id": "instrument-us-etf-qqq-xnas",
+      "numerator": 2,
+      "schema_version": "1.0.0",
+      "source_available_at": "2026-01-02T16:00:00Z",
+      "source_event_reference": "synthetic/actions/split-20260104"
+    }
+  ],
+  "evidence_policy_version": "daily-market-data-corporate-action-evidence-v1",
+  "ingestion_completed_at": "2026-01-05T23:55:00Z",
+  "instrument": {
+    "instrument_id": "instrument-us-etf-qqq-xnas",
+    "symbol": "QQQ",
+    "venue": "XNAS"
+  },
+  "known_limitations": [
+    "synthetic corporate-action fixture only",
+    "not historical market data",
+    "not production source authority"
+  ],
+  "license_notes": null,
+  "schema_version": "1.0.0",
+  "source_content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source_dataset": "synthetic-corporate-action-fixture",
+  "source_observed_at": "2026-01-05T23:50:00Z",
+  "source_reference": "fixtures/corporate-actions/synthetic-actions-v1.jsonl",
+  "source_size_bytes": 321,
+  "source_type": "research_generated",
+  "source_version": "2026-01-synthetic-actions-v1",
+  "available_at": "2026-01-05T23:58:00Z",
+  "vendor_name": null
+}

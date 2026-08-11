@@ -1,0 +1,425 @@
+{
+  "$defs": {
+    "DailyMarketDataCashDistribution": {
+      "additionalProperties": false,
+      "description": "Provider-neutral cash distribution event for daily ETF evidence.",
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Amount"
+        },
+        "announced_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcDatetime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "currency": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "distribution_classification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "event_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "event_type": {
+          "const": "cash_distribution",
+          "default": "cash_distribution",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "ex_date": {
+          "format": "date",
+          "title": "Ex Date",
+          "type": "string"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "payable_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payable Date"
+        },
+        "record_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Record Date"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_available_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "source_event_reference": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "schema_version",
+        "event_id",
+        "instrument_id",
+        "source_event_reference",
+        "source_available_at",
+        "ex_date",
+        "amount",
+        "currency"
+      ],
+      "title": "DailyMarketDataCashDistribution",
+      "type": "object"
+    },
+    "DailyMarketDataCorporateActionEvent": {
+      "discriminator": {
+        "mapping": {
+          "cash_distribution": "#/$defs/DailyMarketDataCashDistribution",
+          "split": "#/$defs/DailyMarketDataSplit",
+          "unsupported": "#/$defs/DailyMarketDataUnsupportedCorporateAction"
+        },
+        "propertyName": "event_type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DailyMarketDataCashDistribution"
+        },
+        {
+          "$ref": "#/$defs/DailyMarketDataSplit"
+        },
+        {
+          "$ref": "#/$defs/DailyMarketDataUnsupportedCorporateAction"
+        }
+      ]
+    },
+    "DailyMarketDataCorporateActionEvidenceCompleteness": {
+      "description": "Whether checked corporate-action source evidence is complete.",
+      "enum": [
+        "checked_no_events",
+        "checked_events_captured"
+      ],
+      "title": "DailyMarketDataCorporateActionEvidenceCompleteness",
+      "type": "string"
+    },
+    "DailyMarketDataInstrument": {
+      "additionalProperties": false,
+      "description": "Platform-facing provider-neutral instrument reference.",
+      "properties": {
+        "instrument_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "symbol": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "venue": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "instrument_id",
+        "symbol",
+        "venue"
+      ],
+      "title": "DailyMarketDataInstrument",
+      "type": "object"
+    },
+    "DailyMarketDataSplit": {
+      "additionalProperties": false,
+      "description": "Provider-neutral split event for daily ETF evidence.",
+      "properties": {
+        "denominator": {
+          "exclusiveMinimum": 0,
+          "title": "Denominator",
+          "type": "integer"
+        },
+        "effective_date": {
+          "format": "date",
+          "title": "Effective Date",
+          "type": "string"
+        },
+        "event_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "event_type": {
+          "const": "split",
+          "default": "split",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "numerator": {
+          "exclusiveMinimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_available_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "source_event_reference": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "schema_version",
+        "event_id",
+        "instrument_id",
+        "source_event_reference",
+        "source_available_at",
+        "effective_date",
+        "numerator",
+        "denominator"
+      ],
+      "title": "DailyMarketDataSplit",
+      "type": "object"
+    },
+    "DailyMarketDataUnsupportedCorporateAction": {
+      "additionalProperties": false,
+      "description": "Provider-neutral unsupported event evidence for fail-closed behavior.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonEmptyString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "effective_date": {
+          "format": "date",
+          "title": "Effective Date",
+          "type": "string"
+        },
+        "event_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "event_type": {
+          "const": "unsupported",
+          "default": "unsupported",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "instrument_id": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "provider_event_type": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "source_available_at": {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        "source_event_reference": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      },
+      "required": [
+        "schema_version",
+        "event_id",
+        "instrument_id",
+        "source_event_reference",
+        "source_available_at",
+        "provider_event_type",
+        "effective_date"
+      ],
+      "title": "DailyMarketDataUnsupportedCorporateAction",
+      "type": "object"
+    },
+    "DataSourceType": {
+      "description": "Source categories for data snapshot manifests.",
+      "enum": [
+        "vendor",
+        "exchange",
+        "public_dataset",
+        "internal",
+        "research_generated",
+        "manual",
+        "other"
+      ],
+      "title": "DataSourceType",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete checked corporate-action evidence for one daily instrument.",
+  "properties": {
+    "available_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "canonicalization_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "completeness": {
+      "$ref": "#/$defs/DailyMarketDataCorporateActionEvidenceCompleteness"
+    },
+    "coverage_end_date": {
+      "format": "date",
+      "title": "Coverage End Date",
+      "type": "string"
+    },
+    "coverage_start_date": {
+      "format": "date",
+      "title": "Coverage Start Date",
+      "type": "string"
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "created_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "events": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DailyMarketDataCorporateActionEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "evidence_policy_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "ingestion_completed_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "instrument": {
+      "$ref": "#/$defs/DailyMarketDataInstrument"
+    },
+    "known_limitations": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Known Limitations",
+      "type": "array"
+    },
+    "license_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "source_content_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_dataset": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_observed_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "source_reference": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_size_bytes": {
+      "minimum": 0,
+      "title": "Source Size Bytes",
+      "type": "integer"
+    },
+    "source_type": {
+      "$ref": "#/$defs/DataSourceType"
+    },
+    "source_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "vendor_name": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "evidence_policy_version",
+    "completeness",
+    "instrument",
+    "coverage_start_date",
+    "coverage_end_date",
+    "source_dataset",
+    "source_version",
+    "source_type",
+    "source_reference",
+    "source_content_hash",
+    "source_size_bytes",
+    "source_observed_at",
+    "ingestion_completed_at",
+    "available_at",
+    "created_at",
+    "created_by",
+    "canonicalization_version",
+    "known_limitations"
+  ],
+  "title": "DailyMarketDataCorporateActionEvidence",
+  "type": "object"
+}

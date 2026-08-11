@@ -1,0 +1,31 @@
+{
+  "adjustment_policy": "raw",
+  "allowed_corporate_action_completeness": [
+    "checked_events_captured",
+    "checked_no_events"
+  ],
+  "asset_class": "etfs",
+  "calendar": "XNYS",
+  "corporate_action_coverage_requirement": "corporate-action evidence coverage must cover the full expected bar-session coverage",
+  "daily_bar_availability_policy": "next_expected_session",
+  "delisting_policy": "instrument must have valid coverage for the full tested period",
+  "distribution_treatment": "explicit_cash",
+  "frequency": "daily",
+  "permitted_temporal_coverage": [
+    "latest_known"
+  ],
+  "profile_id": "candidate-daily-etf-economic-evidence-v1",
+  "profile_policy_version": "daily-etf-economic-evidence-profile-v1",
+  "required_currency": "USD",
+  "schema_version": "1.0.0",
+  "session_source_id": "synthetic-session-fixture-v1",
+  "session_source_version": "2026-01-fixture",
+  "supported_corporate_action_event_types": [
+    "cash_distribution",
+    "split"
+  ],
+  "survivorship_policy": "fixed named ETF instruments; no survivorship-free security-selection claim",
+  "timezone": "America/New_York",
+  "universe_membership_policy": "fixed preselected named ETF instruments; no historical constituent discovery",
+  "unsupported_events_allowed": false
+}

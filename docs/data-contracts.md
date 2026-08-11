@@ -407,6 +407,98 @@ staging children, or performs global orphan cleanup. Crash-created staging
 directories may remain and are non-authoritative until a future explicit
 maintenance command or manual cleanup handles them.
 
+## Daily Market-Data Corporate-Action Economic Evidence
+
+S3c1 adds pure provider-neutral corporate-action economic-evidence contracts
+and a candidate daily ETF research-data profile. These contracts are additive.
+They do not change `DataSnapshotManifest`, the S3b1 v1 snapshot ID projection,
+the seven-file S3b1/S3b2 bundle, local storage, persistence, provider
+selection, calendar-source selection, real-data ingestion, backtest-engine
+accounting, or strategy behavior. No snapshot becomes research-ready in S3c1.
+
+The corporate-action event vocabulary is intentionally narrow:
+
+- `cash_distribution`
+- `split`
+- `unsupported`
+
+`unsupported` preserves provider evidence that an unmodeled corporate action
+exists. It is fail-closed evidence for later readiness/accounting decisions,
+not an economic model.
+
+Every event records a platform `event_id`, platform `instrument_id`,
+credential-free `source_event_reference`, source-level
+`source_available_at`, and event type. The economic/effective date and source
+availability time are separate facts. Cash distributions use `ex_date` as the
+economic date and require a strictly positive Decimal-compatible `amount` plus
+nonblank `currency`. Splits use `effective_date`, strictly positive integer
+`numerator` and `denominator`, reject bool ratio values, reject 1:1 events, and
+reduce ratios for semantic hashing so `2:1` and `4:2` represent the same split
+economics. Unsupported events carry provider event type and effective date but
+do not model economics.
+
+`DailyMarketDataCorporateActionEvidence` records complete checked evidence for
+one `DailyMarketDataInstrument` over an explicit covered period. It records
+source dataset/version/type/reference, exact source byte hash and size,
+source-observed time, ingestion completion, availability, creation facts,
+canonicalization version, event set, vendor/license metadata when relevant,
+and known limitations. It does not embed raw provider bytes and does not derive
+source hashes itself; a future adapter/capture boundary must compute those
+facts from exact upstream bytes. If raw bytes cannot legally be retained, a
+future source workflow must disclose the resulting audit limitation rather than
+claiming equivalent reproducibility.
+
+S3c1 uses a new evidence completeness enum:
+
+- `checked_no_events`: the covered period was checked and the event set is
+  empty.
+- `checked_events_captured`: the covered period was checked and one or more
+  events were captured.
+
+Unsupported events are represented as event records, not as a completeness
+state. Evidence chronology requires:
+
+```text
+source_observed_at <= ingestion_completed_at <= available_at <= created_at
+```
+
+Each event economic date must lie inside evidence coverage, every event must
+match the evidence instrument ID, event IDs must be unique, and event tuples
+must use canonical ordering by economic/effective date, event type, and event
+ID. This is deterministic contract validation only; fuzzy provider-event
+deduplication is not attempted.
+
+The corporate-action semantic content hash uses the
+`daily-market-data-corporate-actions-v1` domain/version. It binds instrument
+identity, coverage start/end, and canonical event economics. It excludes event
+IDs, source references, and source timestamps because those are lineage facts
+retained in the full evidence contract. A checked empty event set still hashes
+the instrument and coverage dates, so different no-event windows have
+different semantic hashes. S3c2 will decide how this semantic hash and the full
+evidence contract are bound into a versioned market-data snapshot identity.
+
+`DailyMarketDataResearchProfile` is a deterministic policy definition, not an
+approval record. The first candidate profile is ETF/daily/USD, RAW tradable
+OHLCV, `explicit_cash` distributions, `latest_known` temporal coverage for
+ordinary real historical captures unless an official PIT source is later
+verified, `next_expected_session` daily-bar availability, checked
+corporate-action evidence, cash-distribution and split support, no unsupported
+events, fixed preselected ETF instruments, no historical constituent
+discovery, no survivorship-free security-selection claim, and full instrument
+coverage for the tested period. Provider choice, calendar authority, licensing
+acceptance, paid data spend, and any financial conclusion remain outside the
+contract.
+
+`validate_daily_market_data_economic_evidence(...)` validates only
+evidence/profile coherence across a supplied daily market-data policy,
+expected sessions, v1 snapshot provenance, quality report, corporate-action
+evidence, and research profile. A successful result does not establish
+snapshot research readiness, experiment readiness, benchmark compatibility,
+provider approval, license approval, backtest accounting support, strategy
+validity, paper-trading readiness, or live-trading readiness. Existing S3b1 v1
+provenance may still say `not_integrated`; separate S3c1 evidence does not
+retroactively alter v1 snapshot identity.
+
 ## Synthetic Daily ETF Fixture Contract
 
 The first deterministic backtest-engine slice uses
