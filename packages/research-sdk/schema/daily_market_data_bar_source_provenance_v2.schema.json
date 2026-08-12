@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "DataSourceType": {
+      "description": "Source categories for data snapshot manifests.",
+      "enum": [
+        "vendor",
+        "exchange",
+        "public_dataset",
+        "internal",
+        "research_generated",
+        "manual",
+        "other"
+      ],
+      "title": "DataSourceType",
+      "type": "string"
+    },
+    "NonEmptyString": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "type": "string"
+    },
+    "TemporalCoverage": {
+      "description": "Point-in-time semantics for a data snapshot.",
+      "enum": [
+        "point_in_time",
+        "first_available",
+        "latest_known",
+        "mixed",
+        "not_applicable"
+      ],
+      "title": "TemporalCoverage",
+      "type": "string"
+    },
+    "UtcDatetime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Bar-only source and capture authority for a snapshot-v2 bundle.",
+  "properties": {
+    "as_of": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "available_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "created_by": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "currency": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "ingestion_completed_at": {
+      "$ref": "#/$defs/UtcDatetime"
+    },
+    "known_limitations": {
+      "items": {
+        "$ref": "#/$defs/NonEmptyString"
+      },
+      "minItems": 1,
+      "title": "Known Limitations",
+      "type": "array"
+    },
+    "license_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "parser_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "provenance_policy_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "source_content_hash": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_dataset": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_instrument_reference": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_observed_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UtcDatetime"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "source_reference": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "source_size_bytes": {
+      "minimum": 0,
+      "title": "Source Size Bytes",
+      "type": "integer"
+    },
+    "source_type": {
+      "$ref": "#/$defs/DataSourceType"
+    },
+    "source_version": {
+      "$ref": "#/$defs/NonEmptyString"
+    },
+    "temporal_coverage": {
+      "$ref": "#/$defs/TemporalCoverage"
+    },
+    "vendor_name": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "provenance_policy_version",
+    "created_at",
+    "created_by",
+    "source_dataset",
+    "source_version",
+    "source_type",
+    "source_reference",
+    "source_content_hash",
+    "source_size_bytes",
+    "parser_version",
+    "temporal_coverage",
+    "as_of",
+    "ingestion_completed_at",
+    "available_at",
+    "source_instrument_reference",
+    "currency",
+    "known_limitations"
+  ],
+  "title": "DailyMarketDataBarSourceProvenanceV2",
+  "type": "object"
+}

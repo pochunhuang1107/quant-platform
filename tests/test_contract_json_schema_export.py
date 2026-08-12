@@ -11,6 +11,7 @@ from research_sdk.contracts import (
     DailyMarketDataQualityCode,
     DailyMarketDataQualityStatus,
     DailyMarketDataSnapshotFileRole,
+    DailyMarketDataSnapshotFileRoleV2,
     DataAdjustmentPolicy,
     DataSnapshotKind,
     DataSnapshotStatus,
@@ -56,6 +57,8 @@ def test_schema_export_allowlist_contains_expected_files_only() -> None:
         "daily_market_data_expected_sessions.schema.json",
         "daily_market_data_snapshot_provenance.schema.json",
         "daily_market_data_snapshot_bundle_manifest.schema.json",
+        "daily_market_data_bar_source_provenance_v2.schema.json",
+        "daily_market_data_snapshot_bundle_manifest_v2.schema.json",
         "research_report_card.schema.json",
         "research_note.schema.json",
     }
@@ -583,6 +586,62 @@ def test_daily_market_data_bundle_manifest_schema_contains_expected_fields() -> 
     schema_defs = schema["$defs"]  # type: ignore[index]
     assert set(schema_defs["DailyMarketDataSnapshotFileRole"]["enum"]) == {  # type: ignore[index]
         role.value for role in DailyMarketDataSnapshotFileRole
+    }
+
+
+def test_daily_market_data_bar_provenance_v2_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_bar_source_provenance_v2.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "provenance_policy_version",
+        "created_at",
+        "created_by",
+        "source_dataset",
+        "source_version",
+        "source_type",
+        "source_reference",
+        "source_content_hash",
+        "source_size_bytes",
+        "parser_version",
+        "temporal_coverage",
+        "as_of",
+        "ingestion_completed_at",
+        "available_at",
+        "source_instrument_reference",
+        "currency",
+        "known_limitations",
+    }
+    forbidden = {
+        "corporate_action_evidence_status",
+        "corporate_action_source_reference",
+        "corporate_action_source_content_hash",
+        "corporate_action_source_size_bytes",
+        "corporate_action_event_count",
+    }
+    assert forbidden.isdisjoint(set(schema["properties"]))  # type: ignore[arg-type]
+
+
+def test_daily_market_data_bundle_manifest_v2_schema_contains_expected_fields() -> None:
+    schema = load_schema("daily_market_data_snapshot_bundle_manifest_v2.schema.json")
+
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {  # type: ignore[arg-type]
+        "schema_version",
+        "bundle_format_version",
+        "snapshot_id",
+        "semantic_content_hash",
+        "policy_hash",
+        "expected_sessions_hash",
+        "bar_provenance_hash",
+        "corporate_action_semantic_hash",
+        "corporate_action_evidence_authority_hash",
+        "files",
+    }
+    schema_defs = schema["$defs"]  # type: ignore[index]
+    assert set(schema_defs["DailyMarketDataSnapshotFileRoleV2"]["enum"]) == {  # type: ignore[index]
+        role.value for role in DailyMarketDataSnapshotFileRoleV2
     }
 
 
