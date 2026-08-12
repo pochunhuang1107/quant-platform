@@ -11,6 +11,11 @@ from research_sdk.daily_market_data_storage.local import (
     publish_local_daily_market_data_snapshot,
     verify_local_daily_market_data_snapshot,
 )
+from research_sdk.daily_market_data_storage.local_v2 import (
+    LocalDailyMarketDataSnapshotPublicationV2,
+    publish_local_daily_market_data_snapshot_v2,
+    verify_local_daily_market_data_snapshot_v2,
+)
 from research_sdk.daily_market_data_storage.planning import (
     DailyMarketDataSnapshotPlan,
     DailyMarketDataSnapshotPlanningError,
@@ -57,6 +62,7 @@ __all__ = [
     "DailyMarketDataSnapshotVerificationError",
     "DailyMarketDataSnapshotVerificationV2Error",
     "LocalDailyMarketDataSnapshotPublication",
+    "LocalDailyMarketDataSnapshotPublicationV2",
     "LocalDailyMarketDataSnapshotPublicationStatus",
     "PlannedDailyMarketDataSnapshotFile",
     "PlannedDailyMarketDataSnapshotFileV2",
@@ -66,8 +72,10 @@ __all__ = [
     "plan_daily_market_data_snapshot",
     "plan_daily_market_data_snapshot_v2",
     "publish_local_daily_market_data_snapshot",
+    "publish_local_daily_market_data_snapshot_v2",
     "render_canonical_daily_bars",
     "verify_local_daily_market_data_snapshot",
+    "verify_local_daily_market_data_snapshot_v2",
     "verify_daily_market_data_snapshot_bundle",
     "verify_daily_market_data_snapshot_bundle_v2",
 ]
