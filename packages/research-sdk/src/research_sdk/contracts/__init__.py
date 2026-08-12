@@ -35,6 +35,14 @@ from research_sdk.contracts.daily_market_data_snapshots import (
     DailyMarketDataSnapshotFileRole,
     DailyMarketDataSnapshotProvenance,
 )
+from research_sdk.contracts.daily_market_data_snapshots_v2 import (
+    BUNDLE_FORMAT_VERSION_V2,
+    SNAPSHOT_ID_V2_PREFIX,
+    DailyMarketDataBarSourceProvenanceV2,
+    DailyMarketDataSnapshotBundleManifestV2,
+    DailyMarketDataSnapshotFileEntryV2,
+    DailyMarketDataSnapshotFileRoleV2,
+)
 from research_sdk.contracts.data_snapshots import DataSnapshotManifest
 from research_sdk.contracts.enums import (
     ArtifactFormat,
@@ -101,6 +109,7 @@ __all__ = [
     "ArtifactStatus",
     "BaseContractModel",
     "BenchmarkReference",
+    "BUNDLE_FORMAT_VERSION_V2",
     "CanonicalDailyBar",
     "CORPORATE_ACTION_NOT_INTEGRATED_LIMITATION",
     "CorporateActionEvidenceStatus",
@@ -108,6 +117,7 @@ __all__ = [
     "DataAdjustmentPolicy",
     "DailyMarketDataExpectedSessions",
     "DailyMarketDataBarAvailabilityPolicy",
+    "DailyMarketDataBarSourceProvenanceV2",
     "DailyMarketDataCashDistribution",
     "DailyMarketDataCorporateActionEventType",
     "DailyMarketDataCorporateActionEvidence",
@@ -118,8 +128,11 @@ __all__ = [
     "DailyMarketDataQualityReport",
     "DailyMarketDataQualityStatus",
     "DailyMarketDataSnapshotBundleManifest",
+    "DailyMarketDataSnapshotBundleManifestV2",
     "DailyMarketDataSnapshotFileEntry",
+    "DailyMarketDataSnapshotFileEntryV2",
     "DailyMarketDataSnapshotFileRole",
+    "DailyMarketDataSnapshotFileRoleV2",
     "DailyMarketDataSnapshotProvenance",
     "DailyMarketDataResearchProfile",
     "DailyMarketDataSplit",
@@ -164,6 +177,7 @@ __all__ = [
     "RunEnvironment",
     "SchemaVersion",
     "SNAPSHOT_ID_PREFIX",
+    "SNAPSHOT_ID_V2_PREFIX",
     "TemporalCoverage",
     "TimeRange",
     "UtcDatetime",

@@ -457,6 +457,80 @@ compatibility, not backtest-accounting readiness, and not strategy readiness.
 S3b1/S3b2 v1 bundles remain infrastructure artifacts for explicit-economics
 research until S3c2 introduces a versioned identity/bundle binding.
 
+Slice 3 S3c2a adds pure daily market-data snapshot-v2 authority, natural
+identity, bundle planning, and in-memory verification. It is additive and does
+not modify S3a semantics, v1 snapshot contracts, v1 identity, v1
+planning/verification, S3b2 local filesystem behavior, provider acquisition,
+persistence, backtest-engine accounting, or strategy behavior.
+
+Snapshot-v2 IDs use:
+
+```text
+daily-market-data-snapshot-v2-<sha256>
+```
+
+over the S3a bar semantic content hash, unchanged policy hash, unchanged
+expected-session hash, v2 bar-source provenance hash, S3c1 corporate-action
+semantic hash, and complete corporate-action evidence authority hash. The
+identity domain/version is `daily-market-data-snapshot-v2`. Bundle format is
+separate and uses `daily-market-data-snapshot-bundle-v2`; bundle format,
+filesystem paths, file-byte hashes, staging paths, and bundle-manifest bytes
+are not natural identity inputs.
+
+V2 uses a bar-only provenance sidecar because v1
+`DailyMarketDataSnapshotProvenance` contains
+`corporate_action_evidence_status` and S3b1 intentionally records
+`not_integrated`. Snapshot-v2 therefore persists `bar-provenance.json` using
+`DailyMarketDataBarSourceProvenanceV2`; it records only bar source/capture
+authority and rejects the legacy `corporate-action/distribution evidence is
+not integrated` limitation. Corporate-action source authority remains in
+`corporate-action-evidence.json`.
+
+The exact S3c2a bundle-v2 files are:
+
+- `bars.jsonl`
+- `expected-sessions.json`
+- `policy.json`
+- `bar-provenance.json`
+- `quality-report.json`
+- `corporate-action-evidence.json`
+- `snapshot-manifest.json`
+- `bundle-manifest.json`
+
+There is no `provenance.json`, `corporate-actions.jsonl`, authority sidecar,
+profile sidecar, readiness marker, latest/current pointer, or filesystem
+publication in S3c2a. The bundle manifest records the first seven payload
+files and excludes `bundle-manifest.json` itself.
+
+S3c2a adds a complete authority hash over the validated
+`DailyMarketDataCorporateActionEvidence` contract. This is intentionally
+separate from the S3c1 economic semantic hash: identical split/cash economics
+from different source references, source hashes, vintages, event
+`source_available_at` facts, or capture timestamps keep the same economic hash
+but produce a different evidence-authority hash and therefore a different
+snapshot-v2 ID.
+
+`DataSnapshotManifest` remains unchanged. In v2 its source dataset/version/type,
+source observation, vendor/license, currency, and creator fields remain
+primary bar-dataset metadata. Corporate-action source authority is represented
+by `corporate-action-evidence.json` and bound through the v2 bundle manifest
+and snapshot ID. `content_hash`, `row_count`, `file_count = 1`, and
+`size_bytes` continue to describe the primary `bars.jsonl` payload only.
+
+V2 manifest timing is deterministic and uses no runtime clock. It derives
+`ingestion_completed_at` as the max of bar and corporate-action ingestion
+completion, `available_at` as the max of both availability timestamps,
+`created_at` as the max of both created timestamps, and `as_of` as the max of
+bar provenance `as_of` and corporate-action evidence `source_observed_at`.
+The v2 `as_of` is the combined bound source-vintage cutoff, not the final
+historical session date and not wall-clock planning time.
+
+S3c2a still proves internal captured authority only. It does not prove provider
+truth, source licensing, raw source retention, benchmark compatibility,
+backtest corporate-action accounting, leakage-safe strategy execution, or
+human approval. V2 local publication and deterministic snapshot/profile
+compatibility remain S3c2b.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ

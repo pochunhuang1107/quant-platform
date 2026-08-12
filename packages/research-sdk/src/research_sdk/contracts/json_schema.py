@@ -24,6 +24,10 @@ from research_sdk.contracts.daily_market_data_snapshots import (
     DailyMarketDataSnapshotBundleManifest,
     DailyMarketDataSnapshotProvenance,
 )
+from research_sdk.contracts.daily_market_data_snapshots_v2 import (
+    DailyMarketDataBarSourceProvenanceV2,
+    DailyMarketDataSnapshotBundleManifestV2,
+)
 from research_sdk.contracts.data_snapshots import DataSnapshotManifest
 from research_sdk.contracts.ledger import ExperimentRunRecord
 from research_sdk.contracts.report_cards import ResearchReportCard
@@ -51,6 +55,12 @@ SCHEMA_EXPORTS: Final[dict[str, type[BaseContractModel]]] = {
     ),
     "daily_market_data_snapshot_bundle_manifest.schema.json": (
         DailyMarketDataSnapshotBundleManifest
+    ),
+    "daily_market_data_bar_source_provenance_v2.schema.json": (
+        DailyMarketDataBarSourceProvenanceV2
+    ),
+    "daily_market_data_snapshot_bundle_manifest_v2.schema.json": (
+        DailyMarketDataSnapshotBundleManifestV2
     ),
     "research_report_card.schema.json": ResearchReportCard,
     "research_note.schema.json": ResearchNote,

@@ -18,6 +18,13 @@ from research_sdk.daily_market_data_storage.planning import (
     PlannedDailyMarketDataSnapshotFile,
     plan_daily_market_data_snapshot,
 )
+from research_sdk.daily_market_data_storage.planning_v2 import (
+    DailyMarketDataBarSourceProvenanceInputV2,
+    DailyMarketDataSnapshotPlanningV2Error,
+    DailyMarketDataSnapshotPlanV2,
+    PlannedDailyMarketDataSnapshotFileV2,
+    plan_daily_market_data_snapshot_v2,
+)
 from research_sdk.daily_market_data_storage.serialization import (
     DailyMarketDataSnapshotSerializationError,
     parse_canonical_daily_bars,
@@ -28,26 +35,39 @@ from research_sdk.daily_market_data_storage.verification import (
     VerifiedDailyMarketDataSnapshot,
     verify_daily_market_data_snapshot_bundle,
 )
+from research_sdk.daily_market_data_storage.verification_v2 import (
+    DailyMarketDataSnapshotVerificationV2Error,
+    VerifiedDailyMarketDataSnapshotV2,
+    verify_daily_market_data_snapshot_bundle_v2,
+)
 
 __all__ = [
     "DailyMarketDataSnapshotConflictError",
+    "DailyMarketDataBarSourceProvenanceInputV2",
     "DailyMarketDataSnapshotDiskVerificationError",
     "DailyMarketDataSnapshotPlan",
+    "DailyMarketDataSnapshotPlanV2",
     "DailyMarketDataSnapshotPathError",
     "DailyMarketDataSnapshotPlanningError",
+    "DailyMarketDataSnapshotPlanningV2Error",
     "DailyMarketDataSnapshotPublicationError",
     "DailyMarketDataSnapshotProvenanceInput",
     "DailyMarketDataSnapshotSerializationError",
     "DailyMarketDataSnapshotStorageError",
     "DailyMarketDataSnapshotVerificationError",
+    "DailyMarketDataSnapshotVerificationV2Error",
     "LocalDailyMarketDataSnapshotPublication",
     "LocalDailyMarketDataSnapshotPublicationStatus",
     "PlannedDailyMarketDataSnapshotFile",
+    "PlannedDailyMarketDataSnapshotFileV2",
     "VerifiedDailyMarketDataSnapshot",
+    "VerifiedDailyMarketDataSnapshotV2",
     "parse_canonical_daily_bars",
     "plan_daily_market_data_snapshot",
+    "plan_daily_market_data_snapshot_v2",
     "publish_local_daily_market_data_snapshot",
     "render_canonical_daily_bars",
     "verify_local_daily_market_data_snapshot",
     "verify_daily_market_data_snapshot_bundle",
+    "verify_daily_market_data_snapshot_bundle_v2",
 ]

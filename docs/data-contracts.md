@@ -499,6 +499,102 @@ validity, paper-trading readiness, or live-trading readiness. Existing S3b1 v1
 provenance may still say `not_integrated`; separate S3c1 evidence does not
 retroactively alter v1 snapshot identity.
 
+## Daily Market-Data Snapshot V2
+
+S3c2a adds a pure immutable snapshot-v2 authority layer. It freezes how
+S3c1 corporate-action evidence is bound into daily market-data snapshot
+identity, but it does not add filesystem publication, provider acquisition,
+source-capture storage, persistence, profile compatibility, readiness
+approval, backtest-engine accounting, or strategy behavior.
+
+Snapshot-v2 IDs use:
+
+```text
+daily-market-data-snapshot-v2-<sha256>
+```
+
+over exactly:
+
+- S3a daily bar semantic content hash;
+- unchanged `DailyMarketDataPolicy` hash;
+- unchanged `DailyMarketDataExpectedSessions` hash;
+- complete `DailyMarketDataBarSourceProvenanceV2` hash;
+- S3c1 corporate-action economic semantic hash;
+- complete corporate-action evidence authority hash.
+
+The bundle representation version is
+`daily-market-data-snapshot-bundle-v2` and is not a natural identity input.
+Storage byte hashes, filesystem roots, staging paths, bundle-manifest bytes,
+compression, and local publication details remain outside snapshot-v2 natural
+identity.
+
+`DailyMarketDataBarSourceProvenanceV2` is a new bar-only source/capture
+contract. It preserves the useful bar source fields from v1 provenance but
+omits every corporate-action evidence field. This avoids carrying v1
+`not_integrated` corporate-action status into a snapshot version that binds
+separate checked corporate-action evidence. The v2 bar provenance contract
+rejects the exact legacy limitation
+`corporate-action/distribution evidence is not integrated`.
+
+S3c2a uses exactly eight authoritative files:
+
+- `bars.jsonl`
+- `expected-sessions.json`
+- `policy.json`
+- `bar-provenance.json`
+- `quality-report.json`
+- `corporate-action-evidence.json`
+- `snapshot-manifest.json`
+- `bundle-manifest.json`
+
+There is no `provenance.json`, `corporate-actions.jsonl`, profile file,
+readiness file, latest/current marker, or local filesystem publication in
+S3c2a. The bundle manifest records the first seven payload files and excludes
+itself. Only the bars file entry carries `row_count`; sidecars do not.
+
+The corporate-action semantic hash remains the S3c1
+`daily-market-data-corporate-actions-v1` economic projection. S3c2a adds a
+separate `daily-market-data-corporate-action-evidence-authority-v1` hash over
+the complete validated `DailyMarketDataCorporateActionEvidence` contract.
+Changing only source reference, source version, source content hash, event
+`source_available_at`, source observation, availability, or creation facts
+changes the evidence-authority hash and snapshot-v2 ID without changing the
+economic semantic hash.
+
+`DataSnapshotManifest` remains unchanged. In v2, its source fields describe the
+primary bar dataset: bar source dataset/version/type, bar source observation,
+bar vendor/license fields, bar currency, and bar creator. Corporate-action
+source authority is represented in `corporate-action-evidence.json` and bound
+through the v2 hashes and snapshot ID. Manifest `content_hash`, `row_count`,
+`file_count`, and `size_bytes` remain bars-only payload facts.
+
+S3c2a deterministic manifest timing uses component maxima:
+
+```text
+ingestion_completed_at = max(bar ingestion, corporate-action ingestion)
+available_at = max(bar availability, corporate-action availability)
+created_at = max(bar created_at, corporate-action created_at)
+as_of = max(bar as_of, corporate-action source_observed_at)
+```
+
+No runtime clock is used for persisted v2 facts. The v2 `as_of` means combined
+bound source-vintage cutoff. It is not the final historical session date,
+event availability time, or physical planning wall-clock time.
+
+Snapshot-v2 planning requires passing S3a bar quality, expected-session
+calendar/timezone coherence with policy, bar coverage not exceeding bar
+provenance `as_of`, full instrument equality between bars and corporate-action
+evidence, and corporate-action evidence coverage covering the expected bar
+session range. Unsupported corporate-action events may be preserved in v2
+because profile compatibility is deferred. S3c2a answers what exact evidence
+exists, not whether the evidence is acceptable under a research profile.
+
+Pure v2 verification requires the exact eight-file bundle, strict canonical
+bytes, rederived bar/policy/session/bar-provenance/corporate-action hashes,
+rederived snapshot-v2 ID, exact bundle-manifest coherence, and exact
+`DataSnapshotManifest` boundary semantics. It performs no filesystem,
+provider, network, database, or backtest-engine I/O.
+
 ## Synthetic Daily ETF Fixture Contract
 
 The first deterministic backtest-engine slice uses
