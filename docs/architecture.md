@@ -531,6 +531,63 @@ backtest corporate-action accounting, leakage-safe strategy execution, or
 human approval. V2 local publication and deterministic snapshot/profile
 compatibility remain S3c2b.
 
+Slice 3 S3c2b1 adds local filesystem publication and read-only verification for
+already planned S3c2a snapshot-v2 bundles. It is additive in
+`daily_market_data_storage.local_v2`; the closed S3b2 v1 `local.py`
+implementation remains unchanged. Callers must use explicit APIs:
+`publish_local_daily_market_data_snapshot(...)` and
+`verify_local_daily_market_data_snapshot(...)` for v1, and
+`publish_local_daily_market_data_snapshot_v2(...)` and
+`verify_local_daily_market_data_snapshot_v2(...)` for v2. There is no generic
+version dispatcher and no automatic publication dispatcher.
+
+S3c2b1 uses the same local namespace as v1:
+
+```text
+<snapshot_root>/daily-market-data/<snapshot_id>/
+```
+
+The v1 and v2 snapshot ID prefixes provide directory identity separation, so
+both versions may coexist under one `daily-market-data` root. V2 publication
+stores exactly the eight S3c2a files: `bars.jsonl`, `expected-sessions.json`,
+`policy.json`, `bar-provenance.json`, `quality-report.json`,
+`corporate-action-evidence.json`, `snapshot-manifest.json`, and
+`bundle-manifest.json`. It adds no `provenance.json`, profile sidecar,
+compatibility sidecar, success marker, latest/current pointer, lock metadata,
+or publication manifest.
+
+Before creating `snapshot_root`, `daily-market-data`, `.staging`, a staging
+directory, or any bundle file, S3c2b1 runs
+`verify_daily_market_data_snapshot_bundle_v2(...)` on `plan.as_file_map()` and
+requires the verified snapshot ID to match `plan.snapshot_id` and the v2 ID
+pattern. Invalid or corrupted plan state therefore produces no filesystem
+mutation.
+
+Publication mirrors the S3b2 cooperating-root model: caller-owned root,
+symlink refusal for the root, managed parent, staging parent, final snapshot
+directory, and authoritative files, private same-filesystem staging under
+`daily-market-data/.staging/`, exclusive file creation, exact planned bytes,
+file flush and `fsync`, best-effort portable directory `fsync`, staged readback
+through the pure v2 verifier, `os.rename` for final visibility, parent
+directory `fsync`, and mandatory final readback verification. It deliberately
+does not use `os.replace`, copy fallback, overwrite, repair, or broad
+`openat`/`O_NOFOLLOW` hostile-root hardening.
+
+Existing final snapshot-v2 directories are immutable exact-byte authority.
+Same snapshot ID plus identical authoritative bytes returns `ALREADY_PRESENT`;
+same snapshot ID plus any byte, file-set, symlink, non-regular file, or
+verification difference is a conflict. If final verification fails after a
+successful rename, S3c2b1 raises a disk verification error and leaves the final
+directory in place for diagnosis. Staging cleanup removes only the staging
+directory created by the current invocation and leaves unrelated staging
+children untouched.
+
+S3c2b1 still does not add profile hashing, snapshot/profile compatibility,
+research readiness, provider/source acquisition, raw-source archival,
+persistence, migrations, backtest-engine accounting, strategy behavior, paper
+trading, or live trading. Deterministic snapshot/profile compatibility remains
+a later S3c2b slice.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ

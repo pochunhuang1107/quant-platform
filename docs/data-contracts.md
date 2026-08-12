@@ -595,6 +595,89 @@ rederived snapshot-v2 ID, exact bundle-manifest coherence, and exact
 `DataSnapshotManifest` boundary semantics. It performs no filesystem,
 provider, network, database, or backtest-engine I/O.
 
+## Local Daily Market-Data Snapshot-V2 Storage
+
+S3c2b1 adds operational local filesystem publication and readback for already
+planned S3c2a snapshot-v2 bundles. It adds no durable contract, JSON schema,
+snapshot identity input, bundle-v2 file, provider adapter, real-data
+acquisition, source archive, database persistence, migration, backtest-engine
+accounting, strategy logic, profile compatibility, research-readiness claim,
+paper-trading behavior, or live-trading behavior.
+
+The implementation is intentionally additive in
+`research_sdk.daily_market_data_storage.local_v2`. The closed S3b2 v1
+`local.py` behavior remains separate, and callers choose explicit APIs rather
+than a version dispatcher:
+
+- v1: `publish_local_daily_market_data_snapshot(...)` and
+  `verify_local_daily_market_data_snapshot(...)`
+- v2: `publish_local_daily_market_data_snapshot_v2(...)` and
+  `verify_local_daily_market_data_snapshot_v2(...)`
+
+Both versions use the same physical namespace:
+
+```text
+<snapshot_root>/daily-market-data/<snapshot_id>/
+```
+
+This matches the portable `DataSnapshotManifest.data_root_uri` convention.
+Version separation comes from the required snapshot ID prefixes, including
+`daily-market-data-snapshot-v2-<64 lowercase hex>` for the v2 local APIs.
+S3c2b1 also retains the shared private staging namespace:
+`<snapshot_root>/daily-market-data/.staging/`.
+
+V2 local storage publishes exactly:
+
+- `bars.jsonl`
+- `expected-sessions.json`
+- `policy.json`
+- `bar-provenance.json`
+- `quality-report.json`
+- `corporate-action-evidence.json`
+- `snapshot-manifest.json`
+- `bundle-manifest.json`
+
+No `provenance.json`, `corporate-actions.jsonl`, profile file, compatibility
+file, readiness marker, success marker, latest/current pointer, lock metadata,
+or publication manifest is added. The exact bytes from
+`DailyMarketDataSnapshotPlanV2.as_file_map()` are the storage authority.
+
+Before any filesystem mutation, the publisher verifies the plan bytes through
+`verify_daily_market_data_snapshot_bundle_v2(...)`, requires the verified
+snapshot ID to equal the plan ID, and validates the v2 snapshot-ID shape.
+Invalid plan state cannot create the root, managed parent, staging namespace,
+staging directory, or authoritative files.
+
+Publication mirrors the S3b2 immutable local-storage mechanics: caller-owned
+root, symlink refusal for managed paths and authoritative files, private
+same-filesystem staging, exclusive file creation, exact planned bytes, file
+flush and `fsync`, staging-directory `fsync` attempt, staged v2 verification
+and byte comparison, `os.rename` without overwrite or copy fallback, managed
+parent `fsync` attempt, final read-only v2 verification, and final exact-byte
+comparison. Unsupported directory `fsync` errno values remain best-effort;
+other directory `fsync` errors fail publication.
+
+Idempotency is exact-byte based. If the requested v2 final directory already
+exists, publication verifies it as v2 and returns `ALREADY_PRESENT` only when
+all eight authoritative bytes exactly match the requested plan. Missing files,
+extra files, corrupt files, symlinks, non-regular files, failed v2
+verification, wrong snapshot ID, or byte differences are immutable conflicts.
+The publisher never overwrites, repairs, normalizes, merges, deletes, or
+renames aside an existing final snapshot.
+
+The read-only v2 local verifier validates the v2 ID, validates the existing
+root, resolves `daily-market-data/<snapshot_id>`, reads exactly the eight
+regular authoritative files, passes those bytes to the pure v2 verifier, and
+requires the verified snapshot ID to match the request. It creates, rewrites,
+repairs, deletes, and cleans nothing. The local filesystem trust model remains
+the S3b2 cooperating-root model, not a hardened untrusted multi-tenant
+filesystem sandbox.
+
+If publication fails before final rename, S3c2b1 best-effort removes only the
+staging directory created by the current invocation. If final verification
+fails after a successful rename, it raises a disk verification error and
+preserves the final directory for diagnosis.
+
 ## Synthetic Daily ETF Fixture Contract
 
 The first deterministic backtest-engine slice uses
