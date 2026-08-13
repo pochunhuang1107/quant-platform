@@ -588,6 +588,67 @@ persistence, migrations, backtest-engine accounting, strategy behavior, paper
 trading, or live trading. Deterministic snapshot/profile compatibility remains
 a later S3c2b slice.
 
+Slice 3 S3c2b2 adds deterministic daily market-data research-profile identity
+and pure verified snapshot-v2/profile compatibility. The profile hash uses the
+domain `daily-market-data-research-profile` and identity version
+`daily-market-data-research-profile-hash-v1`; it hashes the complete
+revalidated `DailyMarketDataResearchProfile.model_dump(mode="json")` inside
+that domain/version wrapper with the same canonical JSON semantics as snapshot
+identity helpers. The complete profile contract is the projection, including
+`profile_id`, `profile_policy_version`, temporal coverage, corporate-action
+policies, calendar/session authority, and universe/survivorship/delisting
+policy strings. There is no separate semantic profile subset.
+
+The profile hash is intentionally separate from snapshot identity. Snapshot-v1
+and snapshot-v2 IDs continue to answer which immutable data and evidence are
+present. A profile answers which exact policy requirements are being requested,
+and compatibility answers whether a verified snapshot-v2 satisfies the
+snapshot-evaluable data-side requirements of that exact profile. The same
+snapshot-v2 can be tested against multiple profiles without changing its
+snapshot ID, bundle manifest, snapshot manifest, local storage path, or bundle
+bytes.
+
+S3c2b2 operates only on `VerifiedDailyMarketDataSnapshotV2`, normally produced
+by `verify_daily_market_data_snapshot_bundle_v2(...)` or
+`verify_local_daily_market_data_snapshot_v2(...)`. The compatibility helper
+performs a v2 runtime type check and revalidates the research profile, but it
+does not reconstruct bundle bytes, rerun snapshot-v2 verification, recompute
+snapshot-v2 identity, access the filesystem, or persist any result. A manually
+constructed Python `VerifiedDailyMarketDataSnapshotV2` dataclass is outside
+the normal verifier-produced trust path and is not made cryptographic
+authority by compatibility.
+
+Compatibility checks are limited to snapshot-evaluable profile requirements:
+policy asset class, frequency, adjustment policy, distribution treatment,
+calendar, timezone, universe policy, survivorship policy, and delisting policy;
+quality PASS and single-instrument coherence; bar currency and temporal
+coverage; expected-session calendar, timezone, source ID, and source version;
+structured corporate-action evidence coverage over the quality expected-session
+range; allowed evidence completeness; supported corporate-action event types;
+unsupported-event fail-closed behavior; and cash-distribution currency. A
+successful result returns only operational facts: snapshot ID, profile ID,
+profile hash, profile policy version, instrument ID, unsupported-event count,
+and the required daily-bar availability policy.
+
+`corporate_action_coverage_requirement` remains profile identity and is bound
+into the complete profile hash, but S3c2b2 does not parse, substring-match, or
+infer executable semantics from that free text. Executable coverage
+compatibility uses the structured evidence coverage dates and quality expected
+dates. If future profiles need multiple executable coverage modes, that should
+be a structured versioned policy field rather than arbitrary prose. Likewise,
+`next_expected_session` is carried as a downstream execution obligation; this
+validator does not prove any future strategy consumed bars only on the next
+expected session.
+
+Successful S3c2b2 compatibility is not research readiness, experiment
+readiness, benchmark compatibility, provider approval, license approval,
+source truth verification, backtest corporate-action accounting support,
+leakage-safe execution proof, paper-trading approval, or live-trading
+approval. It adds no JSON schema, durable contract, persistence row, migration,
+storage file, profile sidecar, readiness marker, benchmark logic, provider
+adapter, real-data acquisition, backtest-engine behavior, strategy behavior,
+paper behavior, or live behavior.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ

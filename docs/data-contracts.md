@@ -678,6 +678,69 @@ staging directory created by the current invocation. If final verification
 fails after a successful rename, it raises a disk verification error and
 preserves the final directory for diagnosis.
 
+## Daily Market-Data Snapshot-V2/Profile Compatibility
+
+S3c2b2 adds no durable contract or JSON schema. It adds a pure operational
+profile hash and a verified snapshot-v2/profile compatibility helper. The
+profile hash domain is `daily-market-data-research-profile`; the identity
+version is `daily-market-data-research-profile-hash-v1`. The hash payload
+wraps the complete revalidated `DailyMarketDataResearchProfile` JSON model
+dump. It does not omit `profile_id`, does not create a selective semantic
+projection, and does not modify snapshot-v1 or snapshot-v2 identity.
+
+Profile identity remains separate from snapshot identity. Snapshot-v2 identity
+continues to bind the immutable bars, policy, expected sessions, bar
+provenance, corporate-action economics, and corporate-action evidence
+authority. Profile identity binds the exact policy requirements being
+requested. Compatibility evaluates whether one verified snapshot-v2 satisfies
+the machine-evaluable data-side requirements of one exact profile. It does not
+write a sidecar, alter local storage, alter bundle-v2, or require filesystem
+publication.
+
+The v2 compatibility API accepts only `VerifiedDailyMarketDataSnapshotV2` and
+`DailyMarketDataResearchProfile`. Callers should obtain the verified snapshot
+from `verify_daily_market_data_snapshot_bundle_v2(...)` or
+`verify_local_daily_market_data_snapshot_v2(...)`. Compatibility performs a
+runtime v2 type check and revalidates the research profile. It does not rerun
+bundle verification, recompute snapshot-v2 IDs or component hashes, read
+files, call providers, query networks, or persist results. A manually
+constructed `VerifiedDailyMarketDataSnapshotV2` object is outside the normal
+verifier-produced trust path.
+
+The operational compatibility result contains exactly: `snapshot_id`,
+`profile_id`, `profile_hash`, `profile_policy_version`, `instrument_id`,
+`unsupported_event_count`, and
+`required_daily_bar_availability_policy`. It intentionally has no
+`research_ready`, `experiment_ready`, `approved`, or `leakage_safe` field.
+Incompatibility raises a deterministic fail-closed compatibility error rather
+than returning a partial pass.
+
+The snapshot-evaluable checks cover policy asset class, frequency, adjustment
+policy, distribution treatment, calendar, timezone, universe-membership policy,
+survivorship policy, and delisting policy; quality PASS and coherent
+single-instrument facts; bar currency and temporal coverage; expected-session
+calendar, timezone, session source ID, and session source version;
+corporate-action evidence coverage over the quality expected-session range;
+allowed evidence completeness; unsupported-event fail-closed behavior;
+supported corporate-action event types; and cash-distribution currency.
+
+`corporate_action_coverage_requirement` is bound into profile identity as free
+text but is not parsed or interpreted as executable logic. Coverage
+compatibility is enforced from structured
+`corporate_action_evidence.coverage_start_date`,
+`corporate_action_evidence.coverage_end_date`,
+`quality_report.expected_start_date`, and
+`quality_report.expected_end_date`. Future multiple executable coverage modes
+should be modeled as structured versioned policy, not prose interpretation.
+
+`next_expected_session` is carried in the result as the required daily-bar
+availability policy and a downstream obligation. S3c2b2 does not prove a
+backtest or strategy consumed each session's OHLCV no earlier than the next
+expected session. It also does not prove corporate-action accounting,
+benchmark compatibility, provider approval, license approval, source factual
+correctness, experiment readiness, paper-trading readiness, or live-trading
+readiness.
+
 ## Synthetic Daily ETF Fixture Contract
 
 The first deterministic backtest-engine slice uses
