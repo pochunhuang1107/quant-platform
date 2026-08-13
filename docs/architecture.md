@@ -649,6 +649,88 @@ storage file, profile sidecar, readiness marker, benchmark logic, provider
 adapter, real-data acquisition, backtest-engine behavior, strategy behavior,
 paper behavior, or live behavior.
 
+## Daily ETF Economic Accounting And Timing Kernel
+
+Slice 3 S3d1 adds an additive, pure engine-side kernel for daily ETF economic
+accounting and complete-bar information timing. The accounting policy version
+is `daily-etf-economic-accounting-v1`; the timing policy version is
+`daily-etf-next-expected-session-v1`. These are operational S3d1 semantic
+policy identifiers only. They are not engine versions, snapshot identities,
+research-sdk durable contracts, or readiness approvals, and S3d1 does not add a
+new engine/run identity.
+
+The S3d1 accounting state is single-instrument, long-only, and integer-share
+only for strategy holdings. It tracks cash, integer quantity, total economic
+book cost, outstanding cash-distribution receivables, and applied corporate
+action event IDs. It does not model shorts, borrowing, margin, taxes,
+withholding, benchmark portfolios, fractional benchmark units, automatic
+reinvestment, snapshot-v2 loading, bundle parsing, providers, network access,
+persistence, migrations, paper trading, or live trading.
+
+For each supplied expected session, the deterministic session-open accounting
+sequence is:
+
+1. Settle previously earned receivables whose
+   `cash_available_session` is the current session.
+2. Validate the full current-session corporate-action event set before any
+   state change.
+3. Apply mechanical splits effective on the session to carried holdings.
+4. Establish cash-distribution entitlement from holdings carried into the
+   session before any strategy trade.
+5. Return the pre-trading economic state and audit records.
+
+Splits are applied before the session's trading boundary because raw prices for
+that session are already in effective units. Total book cost is unchanged. A
+split that would produce fractional strategy shares fails closed; S3d1 does
+not round or create cash-in-lieu. A split on a first session with zero holdings
+is a deterministic no-op because there is no pre-run position to restate.
+Multiple same-day splits with held shares fail closed. Mechanical splits have
+no commission, slippage, or fake trade record.
+
+For a cash distribution with ex-date `D`, entitlement is the quantity held
+immediately before session `D` trading. A position bought at the session `D`
+open earns no same-day distribution; a later sale would not revoke an already
+created entitlement. On ex-date, an entitled distribution creates a receivable
+equal to entitled quantity times amount per share. The receivable is included
+in economic equity immediately, while cash and book cost are unchanged. This
+keeps raw-price ex-date drops from creating false accounting losses. Record
+date is evidence metadata only and does not drive entitlement.
+
+Entitled distributions require a `payable_date` on or after ex-date. Missing
+payable date fails closed when the portfolio earns entitlement; missing
+payable date with zero pre-open holdings does not fail solely because there is
+no portfolio entitlement to settle. Spendable cash becomes available at the
+first supplied expected session strictly after `payable_date`. If no such
+session exists in the supplied horizon, the receivable remains outstanding and
+ending economic equity may include it. Ex-date before run start plus no prior
+position does not create an entitlement or later cash settlement.
+
+Same-day split and cash distribution evidence is ambiguous for held shares
+because the provider-neutral event contract does not state whether the cash
+amount and entitlement quantity are pre-split or post-split. S3d1 therefore
+fails closed before applying any same-day events when shares are held. With
+zero holdings, the same event set has no portfolio economic effect. Multiple
+same-day cash distributions are supported and processed in canonical
+economic-date/type/event-ID order. Unsupported corporate-action events,
+instrument mismatches, cash currency mismatches, duplicate event application,
+and unsupported same-day economics fail closed.
+
+S3d1 exposes a `NEXT_EXPECTED_SESSION` timing primitive over supplied expected
+session dates only. For decision session `T`, strategy decision logic may see
+complete daily bars only from expected sessions strictly before `T`; the first
+expected session exposes no complete daily bars. No weekdays, holidays,
+runtime clocks, or calendars are inferred. S3d1 timing models do not carry
+bars, corporate-action events, `announced_at`, `source_available_at`, or source
+references.
+
+This timing authority describes only what complete daily bars may be exposed
+to strategy decision logic. A later S3d2 fill simulator may read session-`T`
+open after an order already exists; execution simulator access to the current
+open is not strategy observation. Corporate-action events are accounting
+inputs only in S3d1, not strategy-facing features. A future strategy that
+trades on announcements or corporate-action knowledge needs a separate
+point-in-time feature design.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ
