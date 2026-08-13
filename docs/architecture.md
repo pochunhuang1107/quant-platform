@@ -731,6 +731,81 @@ inputs only in S3d1, not strategy-facing features. A future strategy that
 trades on announcements or corporate-action knowledge needs a separate
 point-in-time feature design.
 
+## Snapshot-V2 Economic Backtest Input Pair
+
+Slice 3 S3d2a adds a pure engine-side execution-input bridge for snapshot-v2
+daily ETF bundles. It consumes only in-memory exact bundle bytes supplied by
+the caller. The loader copies the supplied `Mapping[str, bytes]` once at
+function entry, then uses that same copied byte map for both
+`verify_daily_market_data_snapshot_bundle_v2(...)` and
+`parse_canonical_daily_bars(...)`. This preserves same-byte authority between
+the verifier-produced `VerifiedDailyMarketDataSnapshotV2` facts and the parsed
+canonical bars. Runtime bundle keys must be strings and values must be actual
+`bytes`; the loader does not coerce strings, `bytearray`, or `memoryview`.
+
+The engine-owned `LoadedDailyMarketDataSnapshotV2` result contains only the
+verified snapshot-v2 result and the parsed `CanonicalDailyBar` tuple. It does
+not retain filesystem paths, provider URLs, raw mapping references, readiness
+flags, approval fields, persistence identity, or a durable schema. The normal
+trust path begins at exact bundle bytes; S3d2a deliberately provides no API
+that accepts `VerifiedDailyMarketDataSnapshotV2` plus detached bars. Manually
+constructing the loaded operational object is outside the loader-produced trust
+path. `CanonicalDailyBar` remains provider-neutral and has no instrument or
+symbol field; instrument authority comes from the verified snapshot's
+instrument ID and quality-report instrument.
+
+The first S3d2a pair API accepts two raw snapshot-v2 bundle byte mappings, one
+exact `DailyMarketDataResearchProfile`, and an inclusive `start_date` /
+`end_date` run window. It internally loads both bundles through the same-byte
+loader, then independently validates each verified snapshot against the same
+research profile through
+`validate_daily_market_data_snapshot_profile_compatibility(...)`. Both
+compatibility results must bind the same exact profile hash and must require
+`NEXT_EXPECTED_SESSION` daily-bar availability. This establishes the downstream
+timing obligation for S3d2b; it is not a general leakage-safety proof.
+
+S3d2a is intentionally fixed to the first reviewable pair: QQQ as the strategy
+asset and SPY as the benchmark. The strategy snapshot symbol must be `QQQ`, the
+benchmark snapshot symbol must be `SPY`, and the snapshot IDs and instrument IDs
+must be distinct. S3d2a also defensively requires matching daily frequency,
+policy calendar/timezone, expected-session calendar/timezone, expected-session
+source ID/version, and currency. Provider/vendor/source dataset strings are
+not compared as approval semantics; source selection, license review, and
+source-family approval remain S3c3 responsibilities.
+
+The requested run window uses exact supplied expected-session authority. Both
+endpoints must be expected sessions in both snapshots, `start_date` must be on
+or before `end_date`, and at least two expected run sessions are required. The
+asset and benchmark run-session tuples are derived independently from their
+verified expected-session contracts and must match exactly. S3d2a never unions,
+intersects, forward-fills, infers holidays, or repairs dates. The projected
+asset and benchmark run bars must contain exactly one bar for every run session
+and no unexpected in-window bar.
+
+Corporate-action evidence is projected only for execution-input coherence. The
+normal verifier-plus-profile path applies to each complete snapshot, so the
+approved S3d2a profile rejects unsupported corporate-action evidence globally
+rather than only inside the requested run window. For supported events, an
+economic date before the run start or after the run end is irrelevant to S3d2a
+because the future S3d2b portfolios start with zero holdings. A payable date
+inside the run does not make a pre-run ex-date event economically in-run, and a
+payable date after the run does not make an in-run ex-date invalid. An event
+whose economic date falls inside the requested run window must fall on one of
+the exact run sessions; S3d2a fails closed rather than shifting weekend or
+non-session events to another date. Unsupported-event rejection is also retained
+as pair-level defense in depth for any internally inconsistent operational
+object outside the normal profile-produced trust path. Actual split,
+distribution, entitlement, receivable, settlement, and benchmark accounting
+remain S3d2b concerns and must preserve S3d1 semantics.
+
+S3d2a does not read local snapshot directories, import local-v2 filesystem
+verification helpers, walk roots, parse paths, access networks, persist bytes,
+write artifacts, build ledger/report-card records, create an engine config,
+derive a run identity, implement fills, implement benchmark accounting, or
+claim research/experiment readiness. A later orchestration boundary may bridge
+local snapshot IDs to exact authoritative bundle bytes before calling this pure
+in-memory input layer.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ
