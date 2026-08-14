@@ -806,6 +806,72 @@ claim research/experiment readiness. A later orchestration boundary may bridge
 local snapshot IDs to exact authoritative bundle bytes before calling this pure
 in-memory input layer.
 
+## Massive Primary Source Capture
+
+Slice 3 S3c3a records the owner-selected S3c3 development-source decision and
+the immutable source-capture design. Massive is the primary development source
+for private research/development. Tiingo remains a secondary independent
+comparison and validation source. This is a technical source decision only: it
+does not establish commercial license approval, enterprise approval, permanent
+archival legal approval, redistribution approval, experiment readiness,
+paper-trading readiness, or live-trading readiness.
+
+The S3c3 data path is:
+
+```text
+Massive API
+-> immutable exact-byte source capture
+-> offline Massive adapter
+-> provider-neutral daily market-data inputs
+-> snapshot-v2
+-> S3d2a trusted QQQ/SPY execution-input pair
+```
+
+Network acquisition and normalization are separate boundaries. Acquisition may
+use the network and a Massive credential to produce exact immutable source
+captures. Adaptation is offline, credential-free, and consumes only immutable
+capture bytes plus capture metadata. The adapter must never call Massive to
+fill missing facts on demand; missing source evidence fails closed.
+
+Authoritative Massive capture preserves the exact HTTP response body bytes
+before parsing. The first QQQ/SPY capture design requires three independently
+verifiable source members per instrument: `BAR_RESPONSE`, `DIVIDEND_RESPONSE`,
+and `SPLIT_RESPONSE`. Empty valid split responses are still captured members.
+Normalized or reserialized JSON is not raw source authority.
+
+For the Massive path,
+`DailyMarketDataBarSourceProvenanceV2.source_content_hash` binds the exact RAW
+`BAR_RESPONSE` body bytes consumed by the adapter, and `source_size_bytes`
+binds that same response body size. Corporate-action evidence uses the existing
+single source hash/size fields by hashing a deterministic canonical
+corporate-action source manifest that identifies and hashes both the dividend
+and split response members. It does not concatenate raw endpoint bytes without
+framing and does not pretend either endpoint alone is complete corporate-action
+source authority.
+
+Massive bars must be requested and verified as `adjusted=false`. The adapter
+must fail closed if request and response authority do not establish RAW
+semantics. There is no fallback to adjusted bars and no normalization of
+adjusted history into RAW.
+
+For first historical Massive captures, temporal coverage remains
+`LATEST_KNOWN` unless independently verifiable historical point-in-time
+availability evidence is later available. Corporate-action `source_available_at`
+comes from explicit capture observation authority for this first historical
+path, not from ex-dividend dates, pay dates, record dates, declaration dates,
+or split execution dates.
+
+Expected sessions remain independent deterministic calendar/session authority.
+Returned Massive bar dates do not define the expected-session calendar, and the
+platform must not use naive weekday generation. The first real QQQ/SPY
+snapshots should use a deterministic US-equity exchange calendar source with
+explicit calendar, timezone, session source ID, and session source version.
+
+The S3c3 implementation sequence is S3c3a design, then S3c3b immutable capture
+and offline Massive adapter, then S3c3c first bounded real QQQ/SPY capture and
+snapshot-v2 publication. S3d2b economic execution integration remains deferred
+until S3c3 produces trusted QQQ/SPY snapshot-v2 execution-input bundles.
+
 ## Deterministic ETF Baseline
 
 The initial backtest-engine slice runs one unconditional long-only QQQ
