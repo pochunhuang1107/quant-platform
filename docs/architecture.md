@@ -866,6 +866,65 @@ captures. Adaptation is offline, credential-free, and consumes only immutable
 capture bytes plus capture metadata. The adapter must never call Massive to
 fill missing facts on demand; missing source evidence fails closed.
 
+S3c3c5 implements only bounded acquisition plus in-memory source-capture
+planning. Credential-free planning fixes three requests per instrument in
+`BAR_RESPONSE`, `DIVIDEND_RESPONSE`, `SPLIT_RESPONSE` order. Pair execution
+validates and canonically rederives both public operational plans before request
+one, then performs asset bars/dividends/splits followed by benchmark
+bars/dividends/splits. Both plans must share an explicit nonempty
+`acquisition_batch_id` and date range while retaining distinct IDs and symbols.
+The inclusive request span is limited to 366 calendar days. There is no
+concurrency, retry, pagination following, filesystem mutation, or partial pair
+result.
+
+The production transport is deliberately narrow: stdlib HTTPS GET only to
+`api.massive.com`, default verified TLS context, no caller-controlled base URL,
+no redirects or ambient proxy framework, and `Authorization: Bearer` only.
+Credentials are runtime-only redacted operational objects; platform-owned
+acquisition code never places them in a query, source reference, request
+metadata, manifest, error, or log. Exact credential text is also rejected if
+it appears in any persistent acquisition
+fact or exact provider response bytes. The credential holder rejects
+serialization, and acquisition request, plan, response, and pair renderings do
+not expose their contents. The executor captures credential authority once and
+uses fresh redacted holders derived from that captured value for transport
+calls. An injected transport is executable in-process code with credential
+access, not a secret sandbox; only trusted implementations may be injected.
+Its response objects and exceptions are nevertheless untrusted evidence inputs:
+the executor captures response fields once, re-applies all HTTP/header/size/
+envelope checks, and discards external exception context. Network capability in
+the codebase is not authorization for a real provider call. All S3c3c5 tests
+use injected or stubbed transports, and a later S3c3c6 human run gate owns any
+real acquisition.
+
+Each request uses a 5-second connection timeout, 15-second read-inactivity
+timeout, and 30-second monotonic application deadline. The connection timeout
+covers socket connection and TLS handshake; after connection, the remaining
+deadline is recomputed around request send and response-header/status wait and
+before every body read, with a final check after end-of-body. As an explicit
+stdlib limitation, DNS resolution cannot be interrupted as a hard real-time
+30-second deadline; if a blocking phase returns after the deadline, acquisition
+fails before accepting the response (and before request send when connection
+establishment itself returns late). Response bodies are read incrementally and
+capped at 4 MiB for bars and 2 MiB for each corporate-action role, with 8 MiB
+per instrument and 16 MiB per pair. Exactly HTTP 200
+and JSON media type are accepted; content encoding must be absent or identity,
+and ambiguous or inconsistent authority headers fail closed. Successful bodies
+must be nonempty strict UTF-8 JSON objects with exact `status="OK"`, a normalized
+provider `request_id`, and no `next_url` key. Acquisition inspects only this
+operational envelope—not economic rows—and preserves accepted entity bytes
+without decoding/re-encoding, normalization, or decompression.
+
+After all three responses for one instrument pass, acquisition calls its UTC
+clock exactly once. That observation time means all three exact bodies have
+been successfully observed by the process; sequential asset and benchmark
+times may differ arbitrarily. The unchanged source-capture planner receives
+the exact bodies and credential-free request authority and remains solely
+responsible for member hashes/sizes, the CA source manifest, and capture
+identity. S3c3c5 does not call the immutable publisher. S3c3c6 must complete
+both plans and separately pass the human-authorized publication/orchestration
+gate; S3d2b remains blocked.
+
 Authoritative Massive capture preserves the exact HTTP response body bytes
 before parsing. The first QQQ/SPY capture design requires three independently
 verifiable source members per instrument: `BAR_RESPONSE`, `DIVIDEND_RESPONSE`,
@@ -997,8 +1056,9 @@ byte and semantic verification rather than duplicating either transform.
 The S3c3 implementation sequence is S3c3a design, then S3c3b immutable capture
 and offline Massive adapter, then S3c3c1 raw/canonical bar authority, S3c3c2
 exact local readback, S3c3c3 provider composition and acquisition-vintage
-validation, S3c3c4 common U.S.-equity expected-session date authority, and later
-bounded real QQQ/SPY acquisition and snapshot-v2 publication. S3d2b economic
+validation, S3c3c4 common U.S.-equity expected-session date authority, S3c3c5
+bounded acquisition plus planning, and later human-authorized real QQQ/SPY
+acquisition and snapshot-v2 publication. S3d2b economic
 execution integration remains deferred until S3c3 produces trusted QQQ/SPY
 snapshot-v2 execution-input bundles.
 

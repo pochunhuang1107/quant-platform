@@ -86,6 +86,14 @@ DailyMarketDataBarSourceProvenanceV2 + DailyMarketDataCorporateActionEvidence
     -> S3c3c3 compatible acquisition vintage uses explicit batch + per-role
        request specification; no new durable contract
 
+S3c3c5 operational acquisition request plans
+  fixed Massive HTTPS authority + explicit <=366-day bounds + batch ID
+    -> exact BAR_RESPONSE/DIVIDEND_RESPONSE/SPLIT_RESPONSE bytes
+    -> unchanged plan_daily_market_data_source_capture(...)
+    -> complete in-memory asset/benchmark capture plans only after six successes
+    -> no new durable contract, schema, hash, identity, or publication behavior
+    -> real network execution remains behind a later explicit human S3c3c6 gate
+
 DailyMarketDataSnapshotBundleManifest
   payload file byte hashes and sizes, excluding bundle-manifest.json itself
     -> pure in-memory readback verification of S3b1 bundle bytes
