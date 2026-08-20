@@ -609,6 +609,73 @@ rederived snapshot-v2 ID, exact bundle-manifest coherence, and exact
 `DataSnapshotManifest` boundary semantics. It performs no filesystem,
 provider, network, database, or backtest-engine I/O.
 
+## Massive Snapshot-V2 Operational Bridge
+
+S3c3c3 adds no durable contract or JSON Schema. The frozen operational
+`MassiveDailyMarketDataSnapshotBridgeContext` requires explicit ingestion,
+availability, creation, creator, license-note, and limitation facts; it does
+not call the wall clock or infer licensing authority. The pure
+`plan_massive_daily_market_data_snapshot_v2(...)` bridge accepts an already
+verified and offline-adapted Massive capture, an existing policy, independently
+constructed `DailyMarketDataExpectedSessions`, and that context, then delegates
+to the unchanged generic snapshot-v2 planner.
+
+The bridge captures operational dataclass fields once and derives persisted
+facts from those captured values. It also reasserts critical Massive lineage
+coherence—provider/source family, capture format and ID, parser version,
+instrument, endpoint/request bounds, RAW request facts, and event currency—so
+publicly constructible operational values cannot silently relabel another
+authority as Massive. Full source-byte and adapter semantic verification remain
+the responsibility of the existing closed verifier and adapter.
+
+The two bar-byte authorities remain separate:
+
+```text
+adapted canonical bars
+  -> deterministic canonical JSONL
+  -> planner source_bytes
+  -> quality, semantic content, bars.jsonl
+
+verified source-capture BAR_RESPONSE bytes
+  -> planner bar-source authority
+  -> bar provenance source_content_hash/source_size_bytes
+```
+
+The bridge derives corporate-action evidence source hash and size from the
+exact canonical source-capture `ca-source-manifest.json` bytes. That manifest
+already binds the exact `DIVIDEND_RESPONSE` and `SPLIT_RESPONSE` hashes, sizes,
+requests, endpoint authority, and credential-free source references. Evidence
+events, completeness, coverage, and event availability are copied from the
+offline adapter without reinterpretation. Logical provenance references are
+`daily-market-data-source-capture://<capture_id>/bars.json` and
+`daily-market-data-source-capture://<capture_id>/ca-source-manifest.json`.
+
+Bar limitations merge capture, `BAR_RESPONSE`, and context limitations.
+Corporate-action limitations merge capture, `DIVIDEND_RESPONSE`,
+`SPLIT_RESPONSE`, and context limitations. Both use exact-string
+deduplication with stable first-occurrence ordering and must remain nonempty.
+The historical bridge requires `LATEST_KNOWN` and enforces
+`capture_observed_at <= ingestion_completed_at <= available_at <= created_at`.
+It uses `capture_observed_at` for bar `as_of` and source observation and does
+not claim point-in-time availability.
+
+The pure
+`validate_massive_daily_market_data_capture_pair_compatibility(...)` operation
+requires two distinct instruments/captures to share a nonempty acquisition
+batch, provider, source family, capture format, adapter parser, temporal
+coverage, currency, bar request range, corporate-action coverage, and each
+role's endpoint and request/scope specification after removing only `ticker`.
+It deliberately does not compare capture observation times, sanitized source
+references, API request IDs, response bytes/hashes/sizes, provider event IDs,
+or limitations. The batch ID, not timestamp proximity, is cross-instrument
+vintage authority.
+
+This bridge has no acquisition or filesystem behavior. It performs no network
+or credential access, session/calendar derivation, publication/readback,
+S3d2a invocation, or real-data validation. Its input coverage is the adapter-
+verified request coverage; it adds no lookback or lag. `LATEST_KNOWN` remains
+an explicit leakage limitation for later research-profile and human review.
+
 ## Local Daily Market-Data Snapshot-V2 Storage
 
 S3c2b1 adds operational local filesystem publication and readback for already

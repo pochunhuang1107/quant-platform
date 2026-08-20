@@ -900,10 +900,71 @@ platform must not use naive weekday generation. The first real QQQ/SPY
 snapshots should use a deterministic US-equity exchange calendar source with
 explicit calendar, timezone, session source ID, and session source version.
 
+S3c3c3 adds a pure provider-specific bridge from one verified, offline-adapted
+Massive capture to the existing generic snapshot-v2 planner. It renders
+canonical `bars.jsonl` input from the adapter's canonical bars, while the bar
+provenance hash and size bind the exact immutable `BAR_RESPONSE` bytes and the
+adapter parser version. Corporate-action evidence binds the exact canonical
+`ca-source-manifest.json` bytes, which already bind the dividend and split
+response authorities. Logical references use
+`daily-market-data-source-capture://<capture_id>/bars.json` and
+`daily-market-data-source-capture://<capture_id>/ca-source-manifest.json`;
+provider URLs, credentials, authorization headers, and local absolute paths do
+not enter snapshot provenance.
+
+The bridge calls no clock. Ingestion completion, availability, creation,
+creator, licensing notes, and human-reviewed limitations are explicit caller
+inputs. Chronology is fail closed:
+
+```text
+capture_observed_at
+<= ingestion_completed_at
+<= available_at
+<= created_at
+```
+
+For this first historical path, both bar `as_of` and source observation use the
+capture observation time and temporal coverage remains `LATEST_KNOWN`. Event
+`source_available_at` values from the offline adapter are not rewritten.
+Expected sessions remain a separate caller-supplied authority and are passed
+unchanged to generic planning; the bridge performs no exchange-calendar,
+weekday, or returned-bar-date derivation.
+
+S3c3c3 also adds a provider-specific pair-vintage check before later
+asset/benchmark orchestration. Two independently captured instruments must
+share a nonempty `acquisition_batch_id`, provider, source family, capture
+format, parser, temporal coverage, currency, requested bar range, corporate-
+action coverage, and the per-role endpoint and request/scope specification
+after removing only `ticker`. Capture IDs, instrument IDs, and symbols must be
+distinct. Sequential capture timestamps, sanitized source references, API
+request IDs, response bodies, hashes, sizes, provider event IDs, and
+limitations may differ. The explicit batch is the grouping authority; timestamp
+proximity is not. This check is acquisition compatibility only, not research
+readiness, pair semantics, provider/license approval, or trading approval.
+
+The bridge's inputs are immutable verified source evidence, canonical adapter
+output, a caller-selected RAW daily policy, independent expected sessions, and
+explicit operational review facts. Its lookback and coverage are exactly the
+bar and corporate-action request bounds already verified by the adapter; it
+adds no lag or calendar rule. Because the first path is `LATEST_KNOWN`, it makes
+no point-in-time or leakage-safe research claim. Those semantics remain visible
+in provenance and require later profile, pair, and human review.
+
+At this public composition boundary, operational dataclass authorities are
+captured once before validation and use. The bridge reasserts the small set of
+lineage facts needed to prevent a manually constructed adapted value from
+misstating Massive authority: provider/source family, capture format, parser,
+instrument and capture identity coherence, canonical Massive endpoints and
+request bounds, RAW bar request facts, and cash-distribution currency. It still
+trusts the closed source-capture verifier and offline adapter for their full
+byte and semantic verification rather than duplicating either transform.
+
 The S3c3 implementation sequence is S3c3a design, then S3c3b immutable capture
-and offline Massive adapter, then S3c3c first bounded real QQQ/SPY capture and
-snapshot-v2 publication. S3d2b economic execution integration remains deferred
-until S3c3 produces trusted QQQ/SPY snapshot-v2 execution-input bundles.
+and offline Massive adapter, then S3c3c1 raw/canonical bar authority, S3c3c2
+exact local readback, S3c3c3 provider composition and acquisition-vintage
+validation, and later bounded real QQQ/SPY acquisition and snapshot-v2
+publication. S3d2b economic execution integration remains deferred until S3c3
+produces trusted QQQ/SPY snapshot-v2 execution-input bundles.
 
 ## Deterministic ETF Baseline
 
