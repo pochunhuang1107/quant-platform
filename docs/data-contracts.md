@@ -721,6 +721,63 @@ S3d2a invocation, or real-data validation. Its input coverage is the adapter-
 verified request coverage; it adds no lookback or lag. `LATEST_KNOWN` remains
 an explicit leakage limitation for later research-profile and human review.
 
+## Bounded Massive Acquisition and Capture Planning
+
+S3c3c5 adds operational Python values, not durable contracts or schemas.
+`plan_massive_daily_market_data_acquisition(...)` creates a credential-free,
+fixed-host request plan for one explicit inclusive date range of at most 366
+calendar days. It deterministically defines one raw custom-bars request and one
+dividend and split request. Semantic request parameters and requested scopes
+remain separate from wire encoding; source references contain the fixed HTTPS
+endpoint path without query parameters, authorization, cursor, or credentials.
+
+`MassiveApiCredential` accepts an exact nonblank control-free string, always
+renders as redacted text, and rejects serialization. Request, plan, response, and pair
+renderings also hide their contents. The executor captures credential authority
+once and derives a fresh redacted holder for each transport call. The default
+transport uses that runtime value only to create the `Authorization: Bearer`
+header for HTTPS GET requests to `api.massive.com`. It sends
+JSON/identity/connection-close preferences, follows no redirect, performs no
+retry, reads no environment or file, and exposes no host/header configuration.
+Injected transport code has in-process credential access and therefore must be
+trusted as code; its response objects and exceptions are not trusted as
+evidence. The executor captures their fields once, independently reapplies all
+acceptance checks, and discards unsafe external exception context.
+
+Provider response bytes are streamed under exact role caps (4 MiB bars; 2 MiB
+dividends; 2 MiB splits), with 8 MiB per instrument and 16 MiB per pair.
+Connection, read inactivity, and overall request limits are 5, 15, and 30
+seconds respectively. The remaining monotonic deadline is checked around
+request send and response-header/status wait, before each body read, and after
+end-of-body. DNS resolution is explicitly not claimed to be a hard real-time
+30-second bound under stdlib; a late blocking return fails before response
+acceptance, and a late connection return fails before request send.
+
+Before persistence planning, each exact response must be HTTP 200, JSON media
+type, absent/identity encoded, nonempty strict UTF-8 JSON with no duplicate
+keys or nonstandard constants, exact `status="OK"`, a valid string or integer
+`request_id`, and no `next_url` key. Header duplication, malformed or mismatched
+content length, other content encodings, pagination, and any credential echo in
+the exact body fail closed. The body is never redacted, reserialized,
+decompressed, or economically interpreted. OHLCV, distribution, and split
+semantics remain exclusively in the offline Massive adapter.
+
+The pair operation canonically rederives and compares both public operational
+plans before any request, then runs exactly asset bar/dividend/split followed
+by benchmark bar/dividend/split. A failure stops immediately and returns no
+pair or partial capture plan. Only after all three accepted bodies for one
+instrument does the operation call an injected/default UTC clock exactly once
+and invoke the unchanged `plan_daily_market_data_source_capture(...)`.
+That existing planner derives all hashes, sizes, CA source-manifest bytes, and
+capture identity. The explicit shared `acquisition_batch_id`, not observation
+time proximity, is pair-vintage authority.
+
+S3c3c5 performs no publication, calendar inference, missing-bar repair,
+provider-row normalization, snapshot planning, S3d2a invocation, or real-data
+call in CI. S3c3c6 owns the later explicit human authorization and runtime-key
+gate for real acquisition and publication. Adding fixed-host network capability
+does not itself authorize its use, and S3d2b remains blocked.
+
 ## Local Daily Market-Data Snapshot-V2 Storage
 
 S3c2b1 adds operational local filesystem publication and readback for already
