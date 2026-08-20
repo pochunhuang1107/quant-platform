@@ -67,6 +67,14 @@ class DailyMarketDataSnapshotPlanningV2Error(ValueError):
 
 
 @dataclass(frozen=True)
+class DailyMarketDataBarSourceAuthorityInputV2:
+    """Exact upstream bar-source bytes and their parser authority."""
+
+    content: bytes
+    parser_version: str
+
+
+@dataclass(frozen=True)
 class DailyMarketDataBarSourceProvenanceInputV2:
     """Caller-supplied bar-source facts whose byte hash/size are derived."""
 
@@ -125,6 +133,7 @@ class DailyMarketDataSnapshotPlanV2:
 def plan_daily_market_data_snapshot_v2(
     *,
     source_bytes: bytes,
+    bar_source_authority: DailyMarketDataBarSourceAuthorityInputV2 | None = None,
     instrument: DailyMarketDataInstrument,
     policy: DailyMarketDataPolicy,
     expected_sessions: DailyMarketDataExpectedSessions,
@@ -135,6 +144,10 @@ def plan_daily_market_data_snapshot_v2(
 
     if type(source_bytes) is not bytes:
         raise DailyMarketDataSnapshotPlanningV2Error("source_bytes must be bytes")
+    source_authority_content, source_parser_version = _resolve_bar_source_authority(
+        source_bytes=source_bytes,
+        bar_source_authority=bar_source_authority,
+    )
 
     validated_instrument = DailyMarketDataInstrument.model_validate(
         instrument.model_dump(mode="json")
@@ -157,8 +170,9 @@ def plan_daily_market_data_snapshot_v2(
     bars = parse_canonical_daily_bars(source_bytes)
     bar_provenance = _build_bar_provenance(
         bar_provenance_input=bar_provenance_input,
-        source_content_hash=sha256_bytes(source_bytes),
-        source_size_bytes=len(source_bytes),
+        source_content_hash=sha256_bytes(source_authority_content),
+        source_size_bytes=len(source_authority_content),
+        parser_version=source_parser_version,
     )
     validated_corporate_action_evidence = (
         DailyMarketDataCorporateActionEvidence.model_validate(
@@ -279,11 +293,42 @@ def plan_daily_market_data_snapshot_v2(
     )
 
 
+def _resolve_bar_source_authority(
+    *,
+    source_bytes: bytes,
+    bar_source_authority: DailyMarketDataBarSourceAuthorityInputV2 | None,
+) -> tuple[bytes, str]:
+    if bar_source_authority is None:
+        return source_bytes, BAR_PARSER_VERSION
+    if not isinstance(bar_source_authority, DailyMarketDataBarSourceAuthorityInputV2):
+        raise DailyMarketDataSnapshotPlanningV2Error(
+            "bar_source_authority must be "
+            "DailyMarketDataBarSourceAuthorityInputV2 or None"
+        )
+    content = bar_source_authority.content
+    if type(content) is not bytes:
+        raise DailyMarketDataSnapshotPlanningV2Error(
+            "bar_source_authority content must be bytes"
+        )
+    parser_version = bar_source_authority.parser_version
+    if (
+        type(parser_version) is not str
+        or not parser_version.strip()
+        or parser_version != parser_version.strip()
+    ):
+        raise DailyMarketDataSnapshotPlanningV2Error(
+            "bar_source_authority parser_version must be a non-empty string "
+            "without surrounding whitespace"
+        )
+    return content, parser_version
+
+
 def _build_bar_provenance(
     *,
     bar_provenance_input: DailyMarketDataBarSourceProvenanceInputV2,
     source_content_hash: str,
     source_size_bytes: int,
+    parser_version: str,
 ) -> DailyMarketDataBarSourceProvenanceV2:
     return DailyMarketDataBarSourceProvenanceV2(
         schema_version=RESEARCH_SDK_CONTRACT_SCHEMA_VERSION,
@@ -296,7 +341,7 @@ def _build_bar_provenance(
         source_reference=bar_provenance_input.source_reference,
         source_content_hash=source_content_hash,
         source_size_bytes=source_size_bytes,
-        parser_version=BAR_PARSER_VERSION,
+        parser_version=parser_version,
         temporal_coverage=bar_provenance_input.temporal_coverage,
         as_of=bar_provenance_input.as_of,
         source_observed_at=bar_provenance_input.source_observed_at,
@@ -492,6 +537,7 @@ def _build_bundle_manifest_v2(
 __all__ = [
     "BAR_PARSER_VERSION",
     "BAR_PROVENANCE_POLICY_VERSION",
+    "DailyMarketDataBarSourceAuthorityInputV2",
     "DailyMarketDataBarSourceProvenanceInputV2",
     "DailyMarketDataSnapshotPlanV2",
     "DailyMarketDataSnapshotPlanningV2Error",
