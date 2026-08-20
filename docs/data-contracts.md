@@ -609,6 +609,51 @@ rederived snapshot-v2 ID, exact bundle-manifest coherence, and exact
 `DataSnapshotManifest` boundary semantics. It performs no filesystem,
 provider, network, database, or backtest-engine I/O.
 
+## Common U.S.-Equity Daily Expected-Session Authority
+
+S3c3c4 adds no durable contract or JSON Schema. The operational
+`derive_us_equity_daily_expected_sessions(...)` function produces the existing
+`DailyMarketDataExpectedSessions` contract from the approved authority:
+
+```text
+exchange_calendars==4.13.2
+  + XNYS
+  + America/New_York
+  + us-equity-regular-session-dates-v1
+  + explicit inclusive start_date/end_date
+    -> exact materialized tuple[date, ...]
+```
+
+The stable source ID is `exchange_calendars:XNYS`; the source version is
+`exchange_calendars-4.13.2+us-equity-regular-session-dates-v1`. Package and
+semantic-policy versions are separate authority facts so conversion semantics
+can migrate even if the library version does not. Runtime distribution
+metadata must report exactly `4.13.2` before the calendar executes; a drifted
+environment fails closed rather than persisting the approved label over a
+different implementation.
+
+Both bounds are exact caller-supplied dates, the range is inclusive, and the
+calendar is constructed with explicit bounds. The operation verifies XNYS and
+`America/New_York`, converts regular-session labels directly to Python dates,
+and rejects empty, unordered, duplicate, or out-of-range output. It does not
+sort, deduplicate, repair, or infer sessions. Early-close dates remain session
+dates because open/close times are outside this date-only authority.
+
+Materialized immutable contract data, rather than a calendar or pandas object,
+is durable snapshot input. Existing
+`derive_daily_market_data_expected_sessions_hash(...)` remains the sole
+canonical session hash and already binds the complete contract into
+snapshot-v2 identity. Dependency/policy upgrades require an intentional pin
+and source-version migration, reviewed golden session tuple, and acceptance of
+any new expected-session hash and snapshot identity.
+
+XNYS means the common U.S.-equity daily research-session policy for this first
+scope, not listing or execution venue. QQQ can remain XNAS and SPY can remain
+ARCX while both use the identical XNYS authority required by later pair
+verification. There is no bar-derived or weekday-only inference, wall clock,
+network, Massive/provider dependency, venue mutation, intraday authority,
+research-readiness conclusion, or point-in-time/leakage-safe data claim.
+
 ## Massive Snapshot-V2 Operational Bridge
 
 S3c3c3 adds no durable contract or JSON Schema. The frozen operational

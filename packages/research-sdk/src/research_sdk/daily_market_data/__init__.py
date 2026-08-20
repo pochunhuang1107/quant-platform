@@ -13,6 +13,16 @@ from research_sdk.daily_market_data.economic_evidence import (
     DailyMarketDataEconomicEvidenceCompatibilityError,
     validate_daily_market_data_economic_evidence,
 )
+from research_sdk.daily_market_data.expected_sessions import (
+    EXCHANGE_CALENDARS_PINNED_VERSION,
+    US_EQUITY_DAILY_SESSION_CALENDAR,
+    US_EQUITY_DAILY_SESSION_POLICY_VERSION,
+    US_EQUITY_DAILY_SESSION_SOURCE_ID,
+    US_EQUITY_DAILY_SESSION_SOURCE_VERSION,
+    US_EQUITY_DAILY_SESSION_TIMEZONE,
+    DailyMarketDataExpectedSessionsAuthorityError,
+    derive_us_equity_daily_expected_sessions,
+)
 from research_sdk.daily_market_data.profile_compatibility import (
     DailyMarketDataSnapshotProfileCompatibility,
     DailyMarketDataSnapshotProfileCompatibilityError,
@@ -43,9 +53,16 @@ from research_sdk.daily_market_data.snapshot_identity_v2 import (
 )
 
 __all__ = [
+    "EXCHANGE_CALENDARS_PINNED_VERSION",
+    "US_EQUITY_DAILY_SESSION_CALENDAR",
+    "US_EQUITY_DAILY_SESSION_POLICY_VERSION",
+    "US_EQUITY_DAILY_SESSION_SOURCE_ID",
+    "US_EQUITY_DAILY_SESSION_SOURCE_VERSION",
+    "US_EQUITY_DAILY_SESSION_TIMEZONE",
     "DailyMarketDataManifestCompatibilityError",
     "DailyMarketDataEconomicEvidenceCompatibility",
     "DailyMarketDataEconomicEvidenceCompatibilityError",
+    "DailyMarketDataExpectedSessionsAuthorityError",
     "DailyMarketDataSnapshotProfileCompatibility",
     "DailyMarketDataSnapshotProfileCompatibilityError",
     "DAILY_MARKET_DATA_CORPORATE_ACTIONS_HASH_VERSION",
@@ -66,6 +83,7 @@ __all__ = [
     "derive_daily_market_data_research_profile_hash",
     "derive_daily_market_data_snapshot_id",
     "derive_daily_market_data_snapshot_id_v2",
+    "derive_us_equity_daily_expected_sessions",
     "evaluate_daily_market_data_quality",
     "validate_daily_market_data_economic_evidence",
     "validate_daily_market_data_snapshot_profile_compatibility",
