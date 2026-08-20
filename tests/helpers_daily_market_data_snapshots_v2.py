@@ -22,6 +22,7 @@ from research_sdk.contracts.daily_market_data_economics import (
 )
 from research_sdk.contracts.enums import DataSourceType, TemporalCoverage
 from research_sdk.daily_market_data_storage import (
+    DailyMarketDataBarSourceAuthorityInputV2,
     DailyMarketDataBarSourceProvenanceInputV2,
     DailyMarketDataSnapshotPlanV2,
     plan_daily_market_data_snapshot_v2,
@@ -40,6 +41,28 @@ SNAPSHOT_ID_V2 = (
     "daily-market-data-snapshot-v2-"
     "1c3330ff28e07de31a10b9337b503fdf069c1216e51f3950242862be61b1f07d"
 )
+LEGACY_SNAPSHOT_V2_FILE_SHA256 = {
+    "bars.jsonl": "1c783ebfb8db7453593961e9f336eec5b268741e54dafb706017bed832e19b7d",
+    "expected-sessions.json": (
+        "b64d27eaa41e5d600c57ab424701d43481bfd1c92936563d6a87a28ecf4ab101"
+    ),
+    "policy.json": "07e8b3f04537aa3bcf50bd6004d7e549ef037aabc91c05d50f2285678aa44e20",
+    "bar-provenance.json": (
+        "941d2b5975d177fb3d15257db12b9ae51894c970995c1a93ebb480fed955c45f"
+    ),
+    "quality-report.json": (
+        "f8b2903cb1c9d6c04ad054d29457d086744249e3cad2a864d7a62a99b75b33c1"
+    ),
+    "corporate-action-evidence.json": (
+        "0057723a7056d6ee429c0baffb5e1feeb960cefe2828c081b13f6a4c72715f27"
+    ),
+    "snapshot-manifest.json": (
+        "51250c7bce9fcc5c99e9aacc6633493dfd9a0b72a9c82445b3f1ff1ef798307a"
+    ),
+    "bundle-manifest.json": (
+        "7585247dd0c0c319f3a46c6c5ef11fb95e56ba50c0718aff0f4dddcfd0c8fc32"
+    ),
+}
 
 
 def cash_distribution_v2(**overrides: object) -> DailyMarketDataCashDistribution:
@@ -159,6 +182,17 @@ def sample_bar_provenance_input_v2(
     return DailyMarketDataBarSourceProvenanceInputV2(**data)
 
 
+def sample_bar_source_authority_input_v2(
+    **overrides: object,
+) -> DailyMarketDataBarSourceAuthorityInputV2:
+    data = {
+        "content": b'{"synthetic":"exact upstream response bytes"}\n',
+        "parser_version": "synthetic-upstream-bar-parser-v1",
+    }
+    data.update(overrides)
+    return DailyMarketDataBarSourceAuthorityInputV2(**data)
+
+
 def sample_plan_v2(**overrides: object) -> DailyMarketDataSnapshotPlanV2:
     data = {
         "source_bytes": source_bytes(),
@@ -177,11 +211,13 @@ __all__ = [
     "CORPORATE_ACTION_EVIDENCE_AUTHORITY_HASH",
     "CORPORATE_ACTION_SEMANTIC_HASH",
     "EXPECTED_SESSIONS_HASH",
+    "LEGACY_SNAPSHOT_V2_FILE_SHA256",
     "POLICY_HASH",
     "S3A_GOLDEN_CONTENT_HASH",
     "SNAPSHOT_ID_V2",
     "cash_distribution_v2",
     "sample_bar_provenance_input_v2",
+    "sample_bar_source_authority_input_v2",
     "sample_corporate_action_evidence_v2",
     "sample_plan_v2",
     "split_v2",

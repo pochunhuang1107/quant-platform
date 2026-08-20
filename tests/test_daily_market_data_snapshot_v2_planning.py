@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import fields
 from datetime import UTC, date, datetime
+from hashlib import sha256
+from inspect import signature
 
 import pytest
 
@@ -18,8 +20,10 @@ from helpers_daily_market_data_snapshots_v2 import (
     BAR_PROVENANCE_HASH_V2,
     CORPORATE_ACTION_EVIDENCE_AUTHORITY_HASH,
     CORPORATE_ACTION_SEMANTIC_HASH,
+    LEGACY_SNAPSHOT_V2_FILE_SHA256,
     SNAPSHOT_ID_V2,
     sample_bar_provenance_input_v2,
+    sample_bar_source_authority_input_v2,
     sample_corporate_action_evidence_v2,
     sample_plan_v2,
     unsupported_event_v2,
@@ -29,13 +33,23 @@ from research_sdk.contracts.daily_market_data_economics import (
     DailyMarketDataCorporateActionEvidenceCompleteness,
 )
 from research_sdk.daily_market_data_storage import (
+    DailyMarketDataBarSourceAuthorityInputV2,
     DailyMarketDataBarSourceProvenanceInputV2,
     DailyMarketDataSnapshotPlanningV2Error,
+    DailyMarketDataSnapshotSerializationError,
     plan_daily_market_data_snapshot_v2,
+    verify_daily_market_data_snapshot_bundle_v2,
 )
 from research_sdk.daily_market_data_storage.planning_v2 import (
     BAR_PARSER_VERSION,
     BAR_PROVENANCE_POLICY_VERSION,
+)
+
+REORDERED_CANONICALIZABLE_BARS_BYTES = (
+    b'{"session_date":"2026-01-05","open":"101","high":"102",'
+    b'"low":"100","close":"101.5","volume":1100}\n'
+    b'{"session_date":"2026-01-02","open":"100","high":"101",'
+    b'"low":"99","close":"100.5","volume":1000}\n'
 )
 
 
@@ -64,6 +78,19 @@ def test_planner_v2_builds_happy_path_synthetic_snapshot_plan() -> None:
     )
 
 
+def test_planner_v2_legacy_mode_remains_byte_for_byte_frozen() -> None:
+    omitted = sample_plan_v2()
+    explicit_none = sample_plan_v2(bar_source_authority=None)
+
+    assert omitted.as_file_map() == explicit_none.as_file_map()
+    assert {
+        path: sha256(content).hexdigest()
+        for path, content in omitted.as_file_map().items()
+    } == LEGACY_SNAPSHOT_V2_FILE_SHA256
+    assert omitted.snapshot_id == SNAPSHOT_ID_V2
+    assert omitted.bar_provenance_hash == BAR_PROVENANCE_HASH_V2
+
+
 def test_planner_v2_owns_bar_parser_and_provenance_policy_versions() -> None:
     field_names = {
         field.name for field in fields(DailyMarketDataBarSourceProvenanceInputV2)
@@ -77,6 +104,201 @@ def test_planner_v2_owns_bar_parser_and_provenance_policy_versions() -> None:
     assert f'"provenance_policy_version":"{BAR_PROVENANCE_POLICY_VERSION}"' in (
         provenance
     )
+
+
+@pytest.mark.parametrize(
+    "raw_source_bytes",
+    [
+        b"",
+        b"\x00\r\n\xff\xfe\x80arbitrary trailing bytes\x00",
+    ],
+)
+def test_planner_v2_explicit_authority_binds_exact_raw_bytes_and_parser(
+    raw_source_bytes: bytes,
+) -> None:
+    parser_version = "synthetic-upstream-adapter-v7"
+    plan = sample_plan_v2(
+        bar_source_authority=sample_bar_source_authority_input_v2(
+            content=raw_source_bytes,
+            parser_version=parser_version,
+        )
+    )
+
+    assert plan.as_file_map()["bars.jsonl"] == CANONICAL_BARS_BYTES
+    assert plan.manifest.content_hash == S3A_GOLDEN_CONTENT_HASH
+    assert plan.manifest.size_bytes == len(CANONICAL_BARS_BYTES)
+    assert plan.bar_provenance.source_content_hash == (
+        f"sha256:{sha256(raw_source_bytes).hexdigest()}"
+    )
+    assert plan.bar_provenance.source_size_bytes == len(raw_source_bytes)
+    assert plan.bar_provenance.parser_version == parser_version
+
+    verified = verify_daily_market_data_snapshot_bundle_v2(plan.as_file_map())
+    assert verified.snapshot_id == plan.snapshot_id
+    assert verified.bar_provenance == plan.bar_provenance
+
+
+def test_planner_v2_parser_authority_changes_provenance_and_snapshot_identity() -> None:
+    raw_source_bytes = b"same exact upstream bytes"
+    first = sample_plan_v2(
+        bar_source_authority=sample_bar_source_authority_input_v2(
+            content=raw_source_bytes,
+            parser_version="synthetic-upstream-adapter-v1",
+        )
+    )
+    second = sample_plan_v2(
+        bar_source_authority=sample_bar_source_authority_input_v2(
+            content=raw_source_bytes,
+            parser_version="synthetic-upstream-adapter-v2",
+        )
+    )
+
+    assert first.as_file_map()["bars.jsonl"] == second.as_file_map()["bars.jsonl"]
+    assert (
+        first.bar_provenance.source_content_hash
+        == second.bar_provenance.source_content_hash
+    )
+    assert (
+        first.bar_provenance.source_size_bytes
+        == second.bar_provenance.source_size_bytes
+    )
+    assert first.bar_provenance_hash != second.bar_provenance_hash
+    assert first.snapshot_id != second.snapshot_id
+
+
+def test_planner_v2_explicit_authority_still_parses_canonical_source_bytes() -> None:
+    with pytest.raises(DailyMarketDataSnapshotSerializationError, match="valid JSON"):
+        sample_plan_v2(
+            source_bytes=b"not canonical bar JSONL",
+            bar_source_authority=sample_bar_source_authority_input_v2(),
+        )
+
+
+def test_planner_v2_different_raw_authority_changes_only_source_authority() -> None:
+    first = sample_plan_v2(
+        bar_source_authority=sample_bar_source_authority_input_v2(
+            content=b"exact upstream response one"
+        )
+    )
+    second = sample_plan_v2(
+        bar_source_authority=sample_bar_source_authority_input_v2(
+            content=b"exact upstream response two"
+        )
+    )
+
+    assert first.as_file_map()["bars.jsonl"] == second.as_file_map()["bars.jsonl"]
+    assert first.manifest.content_hash == second.manifest.content_hash
+    assert first.quality_report.content_hash == second.quality_report.content_hash
+    assert first.bar_provenance_hash != second.bar_provenance_hash
+    assert first.snapshot_id != second.snapshot_id
+
+
+def test_planner_v2_same_raw_authority_canonicalizes_equivalent_bar_inputs() -> None:
+    authority = sample_bar_source_authority_input_v2()
+    canonical_order = sample_plan_v2(bar_source_authority=authority)
+    reversed_order = sample_plan_v2(
+        source_bytes=REORDERED_CANONICALIZABLE_BARS_BYTES,
+        bar_source_authority=authority,
+    )
+
+    assert canonical_order.as_file_map()["bars.jsonl"] == CANONICAL_BARS_BYTES
+    assert reversed_order.as_file_map()["bars.jsonl"] == CANONICAL_BARS_BYTES
+    assert canonical_order.manifest.content_hash == S3A_GOLDEN_CONTENT_HASH
+    assert reversed_order.manifest.content_hash == S3A_GOLDEN_CONTENT_HASH
+    assert (
+        canonical_order.bar_provenance.source_content_hash
+        == reversed_order.bar_provenance.source_content_hash
+    )
+    assert (
+        canonical_order.bar_provenance.source_size_bytes
+        == reversed_order.bar_provenance.source_size_bytes
+    )
+    assert canonical_order.bar_provenance_hash == reversed_order.bar_provenance_hash
+    assert canonical_order.snapshot_id == reversed_order.snapshot_id
+
+
+@pytest.mark.parametrize(
+    ("authority", "message"),
+    [
+        ("not an authority", "bar_source_authority must be"),
+        (
+            DailyMarketDataBarSourceAuthorityInputV2(
+                content=bytearray(b"not bytes"),  # type: ignore[arg-type]
+                parser_version="synthetic-parser-v1",
+            ),
+            "content must be bytes",
+        ),
+        (
+            DailyMarketDataBarSourceAuthorityInputV2(
+                content=b"exact bytes",
+                parser_version=1,  # type: ignore[arg-type]
+            ),
+            "parser_version",
+        ),
+    ],
+)
+def test_planner_v2_rejects_invalid_bar_source_authority_types(
+    authority: object,
+    message: str,
+) -> None:
+    with pytest.raises(DailyMarketDataSnapshotPlanningV2Error, match=message):
+        sample_plan_v2(bar_source_authority=authority)
+
+
+def test_planner_v2_validates_and_uses_one_authority_content_value() -> None:
+    validated_content = b"exact bytes returned for validation and derivation"
+
+    class AlternatingAuthority(DailyMarketDataBarSourceAuthorityInputV2):
+        def __getattribute__(self, name: str) -> object:
+            if name != "content":
+                return super().__getattribute__(name)
+            reads = super().__getattribute__("_content_reads")
+            object.__setattr__(self, "_content_reads", reads + 1)
+            if reads == 0:
+                return validated_content
+            return bytearray(b"non-bytes value must never reach derivation")
+
+    authority = AlternatingAuthority(
+        content=b"constructor value",
+        parser_version="synthetic-parser-v1",
+    )
+    object.__setattr__(authority, "_content_reads", 0)
+
+    plan = sample_plan_v2(bar_source_authority=authority)
+
+    assert authority._content_reads == 1
+    assert plan.bar_provenance.source_content_hash == (
+        f"sha256:{sha256(validated_content).hexdigest()}"
+    )
+    assert plan.bar_provenance.source_size_bytes == len(validated_content)
+
+
+@pytest.mark.parametrize("parser_version", ["", " ", " parser-v1", "parser-v1 "])
+def test_planner_v2_rejects_invalid_authority_parser_version(
+    parser_version: str,
+) -> None:
+    with pytest.raises(
+        DailyMarketDataSnapshotPlanningV2Error,
+        match="parser_version",
+    ):
+        sample_plan_v2(
+            bar_source_authority=sample_bar_source_authority_input_v2(
+                parser_version=parser_version
+            )
+        )
+
+
+def test_bar_source_authority_has_no_caller_hash_or_size_api() -> None:
+    assert DailyMarketDataBarSourceAuthorityInputV2.__dataclass_params__.frozen
+    assert {
+        field.name for field in fields(DailyMarketDataBarSourceAuthorityInputV2)
+    } == {
+        "content",
+        "parser_version",
+    }
+    planner_parameters = signature(plan_daily_market_data_snapshot_v2).parameters
+    assert "source_content_hash" not in planner_parameters
+    assert "source_size_bytes" not in planner_parameters
 
 
 def test_planner_v2_derives_manifest_fields_and_combined_timestamps() -> None:
@@ -225,13 +447,7 @@ def test_planner_v2_is_deterministic_and_has_no_profile_or_caller_hash_inputs() 
     assert "manifest" not in params
     assert "content_hash" not in params
 
-    changed_order_source = (
-        b'{"session_date":"2026-01-05","open":"101","high":"102",'
-        b'"low":"100","close":"101.5","volume":1100}\n'
-        b'{"session_date":"2026-01-02","open":"100","high":"101",'
-        b'"low":"99","close":"100.5","volume":1000}\n'
-    )
-    plan = sample_plan_v2(source_bytes=changed_order_source)
+    plan = sample_plan_v2(source_bytes=REORDERED_CANONICALIZABLE_BARS_BYTES)
     assert plan.manifest.content_hash == S3A_GOLDEN_CONTENT_HASH
     assert plan.as_file_map()["bars.jsonl"] == CANONICAL_BARS_BYTES
     assert (

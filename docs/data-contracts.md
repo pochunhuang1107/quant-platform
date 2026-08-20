@@ -536,6 +536,20 @@ separate checked corporate-action evidence. The v2 bar provenance contract
 rejects the exact legacy limitation
 `corporate-action/distribution evidence is not integrated`.
 
+Snapshot-v2 planning separates canonical bar input bytes from optional exact
+upstream bar-source authority. `source_bytes` always contains canonicalizable
+daily-bar JSONL and alone drives parsing, quality validation, semantic bar
+content, and the canonical `bars.jsonl` payload. When no separate authority is
+supplied, provenance hash/size and parser version retain the historical
+canonical-JSONL behavior. When a `DailyMarketDataBarSourceAuthorityInputV2` is
+supplied, the planner derives provenance hash/size from its exact `content`
+bytes and records its `parser_version`; callers cannot supply hashes or sizes.
+Zero-length authority content remains valid at this generic layer because the
+durable provenance contract permits a zero-byte source; source-specific
+capture and adapter boundaries determine whether such evidence is usable.
+This operational input adds no durable contract, file, identity version, or
+bundle-format field and performs no source acquisition or I/O.
+
 S3c2a uses exactly eight authoritative files:
 
 - `bars.jsonl`

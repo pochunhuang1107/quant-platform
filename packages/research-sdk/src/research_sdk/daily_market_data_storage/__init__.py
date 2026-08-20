@@ -24,6 +24,7 @@ from research_sdk.daily_market_data_storage.planning import (
     plan_daily_market_data_snapshot,
 )
 from research_sdk.daily_market_data_storage.planning_v2 import (
+    DailyMarketDataBarSourceAuthorityInputV2,
     DailyMarketDataBarSourceProvenanceInputV2,
     DailyMarketDataSnapshotPlanningV2Error,
     DailyMarketDataSnapshotPlanV2,
@@ -48,6 +49,7 @@ from research_sdk.daily_market_data_storage.verification_v2 import (
 
 __all__ = [
     "DailyMarketDataSnapshotConflictError",
+    "DailyMarketDataBarSourceAuthorityInputV2",
     "DailyMarketDataBarSourceProvenanceInputV2",
     "DailyMarketDataSnapshotDiskVerificationError",
     "DailyMarketDataSnapshotPlan",

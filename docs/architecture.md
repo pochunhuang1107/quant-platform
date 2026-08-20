@@ -486,6 +486,17 @@ authority and rejects the legacy `corporate-action/distribution evidence is
 not integrated` limitation. Corporate-action source authority remains in
 `corporate-action-evidence.json`.
 
+The pure snapshot-v2 planner has two bar-byte inputs with distinct authority.
+Canonical `source_bytes` always drive JSONL parsing, quality checks, semantic
+bar identity, and deterministic `bars.jsonl` rendering. An optional frozen
+`DailyMarketDataBarSourceAuthorityInputV2` may instead supply the exact
+upstream bytes used only to derive bar-provenance content hash/size together
+with the parser/adapter version that consumed them. Omitting it preserves the
+historical canonical-JSONL provenance path exactly. The operational authority
+input has no caller hash/size, does not alter durable contracts or identity
+versions, and introduces no provider, network, filesystem, clock, or
+acquisition behavior.
+
 The exact S3c2a bundle-v2 files are:
 
 - `bars.jsonl`
