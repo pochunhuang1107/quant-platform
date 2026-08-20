@@ -5,6 +5,7 @@ description = "Enterprise-grade multi-asset quant research platform."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "exchange-calendars==4.13.2",
     "pyarrow>=22,<23",
     "pydantic>=2,<3",
     "sqlalchemy>=2,<3",

@@ -900,6 +900,41 @@ platform must not use naive weekday generation. The first real QQQ/SPY
 snapshots should use a deterministic US-equity exchange calendar source with
 explicit calendar, timezone, session source ID, and session source version.
 
+S3c3c4 closes that daily date-authority boundary with the human-approved
+combination `exchange_calendars==4.13.2`, calendar `XNYS`, timezone
+`America/New_York`, and semantic policy
+`us-equity-regular-session-dates-v1`. The resulting source authority is labeled
+`exchange_calendars:XNYS` at version
+`exchange_calendars-4.13.2+us-equity-regular-session-dates-v1`. Exact pinning
+matters because an unlabeled installed calendar result is not reproducible
+authority; each derivation checks installed distribution metadata and fails
+closed unless it is exactly `4.13.2`.
+
+`derive_us_equity_daily_expected_sessions(...)` accepts exact, explicit,
+inclusive `start_date` and `end_date` values, constructs XNYS with explicit
+bounds, verifies the returned calendar name and timezone, and materializes its
+strictly ascending regular-session labels directly as `tuple[date, ...]`. It
+does not use a wall clock, network, bars, ticker, instrument, venue, provider,
+weekday approximation, open/close timestamps, or inferred current date. An
+early-close day remains an expected session because this policy is date-only.
+The durable result is the existing `DailyMarketDataExpectedSessions` contract,
+not a pandas index, calendar handle, or lazy package object.
+
+XNYS is deliberately the common U.S.-equity daily research-session policy for
+the first supported QQQ/SPY pair. It is not listing-venue or execution-venue
+metadata and does not claim either instrument is NYSE-listed: QQQ remains XNAS
+and SPY remains ARCX while both reuse the same independent XNYS session-date
+tuple. Intraday, venue-specific, other-exchange, and other-asset-class calendar
+semantics remain future work.
+
+The existing canonical expected-session hash remains the only session identity
+hash and binds the fully materialized dates plus source/calendar/timezone
+metadata into snapshot identity. A dependency upgrade, semantic-policy change,
+or revised historical session tuple is therefore an explicit authority
+migration requiring a new pin/source version, reviewed golden output, and any
+resulting expected-session hash and snapshot-identity change. Calendar dates do
+not create a point-in-time or leakage-safe market-data claim.
+
 S3c3c3 adds a pure provider-specific bridge from one verified, offline-adapted
 Massive capture to the existing generic snapshot-v2 planner. It renders
 canonical `bars.jsonl` input from the adapter's canonical bars, while the bar
@@ -962,9 +997,10 @@ byte and semantic verification rather than duplicating either transform.
 The S3c3 implementation sequence is S3c3a design, then S3c3b immutable capture
 and offline Massive adapter, then S3c3c1 raw/canonical bar authority, S3c3c2
 exact local readback, S3c3c3 provider composition and acquisition-vintage
-validation, and later bounded real QQQ/SPY acquisition and snapshot-v2
-publication. S3d2b economic execution integration remains deferred until S3c3
-produces trusted QQQ/SPY snapshot-v2 execution-input bundles.
+validation, S3c3c4 common U.S.-equity expected-session date authority, and later
+bounded real QQQ/SPY acquisition and snapshot-v2 publication. S3d2b economic
+execution integration remains deferred until S3c3 produces trusted QQQ/SPY
+snapshot-v2 execution-input bundles.
 
 ## Deterministic ETF Baseline
 
