@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from research_sdk.contracts.daily_market_data_snapshots import (
     DAILY_MARKET_DATA_BUNDLE_MANIFEST_PATH,
@@ -54,6 +55,16 @@ class LocalDailyMarketDataSnapshotPublicationV2:
     snapshot_id: str
     path: Path
     status: LocalDailyMarketDataSnapshotPublicationStatus
+    verified: VerifiedDailyMarketDataSnapshotV2
+
+
+@dataclass(frozen=True)
+class LocalDailyMarketDataSnapshotReadbackV2:
+    """Exact verified bytes read from one immutable local snapshot-v2."""
+
+    snapshot_id: str
+    path: Path
+    files: Mapping[str, bytes]
     verified: VerifiedDailyMarketDataSnapshotV2
 
 
@@ -123,13 +134,12 @@ def publish_local_daily_market_data_snapshot_v2(
 
     try:
         _fsync_directory(data_root)
-        verified = verify_local_daily_market_data_snapshot_v2(
+        readback = load_local_daily_market_data_snapshot_v2(
             snapshot_root=root,
             snapshot_id=plan.snapshot_id,
         )
-        final_files = _read_authoritative_bundle_directory(final_path)
         _require_exact_bytes(
-            actual=final_files,
+            actual=readback.files,
             expected=planned_files,
             error_type=DailyMarketDataSnapshotDiskVerificationError,
             context="published final snapshot-v2 bytes differ from plan",
@@ -142,18 +152,18 @@ def publish_local_daily_market_data_snapshot_v2(
 
     return LocalDailyMarketDataSnapshotPublicationV2(
         snapshot_id=plan.snapshot_id,
-        path=final_path,
+        path=readback.path,
         status=LocalDailyMarketDataSnapshotPublicationStatus.CREATED,
-        verified=verified,
+        verified=readback.verified,
     )
 
 
-def verify_local_daily_market_data_snapshot_v2(
+def load_local_daily_market_data_snapshot_v2(
     *,
     snapshot_root: Path,
     snapshot_id: str,
-) -> VerifiedDailyMarketDataSnapshotV2:
-    """Read and verify a local daily market-data snapshot-v2 without mutation."""
+) -> LocalDailyMarketDataSnapshotReadbackV2:
+    """Read exact local snapshot-v2 bytes once and verify that same mapping."""
 
     _validate_snapshot_id_v2(snapshot_id)
     root = _validate_existing_snapshot_root(snapshot_root)
@@ -162,7 +172,8 @@ def verify_local_daily_market_data_snapshot_v2(
         context="daily market-data storage directory",
     )
     final_path = _snapshot_directory(data_root=data_root, snapshot_id=snapshot_id)
-    files = _read_authoritative_bundle_directory(final_path)
+    mutable_files = _read_authoritative_bundle_directory(final_path)
+    files: Mapping[str, bytes] = MappingProxyType(dict(mutable_files))
     try:
         verified = verify_daily_market_data_snapshot_bundle_v2(files)
     except Exception as exc:
@@ -175,7 +186,25 @@ def verify_local_daily_market_data_snapshot_v2(
             f"local daily market-data snapshot-v2 at {final_path} verified as "
             f"{verified.snapshot_id!r}, not requested {snapshot_id!r}"
         )
-    return verified
+    return LocalDailyMarketDataSnapshotReadbackV2(
+        snapshot_id=snapshot_id,
+        path=final_path,
+        files=files,
+        verified=verified,
+    )
+
+
+def verify_local_daily_market_data_snapshot_v2(
+    *,
+    snapshot_root: Path,
+    snapshot_id: str,
+) -> VerifiedDailyMarketDataSnapshotV2:
+    """Verify a local snapshot-v2 through exact-byte readback compatibility."""
+
+    return load_local_daily_market_data_snapshot_v2(
+        snapshot_root=snapshot_root,
+        snapshot_id=snapshot_id,
+    ).verified
 
 
 def _validate_plan_before_io(
@@ -426,13 +455,12 @@ def _idempotent_publication_or_conflict(
     planned_files: Mapping[str, bytes],
 ) -> LocalDailyMarketDataSnapshotPublicationV2:
     try:
-        verified = verify_local_daily_market_data_snapshot_v2(
+        readback = load_local_daily_market_data_snapshot_v2(
             snapshot_root=root,
             snapshot_id=snapshot_id,
         )
-        actual_files = _read_authoritative_bundle_directory(final_path)
         _require_exact_bytes(
-            actual=actual_files,
+            actual=readback.files,
             expected=planned_files,
             error_type=DailyMarketDataSnapshotConflictError,
             context="existing local snapshot-v2 conflicts with requested plan",
@@ -446,9 +474,9 @@ def _idempotent_publication_or_conflict(
         ) from exc
     return LocalDailyMarketDataSnapshotPublicationV2(
         snapshot_id=snapshot_id,
-        path=final_path,
+        path=readback.path,
         status=LocalDailyMarketDataSnapshotPublicationStatus.ALREADY_PRESENT,
-        verified=verified,
+        verified=readback.verified,
     )
 
 
@@ -495,6 +523,8 @@ def _cleanup_staging_best_effort(staging_path: Path) -> None:
 
 __all__ = [
     "LocalDailyMarketDataSnapshotPublicationV2",
+    "LocalDailyMarketDataSnapshotReadbackV2",
+    "load_local_daily_market_data_snapshot_v2",
     "publish_local_daily_market_data_snapshot_v2",
     "verify_local_daily_market_data_snapshot_v2",
 ]

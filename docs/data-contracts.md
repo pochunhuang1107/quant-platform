@@ -687,6 +687,27 @@ repairs, deletes, and cleans nothing. The local filesystem trust model remains
 the S3b2 cooperating-root model, not a hardened untrusted multi-tenant
 filesystem sandbox.
 
+S3c3c2 exposes that read as the frozen operational
+`LocalDailyMarketDataSnapshotReadbackV2` through
+`load_local_daily_market_data_snapshot_v2(...)`. The result contains the
+requested and verified snapshot ID, resolved immutable snapshot directory,
+the exact eight-file `Mapping[str, bytes]` read from disk, and the
+`VerifiedDailyMarketDataSnapshotV2` derived from that same immutable mapping.
+The mapping is caller-immutable, its values remain exact immutable `bytes`,
+and no file is reopened to construct the result. This is not a durable
+Pydantic contract and adds no schema, fixture, sidecar, identity field, or
+bundle-format field.
+
+`verify_local_daily_market_data_snapshot_v2(...)` keeps its existing signature
+and return type as a compatibility wrapper over the loader. Final CREATED and
+ALREADY_PRESENT publication verification now compare the loader's already
+verified exact byte mapping directly with the plan, eliminating a second
+authoritative-directory read without changing publication, idempotency, or
+conflict semantics. Readback has no lookback, lag, calendar, acquisition, or
+leakage semantics: it consumes only an existing local root and snapshot ID,
+preserves stored bytes exactly, and makes no research-readiness or S3d2a
+execution claim.
+
 If publication fails before final rename, S3c2b1 best-effort removes only the
 staging directory created by the current invocation. If final verification
 fails after a successful rename, it raises a disk verification error and
