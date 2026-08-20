@@ -593,6 +593,28 @@ directory in place for diagnosis. Staging cleanup removes only the staging
 directory created by the current invocation and leaves unrelated staging
 children untouched.
 
+S3c3c2 adds exact-byte snapshot-v2 local readback without changing that
+storage or trust model. `load_local_daily_market_data_snapshot_v2(...)` reads
+the authoritative eight-file directory once, freezes the exact
+`Mapping[str, bytes]`, passes that same immutable mapping to
+`verify_daily_market_data_snapshot_bundle_v2(...)`, and returns it with the
+verified facts and resolved immutable directory in
+`LocalDailyMarketDataSnapshotReadbackV2`. The existing
+`verify_local_daily_market_data_snapshot_v2(...)` remains a compatibility
+wrapper that returns only `readback.verified`.
+
+Created and already-present publication paths use that readback result for
+both verification and exact comparison with the planned file map. The final
+authoritative directory is therefore not independently read once for
+verification and again for byte comparison. The loader does not decode,
+normalize, rerender, reconstruct, repair, cache, or persist bundle content,
+and it never creates root, managed, or staging directories. Its only inputs
+are an existing cooperating snapshot root and an exact snapshot-v2 ID. It
+introduces no lookback, lag, calendar inference, source acquisition, or
+leakage/readiness claim. A later orchestration layer may pass the returned
+exact byte mapping downstream; S3c3c2 does not import or change the
+backtest-engine or S3d2a.
+
 S3c2b1 still does not add profile hashing, snapshot/profile compatibility,
 research readiness, provider/source acquisition, raw-source archival,
 persistence, migrations, backtest-engine accounting, strategy behavior, paper

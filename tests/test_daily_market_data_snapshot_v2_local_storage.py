@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import errno
 import shutil
+from collections.abc import Mapping, MutableMapping
 from dataclasses import replace
 from hashlib import sha256
+from inspect import Parameter, signature
 from pathlib import Path
+from typing import cast, get_type_hints
 
 import pytest
 
@@ -17,8 +20,13 @@ from research_sdk.daily_market_data_storage import (
     DailyMarketDataSnapshotPathError,
     DailyMarketDataSnapshotPublicationError,
     LocalDailyMarketDataSnapshotPublicationStatus,
+    LocalDailyMarketDataSnapshotPublicationV2,
+    LocalDailyMarketDataSnapshotReadbackV2,
+    VerifiedDailyMarketDataSnapshotV2,
+    load_local_daily_market_data_snapshot_v2,
     publish_local_daily_market_data_snapshot,
     publish_local_daily_market_data_snapshot_v2,
+    verify_daily_market_data_snapshot_bundle_v2,
     verify_local_daily_market_data_snapshot,
     verify_local_daily_market_data_snapshot_v2,
 )
@@ -33,6 +41,198 @@ EXPECTED_BUNDLE_FILES_V2 = (
     "snapshot-manifest.json",
     "bundle-manifest.json",
 )
+
+
+def test_load_v2_returns_exact_verified_immutable_disk_bytes(tmp_path: Path) -> None:
+    plan = sample_plan_v2()
+    publication = publish_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        plan=plan,
+    )
+
+    readback = load_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        snapshot_id=plan.snapshot_id,
+    )
+
+    assert isinstance(readback, LocalDailyMarketDataSnapshotReadbackV2)
+    assert readback.snapshot_id == plan.snapshot_id
+    assert readback.verified.snapshot_id == plan.snapshot_id
+    assert readback.path == (tmp_path / "daily-market-data" / plan.snapshot_id).resolve(
+        strict=True
+    )
+    assert readback.path == publication.path
+    assert isinstance(readback.files, Mapping)
+    assert tuple(readback.files) == EXPECTED_BUNDLE_FILES_V2
+    assert dict(readback.files) == plan.as_file_map()
+    assert verify_daily_market_data_snapshot_bundle_v2(readback.files) == (
+        readback.verified
+    )
+    for relative_path, content in readback.files.items():
+        assert type(content) is bytes
+        assert content == (readback.path / relative_path).read_bytes()
+
+
+def test_load_v2_files_mapping_rejects_all_caller_mutation(tmp_path: Path) -> None:
+    plan = sample_plan_v2()
+    publish_local_daily_market_data_snapshot_v2(snapshot_root=tmp_path, plan=plan)
+    readback = load_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        snapshot_id=plan.snapshot_id,
+    )
+    files = cast(MutableMapping[str, bytes], readback.files)
+
+    with pytest.raises(TypeError):
+        files["extra.json"] = b"{}\n"
+    with pytest.raises(TypeError):
+        files["bars.jsonl"] = b""
+    with pytest.raises(TypeError):
+        del files["bars.jsonl"]
+    with pytest.raises(AttributeError):
+        files.update({"extra.json": b"{}\n"})
+    with pytest.raises(AttributeError):
+        files.setdefault("extra.json", b"{}\n")
+    with pytest.raises(AttributeError):
+        files.clear()
+    with pytest.raises(AttributeError):
+        files.pop("bars.jsonl")
+
+    assert dict(readback.files) == plan.as_file_map()
+    assert all(type(content) is bytes for content in readback.files.values())
+
+
+def test_load_v2_verifies_and_returns_one_authoritative_read_mapping(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = sample_plan_v2()
+    publish_local_daily_market_data_snapshot_v2(snapshot_root=tmp_path, plan=plan)
+    real_reader = local_storage_v2._read_authoritative_bundle_directory
+    real_verifier = local_storage_v2.verify_daily_market_data_snapshot_bundle_v2
+    reader_results: list[dict[str, bytes]] = []
+    verifier_inputs: list[Mapping[str, bytes]] = []
+
+    def capture_read(directory: Path) -> dict[str, bytes]:
+        files = real_reader(directory)
+        reader_results.append(files)
+        return files
+
+    def capture_verification(
+        files: Mapping[str, bytes],
+    ) -> VerifiedDailyMarketDataSnapshotV2:
+        verifier_inputs.append(files)
+        return real_verifier(files)
+
+    monkeypatch.setattr(
+        local_storage_v2,
+        "_read_authoritative_bundle_directory",
+        capture_read,
+    )
+    monkeypatch.setattr(
+        local_storage_v2,
+        "verify_daily_market_data_snapshot_bundle_v2",
+        capture_verification,
+    )
+
+    readback = load_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        snapshot_id=plan.snapshot_id,
+    )
+
+    assert len(reader_results) == 1
+    assert verifier_inputs == [readback.files]
+    assert verifier_inputs[0] is readback.files
+    for relative_path in EXPECTED_BUNDLE_FILES_V2:
+        assert readback.files[relative_path] is reader_results[0][relative_path]
+
+    reader_results[0]["bars.jsonl"] = b"mutated retained reader alias"
+    del reader_results[0]["policy.json"]
+    reader_results[0]["extra.json"] = b"extra"
+    assert dict(readback.files) == plan.as_file_map()
+
+
+@pytest.mark.parametrize(
+    "invalid_kind",
+    ["non_exact_str_key", "bytearray_value", "bytes_subclass_value"],
+)
+def test_load_v2_rejects_non_exact_reader_key_and_value_types(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_kind: str,
+) -> None:
+    class StringSubclass(str):
+        pass
+
+    class BytesSubclass(bytes):
+        pass
+
+    plan = sample_plan_v2()
+    publish_local_daily_market_data_snapshot_v2(snapshot_root=tmp_path, plan=plan)
+    reader_files: dict[object, object] = dict(plan.as_file_map())
+    if invalid_kind == "non_exact_str_key":
+        reader_files[StringSubclass("bars.jsonl")] = reader_files.pop("bars.jsonl")
+    elif invalid_kind == "bytearray_value":
+        reader_files["bars.jsonl"] = bytearray(cast(bytes, reader_files["bars.jsonl"]))
+    else:
+        reader_files["bars.jsonl"] = BytesSubclass(
+            cast(bytes, reader_files["bars.jsonl"])
+        )
+
+    monkeypatch.setattr(
+        local_storage_v2,
+        "_read_authoritative_bundle_directory",
+        lambda _: reader_files,
+    )
+
+    with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=plan.snapshot_id,
+        )
+
+
+def test_v2_local_verifier_signature_and_result_remain_compatible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = sample_plan_v2()
+    publish_local_daily_market_data_snapshot_v2(snapshot_root=tmp_path, plan=plan)
+    readback = load_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        snapshot_id=plan.snapshot_id,
+    )
+
+    verifier_signature = signature(verify_local_daily_market_data_snapshot_v2)
+    assert tuple(verifier_signature.parameters) == ("snapshot_root", "snapshot_id")
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY
+        for parameter in verifier_signature.parameters.values()
+    )
+    assert get_type_hints(verify_local_daily_market_data_snapshot_v2) == {
+        "snapshot_root": Path,
+        "snapshot_id": str,
+        "return": VerifiedDailyMarketDataSnapshotV2,
+    }
+    real_reader = local_storage_v2._read_authoritative_bundle_directory
+    read_paths: list[Path] = []
+
+    def count_read(directory: Path) -> dict[str, bytes]:
+        read_paths.append(directory.resolve(strict=True))
+        return real_reader(directory)
+
+    monkeypatch.setattr(
+        local_storage_v2,
+        "_read_authoritative_bundle_directory",
+        count_read,
+    )
+    verified = verify_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        snapshot_id=plan.snapshot_id,
+    )
+
+    assert type(verified) is VerifiedDailyMarketDataSnapshotV2
+    assert verified == readback.verified
+    assert read_paths == [readback.path]
 
 
 def test_publish_v2_valid_plan_to_empty_root(tmp_path: Path) -> None:
@@ -77,12 +277,25 @@ def test_v2_invalid_plan_causes_zero_filesystem_mutation(tmp_path: Path) -> None
 
 def test_publish_same_v2_plan_twice_is_exact_byte_idempotent(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plan = sample_plan_v2()
     root = tmp_path / "snapshots"
 
     first = publish_local_daily_market_data_snapshot_v2(snapshot_root=root, plan=plan)
     hashes_before = _bundle_hashes(first.path)
+    real_reader = local_storage_v2._read_authoritative_bundle_directory
+    read_paths: list[Path] = []
+
+    def count_read(directory: Path) -> dict[str, bytes]:
+        read_paths.append(directory.resolve())
+        return real_reader(directory)
+
+    monkeypatch.setattr(
+        local_storage_v2,
+        "_read_authoritative_bundle_directory",
+        count_read,
+    )
     second = publish_local_daily_market_data_snapshot_v2(snapshot_root=root, plan=plan)
 
     assert first.status is LocalDailyMarketDataSnapshotPublicationStatus.CREATED
@@ -96,6 +309,9 @@ def test_publish_same_v2_plan_twice_is_exact_byte_idempotent(
         plan.snapshot_id,
     }
     assert second.verified.snapshot_id == plan.snapshot_id
+    assert second.verified == first.verified
+    assert _read_bundle(second.path) == plan.as_file_map()
+    assert read_paths == [first.path]
 
 
 @pytest.mark.parametrize("relative_path", EXPECTED_BUNDLE_FILES_V2)
@@ -111,6 +327,11 @@ def test_existing_v2_authoritative_file_mutation_is_conflict(
     target = result.path / relative_path
     target.write_bytes(target.read_bytes() + b" ")
 
+    with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=plan.snapshot_id,
+        )
     with pytest.raises(DailyMarketDataSnapshotConflictError):
         publish_local_daily_market_data_snapshot_v2(snapshot_root=tmp_path, plan=plan)
 
@@ -132,6 +353,11 @@ def test_v2_missing_or_extra_file_fails_republish_and_read_only_verifier(
     else:
         (result.path / "extra.json").write_bytes(b"{}\n")
 
+    with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=plan.snapshot_id,
+        )
     with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
         verify_local_daily_market_data_snapshot_v2(
             snapshot_root=tmp_path,
@@ -217,6 +443,11 @@ def test_v2_symlinked_managed_paths_fail_closed(tmp_path: Path) -> None:
     (result.path / "bars.jsonl").unlink()
     (result.path / "bars.jsonl").symlink_to(tmp_path / "linked-bars.jsonl")
     with pytest.raises(DailyMarketDataSnapshotPathError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path / "root4",
+            snapshot_id=plan.snapshot_id,
+        )
+    with pytest.raises(DailyMarketDataSnapshotPathError):
         verify_local_daily_market_data_snapshot_v2(
             snapshot_root=tmp_path / "root4",
             snapshot_id=plan.snapshot_id,
@@ -237,6 +468,11 @@ def test_v2_authoritative_non_regular_file_fails_readback(tmp_path: Path) -> Non
     (result.path / "bars.jsonl").unlink()
     (result.path / "bars.jsonl").mkdir()
 
+    with pytest.raises(DailyMarketDataSnapshotPathError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=plan.snapshot_id,
+        )
     with pytest.raises(DailyMarketDataSnapshotPathError):
         verify_local_daily_market_data_snapshot_v2(
             snapshot_root=tmp_path,
@@ -266,6 +502,11 @@ def test_v2_local_verifier_rejects_snapshot_id_traversal_and_v1_ids(
 ) -> None:
     tmp_path.mkdir(exist_ok=True)
 
+    with pytest.raises(DailyMarketDataSnapshotPathError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=snapshot_id,
+        )
     with pytest.raises(DailyMarketDataSnapshotPathError):
         verify_local_daily_market_data_snapshot_v2(
             snapshot_root=tmp_path,
@@ -451,7 +692,84 @@ def test_v2_unexpected_rename_errors_fail_without_copy_fallback(
     assert list((tmp_path / "daily-market-data" / ".staging").iterdir()) == []
 
 
-def test_v2_post_rename_final_verification_failure_leaves_final_directory(
+def test_created_v2_publication_uses_one_final_exact_byte_readback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = sample_plan_v2()
+    real_reader = local_storage_v2._read_authoritative_bundle_directory
+    real_loader = local_storage_v2.load_local_daily_market_data_snapshot_v2
+    real_require_exact_bytes = local_storage_v2._require_exact_bytes
+    read_paths: list[Path] = []
+    readbacks: list[LocalDailyMarketDataSnapshotReadbackV2] = []
+    final_comparisons: list[Mapping[str, bytes]] = []
+
+    def count_read(directory: Path) -> dict[str, bytes]:
+        read_paths.append(directory.resolve())
+        return real_reader(directory)
+
+    def capture_readback(
+        *, snapshot_root: Path, snapshot_id: str
+    ) -> LocalDailyMarketDataSnapshotReadbackV2:
+        readback = real_loader(
+            snapshot_root=snapshot_root,
+            snapshot_id=snapshot_id,
+        )
+        readbacks.append(readback)
+        return readback
+
+    def capture_exact_comparison(
+        *,
+        actual: Mapping[str, bytes],
+        expected: Mapping[str, bytes],
+        error_type: type[local_storage_v2.DailyMarketDataSnapshotStorageError],
+        context: str,
+    ) -> None:
+        if context == "published final snapshot-v2 bytes differ from plan":
+            final_comparisons.append(actual)
+        real_require_exact_bytes(
+            actual=actual,
+            expected=expected,
+            error_type=error_type,
+            context=context,
+        )
+
+    monkeypatch.setattr(
+        local_storage_v2,
+        "_read_authoritative_bundle_directory",
+        count_read,
+    )
+    monkeypatch.setattr(
+        local_storage_v2,
+        "load_local_daily_market_data_snapshot_v2",
+        capture_readback,
+    )
+    monkeypatch.setattr(
+        local_storage_v2,
+        "_require_exact_bytes",
+        capture_exact_comparison,
+    )
+
+    publication = publish_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        plan=plan,
+    )
+    final_path = tmp_path.resolve() / "daily-market-data" / plan.snapshot_id
+
+    assert type(publication) is LocalDailyMarketDataSnapshotPublicationV2
+    assert publication.status is LocalDailyMarketDataSnapshotPublicationStatus.CREATED
+    assert len(read_paths) == 2
+    assert read_paths.count(final_path) == 1
+    assert len(readbacks) == 1
+    assert publication.path == readbacks[0].path
+    assert publication.verified is readbacks[0].verified
+    assert final_comparisons == [readbacks[0].files]
+    assert final_comparisons[0] is readbacks[0].files
+    assert dict(readbacks[0].files) == plan.as_file_map()
+    assert _read_bundle(publication.path) == plan.as_file_map()
+
+
+def test_v2_post_rename_final_readback_failure_leaves_final_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -462,7 +780,7 @@ def test_v2_post_rename_final_verification_failure_leaves_final_directory(
 
     monkeypatch.setattr(
         local_storage_v2,
-        "verify_local_daily_market_data_snapshot_v2",
+        "load_local_daily_market_data_snapshot_v2",
         fail_final_verification,
     )
 
@@ -500,14 +818,96 @@ def test_v2_local_verifier_is_read_only(tmp_path: Path) -> None:
         plan=plan,
     )
     hashes_before = _bundle_hashes(result.path)
+    mtimes_before = _bundle_mtimes(result.path)
+    paths_before = _tree_paths(tmp_path)
+
+    readback = load_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        snapshot_id=plan.snapshot_id,
+    )
 
     verified = verify_local_daily_market_data_snapshot_v2(
         snapshot_root=tmp_path,
         snapshot_id=plan.snapshot_id,
     )
 
+    assert readback.verified.snapshot_id == plan.snapshot_id
     assert verified.snapshot_id == plan.snapshot_id
     assert _bundle_hashes(result.path) == hashes_before
+    assert _bundle_mtimes(result.path) == mtimes_before
+    assert _tree_paths(tmp_path) == paths_before
+
+
+def test_load_v2_does_not_create_missing_storage_paths(tmp_path: Path) -> None:
+    plan = sample_plan_v2()
+    missing_root = tmp_path / "missing-root"
+
+    with pytest.raises(DailyMarketDataSnapshotPathError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=missing_root,
+            snapshot_id=plan.snapshot_id,
+        )
+    with pytest.raises(DailyMarketDataSnapshotPathError):
+        verify_local_daily_market_data_snapshot_v2(
+            snapshot_root=missing_root,
+            snapshot_id=plan.snapshot_id,
+        )
+
+    assert not missing_root.exists()
+
+
+def test_load_v2_rejects_bundle_encoded_for_different_snapshot_id(
+    tmp_path: Path,
+) -> None:
+    plan = sample_plan_v2()
+    publication = publish_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        plan=plan,
+    )
+    requested_id = "daily-market-data-snapshot-v2-" + "0" * 64
+    assert requested_id != plan.snapshot_id
+    requested_path = publication.path.parent / requested_id
+    publication.path.rename(requested_path)
+
+    with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=requested_id,
+        )
+    with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
+        verify_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=requested_id,
+        )
+
+    assert requested_path.is_dir()
+    assert _read_bundle(requested_path) == plan.as_file_map()
+
+
+def test_load_v2_fails_closed_when_authoritative_file_cannot_be_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = sample_plan_v2()
+    publication = publish_local_daily_market_data_snapshot_v2(
+        snapshot_root=tmp_path,
+        plan=plan,
+    )
+    unreadable_path = publication.path / "policy.json"
+    real_read_bytes = Path.read_bytes
+
+    def fail_selected_read(file_path: Path) -> bytes:
+        if file_path == unreadable_path:
+            raise PermissionError(errno.EACCES, "simulated unreadable file")
+        return real_read_bytes(file_path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_selected_read)
+
+    with pytest.raises(DailyMarketDataSnapshotDiskVerificationError):
+        load_local_daily_market_data_snapshot_v2(
+            snapshot_root=tmp_path,
+            snapshot_id=plan.snapshot_id,
+        )
 
 
 def test_published_v2_snapshot_relocates_under_new_root(tmp_path: Path) -> None:
@@ -699,6 +1099,17 @@ def _bundle_hashes(directory: Path) -> dict[str, str]:
         relative_path: sha256((directory / relative_path).read_bytes()).hexdigest()
         for relative_path in EXPECTED_BUNDLE_FILES_V2
     }
+
+
+def _bundle_mtimes(directory: Path) -> dict[str, int]:
+    return {
+        relative_path: (directory / relative_path).stat().st_mtime_ns
+        for relative_path in EXPECTED_BUNDLE_FILES_V2
+    }
+
+
+def _tree_paths(root: Path) -> tuple[Path, ...]:
+    return tuple(sorted(path.relative_to(root) for path in root.rglob("*")))
 
 
 def _require_symlink_support(tmp_path: Path) -> None:
