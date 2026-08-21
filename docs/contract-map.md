@@ -94,6 +94,22 @@ S3c3c5 operational acquisition request plans
     -> no new durable contract, schema, hash, identity, or publication behavior
     -> real network execution remains behind a later explicit human S3c3c6 gate
 
+S3c3c6a fake-provider operator orchestration
+  clean reviewed main + external root + QQQ/XNAS + SPY/ARCX + frozen authorities
+    -> non-secret OPERATIONAL APPROVAL FINGERPRINT (not durable research identity)
+    -> exact confirmations before any credential prompt or acquisition
+    -> both capture plans verified/adapted/compatible before source publication
+    -> immutable source publication + exact readback + readback re-adaptation
+    -> both snapshot-v2 plans pure-verified before Prepared boundary
+    -> script-only prepublication S3d2a gates all snapshot publication
+    -> sequential immutable snapshot publication + exact local-v2 readback
+    -> final S3d2a consumes exact readback mappings
+    -> profile session authority uses exchange_calendars:XNYS and
+       exchange_calendars-4.13.2+us-equity-regular-session-dates-v1
+    -> profile hash sha256:3f0945bac4b4faa3d228805d367ae8dd0e009db8e241e02299e8c7663c64a7ed
+    -> fake-provider-only in S3c3c6a; S3c3c6b requires separate human approval
+    -> PAPER/LIVE TRADING NOT APPROVED
+
 DailyMarketDataSnapshotBundleManifest
   payload file byte hashes and sizes, excluding bundle-manifest.json itself
     -> pure in-memory readback verification of S3b1 bundle bytes

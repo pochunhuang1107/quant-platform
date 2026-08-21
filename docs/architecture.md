@@ -925,6 +925,62 @@ identity. S3c3c5 does not call the immutable publisher. S3c3c6 must complete
 both plans and separately pass the human-authorized publication/orchestration
 gate; S3d2b remains blocked.
 
+S3c3c6a adds that operator gate as fake-provider-only orchestration. Its
+credential-free preflight requires a clean `main` checkout whose local
+HEAD/main/origin-main refs equal an explicit reviewed commit, an already
+existing external data root separate from the repository hierarchy, the exact
+QQQ (`instrument-us-etf-qqq-xnas`, `QQQ`, `XNAS`) and SPY
+(`instrument-us-etf-spy-arcx`, `SPY`, `ARCX`) authorities, the independently
+derived 2024 XNYS sessions, and the approved policy/profile hashes. It prints
+and binds these non-secret facts in an explicitly labeled operational approval
+fingerprint. The fingerprint is not source-capture, snapshot, experiment, or
+research identity. Preflight accepts no credential, performs no acquisition or
+publication, and does not mutate its data root.
+
+Execution rebuilds and rechecks preflight, verifies the reviewed fingerprint,
+requires the exact endpoint/retention attestation followed by
+`ACQUIRE MASSIVE QQQ SPY 2024-01-02 2024-12-31`, and only then permits an
+interactive non-echoing `getpass` credential prompt. The production command
+accepts no credential argument, environment variable, stdin-pipe mode, or
+credential file; a noninteractive or echoed-fallback prompt fails closed. It
+then repeats the Git/root/fingerprint authority check before request one.
+Research-sdk orchestration acquires
+the six responses, verifies and adapts both in-memory captures, checks pair
+compatibility and the frozen independent authorities, publishes and exact-loads
+both source captures, re-adapts from durable readback, and prepares and verifies
+both snapshot-v2 plans. It stops before snapshot publication and does not
+import the backtest engine. The operator script first runs S3d2a against both
+in-memory snapshot plans; only a successful prepublication pair proof permits
+sequential snapshot publication/readback. Final S3d2a consumes only the exact
+snapshot readback mappings. Failures retain already published immutable
+evidence without retry, repair, rollback, deletion, or fabricated success.
+The single injected clock has five named UTC reads on a successful run: QQQ
+and SPY observation times inside S3c3c5, then shared ingestion-completed,
+available, and snapshot-created times. Chronology is validated, never repaired
+or inferred from proximity.
+
+The real profile is
+`daily-etf-latest-known-us-equity-v1` under policy version
+`daily-etf-latest-known-us-equity-profile-v1`. Its durable session authority is
+`exchange_calendars:XNYS` and
+`exchange_calendars-4.13.2+us-equity-regular-session-dates-v1`, with canonical
+profile hash
+`sha256:3f0945bac4b4faa3d228805d367ae8dd0e009db8e241e02299e8c7663c64a7ed`.
+The underscore in the durable source-version prefix follows S3c3c4; the
+hyphenated `exchange-calendars` spelling is only the installed distribution
+metadata name. XNYS remains a common daily research session policy, not QQQ or
+SPY listing-venue metadata.
+
+S3c3c6a tests use synthetic provider evidence, blocked DNS/socket/TLS entry
+points, and temporary local roots. S3c3c6b remains a separately authorized
+operational event: merge, CI success, network-capable code, or credential
+availability does not authorize a real request. No S3c3c6b execution or real
+QQQ/SPY publication occurs in S3c3c6a. PAPER/LIVE TRADING NOT APPROVED.
+Path checks and the existing publishers revalidate symlink and managed-root
+safety at their respective boundaries. As with ordinary local filesystem
+operations, this relies on a cooperating host: it does not claim to eliminate
+mount-point or privileged concurrent-mutation TOCTOU.
+
 Authoritative Massive capture preserves the exact HTTP response body bytes
 before parsing. The first QQQ/SPY capture design requires three independently
 verifiable source members per instrument: `BAR_RESPONSE`, `DIVIDEND_RESPONSE`,
