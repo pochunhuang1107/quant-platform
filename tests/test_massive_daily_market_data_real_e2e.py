@@ -27,6 +27,7 @@ from research_sdk.daily_market_data_acquisition import (
     MASSIVE_REAL_E2E_POLICY_HASH,
     MASSIVE_REAL_E2E_RESEARCH_PROFILE_HASH,
     MassiveApiCredential,
+    MassiveDailyMarketDataAcquisitionError,
     MassiveDailyMarketDataAcquisitionRequest,
     MassiveDailyMarketDataHttpResponse,
     MassiveDailyMarketDataRealE2EConfig,
@@ -896,9 +897,287 @@ def test_request_failures_return_no_prepared_or_durable_state(
 
     assert len(transport.calls) == fail_at
     assert not tuple(tmp_path.iterdir())
+    failed_request = transport.calls[-1]
+    assert (
+        "reason: Massive transport failed for "
+        f"{failed_request.role.value} at {failed_request.path}"
+    ) in str(caught.value)
     assert SECRET not in str(caught.value)
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
+
+
+def test_safe_http_403_corporate_action_reason_survives_without_body(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    raw_body = f"unsafe raw body Authorization: Bearer {SECRET}".encode()
+
+    def forbidden_dividend(request, call_number):
+        if request.role is DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE:
+            return MassiveDailyMarketDataHttpResponse(
+                status_code=403,
+                headers=(("Content-Type", "text/plain"),),
+                body=raw_body,
+            )
+        return valid_response(request, call_number)
+
+    transport = FakeTransport(response_factory=forbidden_dividend)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path, transport=transport)
+
+    rendered = str(caught.value)
+    assert "reason: Massive returned HTTP 403 for DIVIDEND_RESPONSE" in rendered
+    assert len(transport.calls) == 2
+    assert raw_body.decode() not in rendered
+    assert "Authorization" not in rendered
+    assert SECRET not in rendered
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_safe_pagination_reason_survives_without_raw_body(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    raw_marker = "RAW_PROVIDER_BODY_MUST_NOT_SURFACE"
+
+    def paginated(request, _call_number):
+        body = json.dumps(
+            {
+                "next_url": None,
+                "request_id": "safe-request-id",
+                "results": [raw_marker],
+                "status": "OK",
+            },
+            separators=(",", ":"),
+        ).encode()
+        return MassiveDailyMarketDataHttpResponse(
+            status_code=200,
+            headers=(
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(body))),
+            ),
+            body=body,
+        )
+
+    transport = FakeTransport(response_factory=paginated)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path, transport=transport)
+
+    rendered = str(caught.value)
+    assert "reason: pagination is unsupported for BAR_RESPONSE" in rendered
+    assert raw_marker not in rendered
+    assert len(transport.calls) == 1
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_safe_response_size_and_content_policy_reasons_survive(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    def oversized_length(request, _call_number):
+        body = b'{"request_id":"safe","status":"OK"}'
+        return MassiveDailyMarketDataHttpResponse(
+            status_code=200,
+            headers=(
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(request.response_size_limit_bytes + 1)),
+            ),
+            body=body,
+        )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as size_caught:
+        prepare(tmp_path, transport=FakeTransport(response_factory=oversized_length))
+
+    assert "reason: Massive response Content-Length exceeds the role byte limit" in (
+        str(size_caught.value)
+    )
+    assert size_caught.value.__cause__ is None
+    assert size_caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+    raw_body = f"RAW_BODY Authorization: Bearer {SECRET}".encode()
+
+    def wrong_media(_request, _call_number):
+        return MassiveDailyMarketDataHttpResponse(
+            status_code=200,
+            headers=(
+                ("Content-Type", "text/html"),
+                ("Content-Length", str(len(raw_body))),
+            ),
+            body=raw_body,
+        )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as media_caught:
+        prepare(tmp_path, transport=FakeTransport(response_factory=wrong_media))
+
+    rendered = str(media_caught.value)
+    assert "reason: Massive response Content-Type must be application/json" in rendered
+    assert raw_body.decode() not in rendered
+    assert "Authorization" not in rendered
+    assert SECRET not in rendered
+    assert media_caught.value.__cause__ is None
+    assert media_caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_untrusted_non_acquisition_exception_remains_generic(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        e2e_module,
+        "acquire_and_plan_massive_daily_market_data_source_capture_pair",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError(f"unsafe {SECRET}")),
+    )
+    authority = preflight(tmp_path)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=authority.approval_fingerprint,
+            credential=MassiveApiCredential(SECRET),
+            transport=FakeTransport(),
+            clock=SequenceClock(),
+        )
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: Massive six-request acquisition"
+    )
+    assert SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_untrusted_acquisition_error_subclass_remains_generic(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    class UntrustedAcquisitionError(MassiveDailyMarketDataAcquisitionError):
+        pass
+
+    monkeypatch.setattr(
+        e2e_module,
+        "acquire_and_plan_massive_daily_market_data_source_capture_pair",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            UntrustedAcquisitionError(f"unsafe {SECRET}")
+        ),
+    )
+    authority = preflight(tmp_path)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=authority.approval_fingerprint,
+            credential=MassiveApiCredential(SECRET),
+            transport=FakeTransport(),
+            clock=SequenceClock(),
+        )
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: Massive six-request acquisition"
+    )
+    assert SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_exact_acquisition_error_reason_containing_credential_is_suppressed(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        e2e_module,
+        "acquire_and_plan_massive_daily_market_data_source_capture_pair",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            MassiveDailyMarketDataAcquisitionError(f"unsafe {SECRET}")
+        ),
+    )
+    authority = preflight(tmp_path)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=authority.approval_fingerprint,
+            credential=MassiveApiCredential(SECRET),
+            transport=FakeTransport(),
+            clock=SequenceClock(),
+        )
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: Massive six-request acquisition"
+    )
+    assert SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_safe_diagnostic_collision_with_short_credential_is_suppressed(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    short_secret = "401"
+
+    def unauthorized(_request, _call_number):
+        return MassiveDailyMarketDataHttpResponse(
+            status_code=401,
+            headers=(("Content-Type", "application/json"),),
+            body=b"",
+        )
+
+    authority = preflight(tmp_path)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=authority.approval_fingerprint,
+            credential=MassiveApiCredential(short_secret),
+            transport=FakeTransport(response_factory=unauthorized),
+            clock=SequenceClock(),
+        )
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: Massive six-request acquisition"
+    )
+    assert short_secret not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_clock_exception_exposes_only_s3c3c5_safe_reason(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    class UnsafeClock:
+        def __call__(self):
+            raise RuntimeError(f"unsafe {SECRET}")
+
+    transport = FakeTransport()
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path, transport=transport, clock=UnsafeClock())  # type: ignore[arg-type]
+
+    rendered = str(caught.value)
+    assert "reason: capture clock failed for QQQ" in rendered
+    assert SECRET not in rendered
+    assert SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert len(transport.calls) == 3
+    assert tuple(tmp_path.iterdir()) == ()
 
 
 def test_wrong_fingerprint_fails_before_transport(

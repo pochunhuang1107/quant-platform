@@ -64,8 +64,11 @@ from research_sdk.daily_market_data_acquisition.massive import (
     _READ_CHUNK_SIZE_BYTES,
     _READ_INACTIVITY_TIMEOUT_SECONDS,
     MassiveApiCredential,
+    MassiveDailyMarketDataAcquisitionError,
     MassiveDailyMarketDataHttpTransport,
     MassiveDailyMarketDataInstrumentAcquisitionPlan,
+    MassiveDailyMarketDataResponseError,
+    MassiveDailyMarketDataTransportError,
     PlannedMassiveDailyMarketDataSourceCapturePair,
     _capture_credential,
     acquire_and_plan_massive_daily_market_data_source_capture_pair,
@@ -219,6 +222,13 @@ class _Attempt[T]:
     value: T | object
 
 
+@dataclass(frozen=True)
+class _AcquisitionAttempt:
+    succeeded: bool
+    value: PlannedMassiveDailyMarketDataSourceCapturePair | object
+    safe_reason: str | None
+
+
 def build_massive_daily_market_data_real_e2e_preflight(
     *,
     config: MassiveDailyMarketDataRealE2EConfig,
@@ -358,7 +368,7 @@ def prepare_massive_daily_market_data_real_e2e(
         clock=effective_clock,
     )
     del credential
-    pair = _stage_value(acquired, "Massive six-request acquisition")
+    pair = _acquisition_stage_value(acquired)
 
     asset_verified = _stage_value(
         _attempt(
@@ -1365,47 +1375,82 @@ def _revalidate_downstream_authority(
         raise MassiveDailyMarketDataRealE2EError("rederived research profile hash")
 
 
-def _acquire_with_runtime_credential(
-    *,
-    preflight: MassiveDailyMarketDataRealE2EPreflight,
-    credential: MassiveApiCredential,
-    transport: MassiveDailyMarketDataHttpTransport | None,
-    clock: Callable[[], datetime],
-) -> PlannedMassiveDailyMarketDataSourceCapturePair:
-    secret = _stage_value(
-        _attempt(lambda: _capture_credential(credential)),
-        "runtime credential authority",
-    )
-    _require_credential_absent_from_preflight(secret, preflight)
-    execution_credential = _stage_value(
-        _attempt_credential_isolation(secret),
-        "runtime credential isolation",
-    )
-    del secret
-    return acquire_and_plan_massive_daily_market_data_source_capture_pair(
-        asset_plan=preflight.asset_plan,
-        benchmark_plan=preflight.benchmark_plan,
-        credential=execution_credential,
-        transport=transport,
-        clock=clock,
-    )
-
-
 def _attempt_acquisition(
     *,
     preflight: MassiveDailyMarketDataRealE2EPreflight,
     credential: MassiveApiCredential,
     transport: MassiveDailyMarketDataHttpTransport | None,
     clock: Callable[[], datetime],
-) -> _Attempt[PlannedMassiveDailyMarketDataSourceCapturePair]:
-    return _attempt(
-        lambda: _acquire_with_runtime_credential(
-            preflight=preflight,
-            credential=credential,
+) -> _AcquisitionAttempt:
+    secret: str | None = None
+    try:
+        secret = _stage_value(
+            _attempt(lambda: _capture_credential(credential)),
+            "runtime credential authority",
+        )
+        _require_credential_absent_from_preflight(secret, preflight)
+        execution_credential = _stage_value(
+            _attempt_credential_isolation(secret),
+            "runtime credential isolation",
+        )
+        value = acquire_and_plan_massive_daily_market_data_source_capture_pair(
+            asset_plan=preflight.asset_plan,
+            benchmark_plan=preflight.benchmark_plan,
+            credential=execution_credential,
             transport=transport,
             clock=clock,
         )
-    )
+    except MassiveDailyMarketDataAcquisitionError as error:
+        safe_reason = _capture_safe_acquisition_reason(error)
+        if safe_reason is not None and secret is not None and secret in safe_reason:
+            safe_reason = None
+        result = _AcquisitionAttempt(
+            succeeded=False,
+            value=_FAILED,
+            safe_reason=safe_reason,
+        )
+    except Exception:
+        result = _AcquisitionAttempt(
+            succeeded=False,
+            value=_FAILED,
+            safe_reason=None,
+        )
+    else:
+        result = _AcquisitionAttempt(succeeded=True, value=value, safe_reason=None)
+    del secret
+    return result
+
+
+def _capture_safe_acquisition_reason(
+    error: MassiveDailyMarketDataAcquisitionError,
+) -> str | None:
+    if type(error) not in {
+        MassiveDailyMarketDataAcquisitionError,
+        MassiveDailyMarketDataResponseError,
+        MassiveDailyMarketDataTransportError,
+    }:
+        return None
+    arguments = error.args
+    if (
+        type(arguments) is not tuple
+        or len(arguments) != 1
+        or type(arguments[0]) is not str
+    ):
+        return None
+    return arguments[0]
+
+
+def _acquisition_stage_value(
+    attempted: _AcquisitionAttempt,
+) -> PlannedMassiveDailyMarketDataSourceCapturePair:
+    if attempted.succeeded and type(attempted.value) is (
+        PlannedMassiveDailyMarketDataSourceCapturePair
+    ):
+        return attempted.value
+    stage = "Massive six-request acquisition"
+    if attempted.safe_reason is not None:
+        stage = f"{stage} (reason: {attempted.safe_reason})"
+    raise MassiveDailyMarketDataRealE2EError(stage) from None
 
 
 def _attempt_credential_isolation(secret: str) -> _Attempt[MassiveApiCredential]:

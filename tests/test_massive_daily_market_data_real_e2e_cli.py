@@ -19,6 +19,7 @@ import research_sdk.daily_market_data_acquisition.massive_real_e2e as e2e_module
 from research_sdk.daily_market_data_acquisition import (
     MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
     MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
+    MassiveDailyMarketDataHttpResponse,
     MassiveDailyMarketDataRealE2EConfig,
     MassiveDailyMarketDataRealE2EError,
     build_massive_daily_market_data_real_e2e_preflight,
@@ -33,6 +34,7 @@ from test_massive_daily_market_data_real_e2e import (
     FakeTransport,
     SequenceClock,
     prepare,
+    valid_response,
 )
 
 SCRIPT_PATH = REPOSITORY_ROOT / "scripts" / "s3c3c6_massive_real_e2e.py"
@@ -149,6 +151,56 @@ def test_wrong_fingerprint_fails_before_confirmation_or_prompt(
     assert result == 1
     assert not prompted
     assert "fingerprint" in error.getvalue()
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_safe_http_401_bar_reason_reaches_cli_without_secret_or_body(
+    tmp_path,
+    cli_module,
+) -> None:
+    reviewed = authority(tmp_path)
+    answers = iter(
+        (
+            MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
+            MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
+        )
+    )
+    raw_body = f"provider body Authorization: Bearer {SECRET}".encode()
+
+    def unauthorized_bar(request, call_number):
+        if call_number == 1:
+            return MassiveDailyMarketDataHttpResponse(
+                status_code=401,
+                headers=(("Content-Type", "text/plain"),),
+                body=raw_body,
+            )
+        return valid_response(request, call_number)
+
+    transport = FakeTransport(response_factory=unauthorized_bar)
+    output = io.StringIO()
+    error = io.StringIO()
+
+    result = cli_module.run(
+        arguments(
+            "execute",
+            tmp_path,
+            fingerprint=reviewed.approval_fingerprint,
+        ),
+        input_fn=lambda _prompt: next(answers),
+        credential_prompt=lambda _prompt: SECRET,
+        transport=transport,
+        clock=SequenceClock(),
+        stdout=output,
+        stderr=error,
+    )
+
+    assert result == 1
+    assert len(transport.calls) == 1
+    assert "reason: Massive returned HTTP 401 for BAR_RESPONSE" in error.getvalue()
+    assert raw_body.decode() not in error.getvalue()
+    assert "Authorization" not in error.getvalue()
+    assert SECRET not in error.getvalue()
+    assert SECRET not in output.getvalue()
     assert tuple(tmp_path.iterdir()) == ()
 
 
