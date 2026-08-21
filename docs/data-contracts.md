@@ -778,6 +778,64 @@ call in CI. S3c3c6 owns the later explicit human authorization and runtime-key
 gate for real acquisition and publication. Adding fixed-host network capability
 does not itself authorize its use, and S3d2b remains blocked.
 
+## Fake-Provider Real-E2E Operator Gate
+
+S3c3c6a is operational orchestration over existing contracts, planners,
+verifiers, adapters, and immutable local publishers. It adds no durable
+contract, schema, identity field, or competing hash. Credential-free preflight
+binds the reviewed Git commit, external data root, exact QQQ/XNAS and SPY/ARCX
+instrument contracts, six acquisition plans, 2024 XNYS expected sessions,
+snapshot policy/profile, operator context, and safety limits into an
+`OPERATIONAL APPROVAL FINGERPRINT`. That fingerprint is a human-run gate only;
+it is excluded from source-capture and snapshot identity.
+It binds canonical non-secret operation facts, including the complete six
+request plans, byte and timeout controls, fixed host/authentication behavior,
+expected sessions, policy/profile, roots, operator context, and both exact
+confirmation phrases. It excludes credentials, response/request IDs, runtime
+timestamps, and future capture/snapshot IDs.
+The external root must be separate from the repository hierarchy. Preflight
+and existing publishers repeat path/symlink checks at their boundaries, while
+the local-filesystem trust model still assumes no privileged concurrent mount
+or path replacement and does not claim complete TOCTOU elimination.
+
+The first profile uses `session_source_id=exchange_calendars:XNYS` and
+`session_source_version=exchange_calendars-4.13.2+us-equity-regular-session-dates-v1`.
+Its canonical profile hash is
+`sha256:3f0945bac4b4faa3d228805d367ae8dd0e009db8e241e02299e8c7663c64a7ed`.
+The durable prefix intentionally uses the module/authority spelling with an
+underscore. `exchange-calendars` with a hyphen is the package distribution
+name used only for installed-version metadata. XNYS supplies common daily
+research session dates while instrument venues remain XNAS and ARCX.
+
+After fake/real-capable acquisition, both transient capture plans must pass
+pure verification, offline adaptation, pair compatibility, and independent
+expected-session/policy/profile revalidation before source publication. Both
+published captures are exact-loaded and re-adapted from readback before the
+bridge builds either downstream snapshot authority. The research-sdk phase
+returns two pure-verified snapshot plans and publishes no snapshots. The thin
+operator command runs prepublication S3d2a first; failure leaves valid source
+captures but publishes zero snapshots. Successful snapshot publication is
+sequential and final S3d2a consumes exact local-v2 readback mappings, never the
+transient plans.
+`CREATED` versus `ALREADY_PRESENT` remains a same-process publisher outcome,
+not durable research identity; readback validation re-proves the artifact's
+exact ID, path, and bytes rather than claiming to reconstruct that historical
+operational outcome from disk.
+
+The real command has no API-key CLI, environment, stdin-pipe, or file option.
+After fingerprint and Git/root checks, the operator types both exact approval
+phrases before a TTY-only `getpass` prompt; warning-based echoed fallback is a
+failure. On success the clock supplies exactly two per-instrument observation
+times followed by shared ingestion-completed, available, and created times.
+These five UTC values must already be chronological; orchestration does not
+sort or repair them.
+
+S3c3c6a uses fake provider responses and temporary local roots only. S3c3c6b is
+a separate, explicit human authorization event. Merge, CI, network capability,
+or credential availability is not authorization to contact Massive. No legal,
+redistribution, research-readiness, paper-trading, or live-trading approval is
+derived. PAPER/LIVE TRADING NOT APPROVED.
+
 ## Local Daily Market-Data Snapshot-V2 Storage
 
 S3c2b1 adds operational local filesystem publication and readback for already
