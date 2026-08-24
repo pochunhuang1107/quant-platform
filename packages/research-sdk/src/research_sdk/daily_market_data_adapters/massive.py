@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from math import gcd
 from typing import Any, NoReturn
 from zoneinfo import ZoneInfo
@@ -138,6 +139,36 @@ class MassiveUnsupportedSemanticError(MassiveDailyMarketDataAdapterError):
     """Raised when Massive semantics cannot be safely mapped by this adapter."""
 
 
+class MassiveDailyMarketDataAdapterDiagnostic(StrEnum):
+    """Finite operator-safe failure locations in the Massive adapter pipeline."""
+
+    CAPTURE_CONTEXT_AUTHORITY = "capture/context authority"
+    BAR_RESPONSE_MEMBER_AUTHORITY = "BAR_RESPONSE member authority"
+    DIVIDEND_RESPONSE_MEMBER_AUTHORITY = "DIVIDEND_RESPONSE member authority"
+    SPLIT_RESPONSE_MEMBER_AUTHORITY = "SPLIT_RESPONSE member authority"
+    BAR_RESPONSE_REQUEST_AUTHORITY = "BAR_RESPONSE request authority"
+    DIVIDEND_RESPONSE_REQUEST_AUTHORITY = "DIVIDEND_RESPONSE request authority"
+    SPLIT_RESPONSE_REQUEST_AUTHORITY = "SPLIT_RESPONSE request authority"
+    CORPORATE_ACTION_REQUEST_COMPATIBILITY = "corporate-action request compatibility"
+    BAR_RESPONSE_PARSING = "BAR_RESPONSE parsing"
+    DIVIDEND_RESPONSE_PARSING = "DIVIDEND_RESPONSE parsing"
+    SPLIT_RESPONSE_PARSING = "SPLIT_RESPONSE parsing"
+    BAR_RESPONSE_SEMANTIC_ADAPTATION = "BAR_RESPONSE semantic adaptation"
+    DIVIDEND_RESPONSE_SEMANTIC_ADAPTATION = "DIVIDEND_RESPONSE semantic adaptation"
+    SPLIT_RESPONSE_SEMANTIC_ADAPTATION = "SPLIT_RESPONSE semantic adaptation"
+    CORPORATE_ACTION_CANONICALIZATION = "corporate-action canonicalization"
+    ADAPTED_RESULT_CONSTRUCTION = "adapted-result construction"
+    UNKNOWN_ADAPTER_FAILURE = "unknown adapter failure"
+
+
+class _MassiveDailyMarketDataAdapterDiagnosticFailure(Exception):
+    """Internal fixed-only signal consumed before leaving the safe adapter API."""
+
+    def __init__(self, diagnostic: MassiveDailyMarketDataAdapterDiagnostic) -> None:
+        self.diagnostic = diagnostic
+        super().__init__(diagnostic.value)
+
+
 @dataclass(frozen=True)
 class MassiveDailyMarketDataAdapterContext:
     """Explicit non-provider facts required by the offline Massive adapter."""
@@ -170,6 +201,14 @@ class AdaptedMassiveDailyMarketData:
         return self.source_capture.capture_id
 
 
+@dataclass(frozen=True)
+class MassiveDailyMarketDataAdapterDiagnosticResult:
+    """Either adapted data or one fixed diagnostic, without an exception object."""
+
+    adapted: AdaptedMassiveDailyMarketData | None
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic | None
+
+
 def adapt_massive_daily_market_data_source_capture(
     *,
     source_capture: VerifiedDailyMarketDataSourceCapture,
@@ -177,6 +216,249 @@ def adapt_massive_daily_market_data_source_capture(
 ) -> AdaptedMassiveDailyMarketData:
     """Adapt a verified source capture into provider-neutral daily facts."""
 
+    return _adapt_massive_daily_market_data_source_capture(
+        source_capture=source_capture,
+        context=context,
+        safe_diagnostics=False,
+    )
+
+
+def adapt_massive_daily_market_data_source_capture_with_diagnostics(
+    *,
+    source_capture: VerifiedDailyMarketDataSourceCapture,
+    context: MassiveDailyMarketDataAdapterContext,
+) -> MassiveDailyMarketDataAdapterDiagnosticResult:
+    """Adapt with only a finite fixed diagnostic available on failure."""
+
+    adapted: AdaptedMassiveDailyMarketData | None = None
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic | None = None
+    try:
+        adapted = _adapt_massive_daily_market_data_source_capture(
+            source_capture=source_capture,
+            context=context,
+            safe_diagnostics=True,
+        )
+    except _MassiveDailyMarketDataAdapterDiagnosticFailure as failure:
+        diagnostic = failure.diagnostic
+    except Exception:
+        diagnostic = MassiveDailyMarketDataAdapterDiagnostic.UNKNOWN_ADAPTER_FAILURE
+    if diagnostic is not None:
+        return MassiveDailyMarketDataAdapterDiagnosticResult(
+            adapted=None,
+            diagnostic=diagnostic,
+        )
+    return MassiveDailyMarketDataAdapterDiagnosticResult(
+        adapted=adapted,
+        diagnostic=None,
+    )
+
+
+def _adapt_massive_daily_market_data_source_capture(
+    *,
+    source_capture: VerifiedDailyMarketDataSourceCapture,
+    context: MassiveDailyMarketDataAdapterContext,
+    safe_diagnostics: bool,
+) -> AdaptedMassiveDailyMarketData:
+    instrument, currency = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.CAPTURE_CONTEXT_AUTHORITY,
+        lambda: _capture_adapter_context(
+            source_capture=source_capture,
+            context=context,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    members = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.CAPTURE_CONTEXT_AUTHORITY,
+        lambda: _member_metadata_by_role(source_capture),
+        safe_diagnostics=safe_diagnostics,
+    )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_MEMBER_AUTHORITY,
+        lambda: _validate_member_authority(
+            member=members[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
+            endpoint_family=MASSIVE_BAR_ENDPOINT_FAMILY,
+            endpoint_version=MASSIVE_BAR_ENDPOINT_VERSION,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_MEMBER_AUTHORITY,
+        lambda: _validate_member_authority(
+            member=members[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
+            endpoint_family=MASSIVE_DIVIDEND_ENDPOINT_FAMILY,
+            endpoint_version=MASSIVE_DIVIDEND_ENDPOINT_VERSION,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_MEMBER_AUTHORITY,
+        lambda: _validate_member_authority(
+            member=members[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
+            endpoint_family=MASSIVE_SPLIT_ENDPOINT_FAMILY,
+            endpoint_version=MASSIVE_SPLIT_ENDPOINT_VERSION,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+
+    bar_scope = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_REQUEST_AUTHORITY,
+        lambda: _validate_bar_request_authority(
+            members[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
+            symbol=source_capture.capture_manifest.symbol,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    dividend_scope = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_REQUEST_AUTHORITY,
+        lambda: _validate_ca_request_authority(
+            members[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
+            symbol=source_capture.capture_manifest.symbol,
+            start_key="ex_dividend_date.gte",
+            end_key="ex_dividend_date.lte",
+            role=DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    split_scope = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_REQUEST_AUTHORITY,
+        lambda: _validate_ca_request_authority(
+            members[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
+            symbol=source_capture.capture_manifest.symbol,
+            start_key="execution_date.gte",
+            end_key="execution_date.lte",
+            role=DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.CORPORATE_ACTION_REQUEST_COMPATIBILITY,
+        lambda: _validate_corporate_action_request_compatibility(
+            dividend_scope=dividend_scope,
+            split_scope=split_scope,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+
+    bars_response = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_PARSING,
+        lambda: _parse_response_bytes(
+            source_capture.member_bytes[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    dividends_response = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_PARSING,
+        lambda: _parse_response_bytes(
+            source_capture.member_bytes[
+                DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE
+            ],
+            role=DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    splits_response = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_PARSING,
+        lambda: _parse_response_bytes(
+            source_capture.member_bytes[
+                DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE
+            ],
+            role=DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+
+    bars = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_SEMANTIC_ADAPTATION,
+        lambda: _adapt_bars(
+            bars_response,
+            member=members[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
+            symbol=source_capture.capture_manifest.symbol,
+            requested_scope=bar_scope,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    dividend_events = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_SEMANTIC_ADAPTATION,
+        lambda: _adapt_dividends(
+            dividends_response,
+            member=members[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
+            instrument=instrument,
+            expected_currency=currency,
+            requested_scope=dividend_scope,
+            source_available_at=source_capture.capture_manifest.capture_observed_at,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    split_events = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_SEMANTIC_ADAPTATION,
+        lambda: _adapt_splits(
+            splits_response,
+            member=members[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
+            instrument=instrument,
+            symbol=source_capture.capture_manifest.symbol,
+            requested_scope=split_scope,
+            source_available_at=source_capture.capture_manifest.capture_observed_at,
+            capture_id=source_capture.capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    events = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.CORPORATE_ACTION_CANONICALIZATION,
+        lambda: _canonicalize_events(
+            (*dividend_events, *split_events), source_capture.capture_id
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    return _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.ADAPTED_RESULT_CONSTRUCTION,
+        lambda: _build_adapted_result(
+            source_capture=source_capture,
+            instrument=instrument,
+            currency=currency,
+            bars=bars,
+            events=events,
+            bar_scope=bar_scope,
+            corporate_action_scope=dividend_scope,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+
+
+def _run_adapter_stage[T](
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic,
+    operation: Callable[[], T],
+    *,
+    safe_diagnostics: bool,
+) -> T:
+    if not safe_diagnostics:
+        return operation()
+    failure: _MassiveDailyMarketDataAdapterDiagnosticFailure | None = None
+    try:
+        return operation()
+    except (MassiveDailyMarketDataAdapterError, ValidationError):
+        failure = _MassiveDailyMarketDataAdapterDiagnosticFailure(diagnostic)
+    except Exception:
+        failure = _MassiveDailyMarketDataAdapterDiagnosticFailure(
+            MassiveDailyMarketDataAdapterDiagnostic.UNKNOWN_ADAPTER_FAILURE
+        )
+    raise failure from None
+
+
+def _capture_adapter_context(
+    *,
+    source_capture: VerifiedDailyMarketDataSourceCapture,
+    context: MassiveDailyMarketDataAdapterContext,
+) -> tuple[DailyMarketDataInstrument, str]:
     if not isinstance(source_capture, VerifiedDailyMarketDataSourceCapture):
         _validation_error("source_capture must be VerifiedDailyMarketDataSourceCapture")
     instrument = DailyMarketDataInstrument.model_validate(
@@ -184,94 +466,32 @@ def adapt_massive_daily_market_data_source_capture(
     )
     currency = _require_non_empty_string(context.currency, "context.currency")
     _validate_capture_and_context(source_capture=source_capture, instrument=instrument)
-    members = _member_metadata_by_role(source_capture)
-    _validate_member_authority(
-        member=members[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
-        endpoint_family=MASSIVE_BAR_ENDPOINT_FAMILY,
-        endpoint_version=MASSIVE_BAR_ENDPOINT_VERSION,
-    )
-    _validate_member_authority(
-        member=members[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
-        endpoint_family=MASSIVE_DIVIDEND_ENDPOINT_FAMILY,
-        endpoint_version=MASSIVE_DIVIDEND_ENDPOINT_VERSION,
-    )
-    _validate_member_authority(
-        member=members[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
-        endpoint_family=MASSIVE_SPLIT_ENDPOINT_FAMILY,
-        endpoint_version=MASSIVE_SPLIT_ENDPOINT_VERSION,
-    )
+    return instrument, currency
 
-    bar_scope = _validate_bar_request_authority(
-        members[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
-        symbol=source_capture.capture_manifest.symbol,
-        capture_id=source_capture.capture_id,
-    )
-    dividend_scope = _validate_ca_request_authority(
-        members[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
-        symbol=source_capture.capture_manifest.symbol,
-        start_key="ex_dividend_date.gte",
-        end_key="ex_dividend_date.lte",
-        role=DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
-        capture_id=source_capture.capture_id,
-    )
-    split_scope = _validate_ca_request_authority(
-        members[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
-        symbol=source_capture.capture_manifest.symbol,
-        start_key="execution_date.gte",
-        end_key="execution_date.lte",
-        role=DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
-        capture_id=source_capture.capture_id,
-    )
+
+def _validate_corporate_action_request_compatibility(
+    *,
+    dividend_scope: tuple[date, date],
+    split_scope: tuple[date, date],
+    capture_id: str,
+) -> None:
     if dividend_scope != split_scope:
         _validation_error(
             "dividend and split source members must use identical requested coverage",
-            capture_id=source_capture.capture_id,
+            capture_id=capture_id,
         )
 
-    bars_response = _parse_response_bytes(
-        source_capture.member_bytes[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
-        role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
-        capture_id=source_capture.capture_id,
-    )
-    dividends_response = _parse_response_bytes(
-        source_capture.member_bytes[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
-        role=DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
-        capture_id=source_capture.capture_id,
-    )
-    splits_response = _parse_response_bytes(
-        source_capture.member_bytes[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
-        role=DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
-        capture_id=source_capture.capture_id,
-    )
 
-    bars = _adapt_bars(
-        bars_response,
-        member=members[DailyMarketDataSourceCaptureRole.BAR_RESPONSE],
-        symbol=source_capture.capture_manifest.symbol,
-        requested_scope=bar_scope,
-        capture_id=source_capture.capture_id,
-    )
-    dividend_events = _adapt_dividends(
-        dividends_response,
-        member=members[DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE],
-        instrument=instrument,
-        expected_currency=currency,
-        requested_scope=dividend_scope,
-        source_available_at=source_capture.capture_manifest.capture_observed_at,
-        capture_id=source_capture.capture_id,
-    )
-    split_events = _adapt_splits(
-        splits_response,
-        member=members[DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE],
-        instrument=instrument,
-        symbol=source_capture.capture_manifest.symbol,
-        requested_scope=split_scope,
-        source_available_at=source_capture.capture_manifest.capture_observed_at,
-        capture_id=source_capture.capture_id,
-    )
-    events = _canonicalize_events(
-        (*dividend_events, *split_events), source_capture.capture_id
-    )
+def _build_adapted_result(
+    *,
+    source_capture: VerifiedDailyMarketDataSourceCapture,
+    instrument: DailyMarketDataInstrument,
+    currency: str,
+    bars: tuple[CanonicalDailyBar, ...],
+    events: tuple[DailyMarketDataCorporateActionEvent, ...],
+    bar_scope: tuple[date, date],
+    corporate_action_scope: tuple[date, date],
+) -> AdaptedMassiveDailyMarketData:
     completeness = (
         DailyMarketDataCorporateActionEvidenceCompleteness.CHECKED_EVENTS_CAPTURED
         if events
@@ -286,8 +506,8 @@ def adapt_massive_daily_market_data_source_capture(
         corporate_action_completeness=completeness,
         bar_requested_start_date=bar_scope[0],
         bar_requested_end_date=bar_scope[1],
-        corporate_action_coverage_start_date=dividend_scope[0],
-        corporate_action_coverage_end_date=dividend_scope[1],
+        corporate_action_coverage_start_date=corporate_action_scope[0],
+        corporate_action_coverage_end_date=corporate_action_scope[1],
         parser_version=MASSIVE_DAILY_MARKET_DATA_ADAPTER_VERSION,
         temporal_coverage=TemporalCoverage.LATEST_KNOWN,
     )
@@ -1367,10 +1587,13 @@ __all__ = [
     "MASSIVE_SPLIT_ENDPOINT_FAMILY",
     "MASSIVE_SPLIT_ENDPOINT_VERSION",
     "AdaptedMassiveDailyMarketData",
+    "MassiveDailyMarketDataAdapterDiagnostic",
+    "MassiveDailyMarketDataAdapterDiagnosticResult",
     "MassiveDailyMarketDataAdapterContext",
     "MassiveDailyMarketDataAdapterError",
     "MassiveResponseParsingError",
     "MassiveResponseValidationError",
     "MassiveUnsupportedSemanticError",
     "adapt_massive_daily_market_data_source_capture",
+    "adapt_massive_daily_market_data_source_capture_with_diagnostics",
 ]
