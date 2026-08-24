@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import pickle
+import socket
 import ssl
 import subprocess
 import sys
@@ -9,7 +10,8 @@ import traceback
 from collections.abc import Callable
 from dataclasses import fields, replace
 from datetime import UTC, date, datetime, timedelta, timezone
-from http.client import HTTPConnection, IncompleteRead
+from http.client import HTTPConnection, HTTPResponse, IncompleteRead
+from threading import Thread
 from typing import Any
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -1692,8 +1694,151 @@ class StubHttpResponse:
         self.offset += len(chunk)
         return chunk
 
+    def isclosed(self) -> bool:
+        return self.closed
+
     def close(self) -> None:
         self.closed = True
+
+
+class CompletingStubHttpResponse(StubHttpResponse):
+    def __init__(self, body: bytes, **kwargs: Any) -> None:
+        super().__init__(body, **kwargs)
+        self.body_completed = False
+
+    def read(self, size: int) -> bytes:
+        chunk = super().read(size)
+        if chunk and self.offset == len(self.body):
+            self.body_completed = True
+        return chunk
+
+    def isclosed(self) -> bool:
+        return self.body_completed or super().isclosed()
+
+
+class CountingSocket:
+    def __init__(self, wrapped: socket.socket) -> None:
+        self.wrapped = wrapped
+        self.timeouts: list[float] = []
+
+    def settimeout(self, value: float) -> None:
+        self.timeouts.append(value)
+        self.wrapped.settimeout(value)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.wrapped, name)
+
+
+class SocketpairResponseWriter(Thread):
+    def __init__(
+        self,
+        *,
+        server: socket.socket,
+        payload: bytes,
+        close_peer: bool,
+    ) -> None:
+        super().__init__()
+        self.server = server
+        self.payload = payload
+        self.close_peer = close_peer
+        self.error: BaseException | None = None
+
+    def run(self) -> None:
+        try:
+            self.server.sendall(self.payload)
+            if self.close_peer:
+                self.server.shutdown(socket.SHUT_WR)
+        except BaseException as error:
+            self.error = error
+
+    def raise_if_failed(self) -> None:
+        if self.error is not None:
+            raise AssertionError(
+                "local socketpair response writer failed"
+            ) from self.error
+
+
+def consume_socketpair_request_head(server: socket.socket) -> None:
+    terminator = b"\r\n\r\n"
+    limit = 64 * 1024
+    request_head = bytearray()
+    while terminator not in request_head:
+        remaining = limit - len(request_head)
+        if remaining == 0:
+            raise AssertionError("local socketpair request head exceeds 64 KiB")
+        chunk = server.recv(min(4096, remaining))
+        if not chunk:
+            raise AssertionError(
+                "local socketpair request ended before the header terminator"
+            )
+        request_head.extend(chunk)
+
+
+def open_socketpair_http_response(
+    *,
+    wire_body: bytes,
+    headers: tuple[tuple[str, str], ...],
+    close_peer: bool = False,
+) -> tuple[
+    HTTPConnection,
+    CountingSocket,
+    HTTPResponse,
+    socket.socket,
+    SocketpairResponseWriter,
+]:
+    client, server = socket.socketpair()
+    captured_socket = CountingSocket(client)
+    connection = HTTPConnection("socketpair.invalid")
+    connection.sock = captured_socket  # type: ignore[assignment]
+    try:
+        connection.request("GET", "/offline")
+        consume_socketpair_request_head(server)
+    except BaseException:
+        connection.close()
+        server.close()
+        raise
+    response_head = (
+        b"HTTP/1.1 200 OK\r\n"
+        + b"".join(
+            name.encode("ascii") + b": " + value.encode("ascii") + b"\r\n"
+            for name, value in headers
+        )
+        + b"\r\n"
+    )
+    writer = SocketpairResponseWriter(
+        server=server,
+        payload=response_head + wire_body,
+        close_peer=close_peer,
+    )
+    writer.start()
+    try:
+        response = connection.getresponse()
+    except BaseException:
+        connection.close()
+        writer.join()
+        server.close()
+        writer.raise_if_failed()
+        raise
+    return (
+        connection,
+        captured_socket,
+        response,
+        server,
+        writer,
+    )
+
+
+def close_socketpair_http_response(
+    connection: HTTPConnection,
+    response: HTTPResponse,
+    server: socket.socket,
+    writer: SocketpairResponseWriter,
+) -> None:
+    response.close()
+    connection.close()
+    writer.join()
+    server.close()
+    writer.raise_if_failed()
 
 
 class StubHttpsConnection:
@@ -1741,6 +1886,234 @@ def install_stub_connection(
         acquisition_module.ssl, "create_default_context", lambda: context
     )
     return context
+
+
+@pytest.mark.parametrize(
+    ("body_size", "expected_body_timeout_setups"),
+    (
+        (15, 1),
+        (64 * 1024, 1),
+        (64 * 1024 + 17, 2),
+    ),
+)
+def test_real_httpresponse_connection_close_completion_does_not_rearm_timeout(
+    body_size: int,
+    expected_body_timeout_setups: int,
+) -> None:
+    """Regress the post-final-read timeout setup that failed on current main."""
+
+    body = b"x" * body_size
+    connection, captured_socket, response, server, writer = (
+        open_socketpair_http_response(
+            wire_body=body,
+            headers=(
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(body))),
+                ("Connection", "close"),
+            ),
+        )
+    )
+    try:
+        assert response.status == 200
+        assert response.will_close is True
+        assert response.isclosed() is False
+
+        actual = acquisition_module._read_bounded_body(
+            response=response,
+            socket=captured_socket,
+            deadline=acquisition_module._start_request_deadline(),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=acquisition_module._BAR_RESPONSE_SIZE_LIMIT_BYTES,
+        )
+
+        assert actual == body
+        assert response.isclosed() is True
+        assert len(captured_socket.timeouts) == expected_body_timeout_setups
+
+        # This is the exact unnecessary next-loop operation from the regression.
+        with pytest.raises(OSError):
+            captured_socket.settimeout(15.0)
+    finally:
+        close_socketpair_http_response(connection, response, server, writer)
+
+
+def test_real_httpresponse_keep_alive_completion_keeps_socket_timeout_settable() -> (
+    None
+):
+    body = b"keep-alive-body"
+    connection, captured_socket, response, server, writer = (
+        open_socketpair_http_response(
+            wire_body=body,
+            headers=(
+                ("Content-Length", str(len(body))),
+                ("Connection", "keep-alive"),
+            ),
+        )
+    )
+    try:
+        assert response.will_close is False
+
+        actual = acquisition_module._read_bounded_body(
+            response=response,
+            socket=captured_socket,
+            deadline=acquisition_module._start_request_deadline(),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=acquisition_module._BAR_RESPONSE_SIZE_LIMIT_BYTES,
+        )
+
+        assert actual == body
+        assert response.isclosed() is True
+        assert len(captured_socket.timeouts) == 1
+        captured_socket.settimeout(15.0)
+    finally:
+        close_socketpair_http_response(connection, response, server, writer)
+
+
+def test_real_chunked_httpresponse_completion_does_not_rearm_timeout() -> None:
+    body = b"chunked-body"
+    wire_body = f"{len(body):X}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+    connection, captured_socket, response, server, writer = (
+        open_socketpair_http_response(
+            wire_body=wire_body,
+            headers=(
+                ("Transfer-Encoding", "chunked"),
+                ("Connection", "close"),
+            ),
+        )
+    )
+    try:
+        actual = acquisition_module._read_bounded_body(
+            response=response,
+            socket=captured_socket,
+            deadline=acquisition_module._start_request_deadline(),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=acquisition_module._BAR_RESPONSE_SIZE_LIMIT_BYTES,
+        )
+
+        assert actual == body
+        assert response.isclosed() is True
+        assert len(captured_socket.timeouts) == 1
+    finally:
+        close_socketpair_http_response(connection, response, server, writer)
+
+
+def test_real_close_delimited_httpresponse_reads_until_eof() -> None:
+    body = b"close-delimited-body"
+    connection, captured_socket, response, server, writer = (
+        open_socketpair_http_response(
+            wire_body=body,
+            headers=(("Connection", "close"),),
+            close_peer=True,
+        )
+    )
+    try:
+        assert response.length is None
+        assert response.will_close is True
+
+        actual = acquisition_module._read_bounded_body(
+            response=response,
+            socket=captured_socket,
+            deadline=acquisition_module._start_request_deadline(),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=acquisition_module._BAR_RESPONSE_SIZE_LIMIT_BYTES,
+        )
+
+        assert actual == body
+        assert response.isclosed() is True
+        assert len(captured_socket.timeouts) == 2
+    finally:
+        close_socketpair_http_response(connection, response, server, writer)
+
+
+def test_real_truncated_fixed_httpresponse_still_reads_eof_for_length_mismatch() -> (
+    None
+):
+    body = b"short"
+    declared_length = len(body) + 1
+    connection, captured_socket, response, server, writer = (
+        open_socketpair_http_response(
+            wire_body=body,
+            headers=(
+                ("Content-Length", str(declared_length)),
+                ("Connection", "close"),
+            ),
+            close_peer=True,
+        )
+    )
+    try:
+        actual = acquisition_module._read_bounded_body(
+            response=response,
+            socket=captured_socket,
+            deadline=acquisition_module._start_request_deadline(),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=acquisition_module._BAR_RESPONSE_SIZE_LIMIT_BYTES,
+        )
+
+        assert actual == body
+        assert len(actual) != declared_length
+        assert response.length == 1
+        assert response.isclosed() is True
+        assert len(captured_socket.timeouts) == 2
+    finally:
+        close_socketpair_http_response(connection, response, server, writer)
+
+
+def test_real_zero_length_httpresponse_preserves_empty_body_policy() -> None:
+    connection, captured_socket, response, server, writer = (
+        open_socketpair_http_response(
+            wire_body=b"",
+            headers=(
+                ("Content-Length", "0"),
+                ("Connection", "close"),
+            ),
+        )
+    )
+    try:
+        actual = acquisition_module._read_bounded_body(
+            response=response,
+            socket=captured_socket,
+            deadline=acquisition_module._start_request_deadline(),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=acquisition_module._BAR_RESPONSE_SIZE_LIMIT_BYTES,
+        )
+
+        assert actual == b""
+        assert response.isclosed() is True
+        assert len(captured_socket.timeouts) == 1
+    finally:
+        close_socketpair_http_response(connection, response, server, writer)
+
+
+def test_completed_final_chunk_still_observes_application_deadline(monkeypatch) -> None:
+    response = CompletingStubHttpResponse(b"final")
+    body_socket = StubSocket()
+    moments = iter((0.0, 31.0))
+    monkeypatch.setattr(acquisition_module, "monotonic", lambda: next(moments))
+
+    with pytest.raises(MassiveDailyMarketDataTransportError) as exc_info:
+        acquisition_module._read_bounded_body(
+            response=response,
+            socket=body_socket,
+            deadline=acquisition_module._RequestDeadline(
+                deadline_at=30.0,
+                last_observed_at=0.0,
+            ),
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            path="/offline",
+            response_size_limit_bytes=5,
+        )
+
+    assert str(exc_info.value) == (
+        "Massive HTTPS request exceeded the 30-second deadline"
+    )
+    assert response.read_sizes == [6]
+    assert body_socket.timeouts == [15.0]
 
 
 def assert_safe_body_failure(

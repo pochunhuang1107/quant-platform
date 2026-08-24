@@ -1241,6 +1241,9 @@ def _read_bounded_body(
             raise MassiveDailyMarketDataResponseError(
                 "Massive HTTPS response exceeds the role byte limit"
             )
+        if response.isclosed():
+            _observe_request_deadline(deadline)
+            return b"".join(chunks)
 
 
 def _classify_response_body_read_failure(error: Exception) -> str:
