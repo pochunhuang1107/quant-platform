@@ -43,6 +43,9 @@ START = date(2024, 1, 2)
 END = date(2024, 12, 31)
 BATCH_ID = "synthetic-2024-pair"
 CREDENTIAL_VALUE = "test-only-massive-key-Z9"
+SECRET_SENTINEL = (
+    f"SECRET_SENTINEL arbitrary external exception message Bearer {CREDENTIAL_VALUE}"
+)
 ASSET = DailyMarketDataInstrument(
     instrument_id="us-equity:QQQ",
     symbol="QQQ",
@@ -937,6 +940,25 @@ def test_untrusted_transport_exception_is_fully_discarded(
     assert exc_info.value.__cause__ is None
     assert exc_info.value.__context__ is None
     assert CREDENTIAL_VALUE not in "".join(traceback.format_exception(exc_info.value))
+
+
+def test_untrusted_injected_transport_cannot_forge_an_internal_safe_error() -> None:
+    transport = FakeTransport(
+        fail_at=1,
+        failure=MassiveDailyMarketDataTransportError(SECRET_SENTINEL),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataTransportError) as exc_info:
+        acquire_pair(transport=transport)
+
+    assert str(exc_info.value) == (
+        "Massive transport failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    )
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
 
 
 def test_falsey_injected_transport_and_clock_are_used() -> None:
@@ -2072,7 +2094,7 @@ def test_default_transport_discards_unsafe_monotonic_exception(monkeypatch) -> N
 def test_default_transport_sanitizes_connection_failure(monkeypatch) -> None:
     class FailingConnection(StubHttpsConnection):
         def connect(self) -> None:
-            raise OSError(f"unsafe {CREDENTIAL_VALUE}")
+            raise OSError(SECRET_SENTINEL)
 
     request = instrument_plan().requests[0]
     response = StubHttpResponse(b"unused")
@@ -2093,17 +2115,110 @@ def test_default_transport_sanitizes_connection_failure(monkeypatch) -> None:
             credential=MassiveApiCredential(CREDENTIAL_VALUE),
         )
 
+    expected = (
+        "Massive HTTPS connect failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    )
+    assert str(exc_info.value) == expected
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert SECRET_SENTINEL not in repr(exc_info.value)
     assert CREDENTIAL_VALUE not in str(exc_info.value)
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert "arbitrary external exception message" not in str(exc_info.value)
+    rendered = "".join(traceback.format_exception(exc_info.value))
+    assert SECRET_SENTINEL not in rendered
+    assert CREDENTIAL_VALUE not in rendered
+    assert "arbitrary external exception message" not in rendered
     assert exc_info.value.__cause__ is None
     assert exc_info.value.__context__ is None
     assert FailingConnection.instances[0].closed is True
+
+
+def test_default_transport_sanitizes_request_send_failure(monkeypatch) -> None:
+    class FailingRequestConnection(StubHttpsConnection):
+        def request(self, method: str, target: str, *, headers: dict[str, str]) -> None:
+            raise OSError(SECRET_SENTINEL)
+
+    request = instrument_plan().requests[0]
+    response = StubHttpResponse(b"unused")
+    FailingRequestConnection.instances = []
+    FailingRequestConnection.next_response = response
+    monkeypatch.setattr(acquisition_module, "HTTPSConnection", FailingRequestConnection)
+    monkeypatch.setattr(
+        acquisition_module.ssl,
+        "create_default_context",
+        lambda: object(),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataTransportError) as exc_info:
+        acquisition_module._StdlibMassiveDailyMarketDataHttpTransport(
+            CREDENTIAL_VALUE
+        ).get(
+            request=request,
+            credential=MassiveApiCredential(CREDENTIAL_VALUE),
+        )
+
+    expected = (
+        "Massive HTTPS request send failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    )
+    assert str(exc_info.value) == expected
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert SECRET_SENTINEL not in repr(exc_info.value)
+    assert CREDENTIAL_VALUE not in str(exc_info.value)
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert "arbitrary external exception message" not in str(exc_info.value)
+    rendered = "".join(traceback.format_exception(exc_info.value))
+    assert SECRET_SENTINEL not in rendered
+    assert CREDENTIAL_VALUE not in rendered
+    assert "arbitrary external exception message" not in rendered
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
+    assert FailingRequestConnection.instances[0].connected is True
+    assert FailingRequestConnection.instances[0].closed is True
+
+
+def test_internal_stage_diagnostic_survives_the_acquisition_wrapper(
+    monkeypatch,
+) -> None:
+    class FailingRequestConnection(StubHttpsConnection):
+        def request(self, method: str, target: str, *, headers: dict[str, str]) -> None:
+            raise OSError(SECRET_SENTINEL)
+
+    response = StubHttpResponse(b"unused")
+    FailingRequestConnection.instances = []
+    FailingRequestConnection.next_response = response
+    monkeypatch.setattr(acquisition_module, "HTTPSConnection", FailingRequestConnection)
+    monkeypatch.setattr(
+        acquisition_module.ssl,
+        "create_default_context",
+        lambda: object(),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataTransportError) as exc_info:
+        acquire_and_plan_massive_daily_market_data_source_capture_pair(
+            asset_plan=instrument_plan(ASSET),
+            benchmark_plan=instrument_plan(BENCHMARK),
+            credential=MassiveApiCredential(CREDENTIAL_VALUE),
+            transport=None,
+        )
+
+    assert str(exc_info.value) == (
+        "Massive HTTPS request send failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    )
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
+    assert len(FailingRequestConnection.instances) == 1
 
 
 def test_default_transport_sanitizes_response_header_failure(monkeypatch) -> None:
     class FailingHeaderConnection(StubHttpsConnection):
         def getresponse(self) -> StubHttpResponse:
             self.timeout_at_getresponse = self.sock.timeouts[-1]
-            raise OSError(f"unsafe Authorization: Bearer {CREDENTIAL_VALUE}")
+            raise OSError(SECRET_SENTINEL)
 
     request = instrument_plan().requests[0]
     response = StubHttpResponse(b"unused")
@@ -2125,10 +2240,24 @@ def test_default_transport_sanitizes_response_header_failure(monkeypatch) -> Non
         )
 
     connection = FailingHeaderConnection.instances[0]
+    expected = (
+        "Massive HTTPS response headers failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    )
+    assert str(exc_info.value) == expected
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert SECRET_SENTINEL not in repr(exc_info.value)
     assert CREDENTIAL_VALUE not in str(exc_info.value)
-    assert CREDENTIAL_VALUE not in "".join(traceback.format_exception(exc_info.value))
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert "arbitrary external exception message" not in str(exc_info.value)
+    rendered = "".join(traceback.format_exception(exc_info.value))
+    assert SECRET_SENTINEL not in rendered
+    assert CREDENTIAL_VALUE not in rendered
+    assert "arbitrary external exception message" not in rendered
     assert exc_info.value.__cause__ is None
     assert exc_info.value.__context__ is None
+    assert connection.connected is True
+    assert len(connection.requests) == 1
     assert connection.timeout_at_getresponse == 15.0
     assert connection.closed is True
 
@@ -2136,7 +2265,7 @@ def test_default_transport_sanitizes_response_header_failure(monkeypatch) -> Non
 def test_default_transport_sanitizes_read_timeout_and_closes(monkeypatch) -> None:
     class TimeoutResponse(StubHttpResponse):
         def read(self, size: int) -> bytes:
-            raise TimeoutError(f"unsafe {CREDENTIAL_VALUE}")
+            raise TimeoutError(SECRET_SENTINEL)
 
     request = instrument_plan().requests[0]
     body = response_body(request.role, "QQQ", "request")
@@ -2151,11 +2280,113 @@ def test_default_transport_sanitizes_read_timeout_and_closes(monkeypatch) -> Non
             credential=MassiveApiCredential(CREDENTIAL_VALUE),
         )
 
+    expected = (
+        "Massive HTTPS response body read failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    )
+    assert str(exc_info.value) == expected
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert SECRET_SENTINEL not in repr(exc_info.value)
     assert CREDENTIAL_VALUE not in str(exc_info.value)
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert "arbitrary external exception message" not in str(exc_info.value)
+    rendered = "".join(traceback.format_exception(exc_info.value))
+    assert SECRET_SENTINEL not in rendered
+    assert CREDENTIAL_VALUE not in rendered
+    assert "arbitrary external exception message" not in rendered
     assert exc_info.value.__cause__ is None
     assert exc_info.value.__context__ is None
     assert response.closed is True
     assert StubHttpsConnection.instances[0].closed is True
+
+
+@pytest.mark.parametrize("status", (401, 403, 429))
+def test_default_transport_preserves_non_200_as_normal_response_diagnostic(
+    monkeypatch,
+    status: int,
+) -> None:
+    request = instrument_plan().requests[0]
+    raw_body = SECRET_SENTINEL.encode()
+    response = StubHttpResponse(
+        raw_body,
+        status=status,
+        headers=(("X-Unsafe", SECRET_SENTINEL),),
+    )
+    install_stub_connection(monkeypatch, response)
+    transport = acquisition_module._StdlibMassiveDailyMarketDataHttpTransport(
+        CREDENTIAL_VALUE
+    )
+
+    actual = transport.get(
+        request=request,
+        credential=MassiveApiCredential(CREDENTIAL_VALUE),
+    )
+
+    with pytest.raises(
+        MassiveDailyMarketDataResponseError,
+        match=rf"^Massive returned HTTP {status} for BAR_RESPONSE$",
+    ) as exc_info:
+        acquisition_module._validate_response(
+            response=actual,
+            request=request,
+            secret=CREDENTIAL_VALUE,
+        )
+
+    assert actual.status_code == status
+    assert actual.body == b""
+    assert "response headers failed" not in str(exc_info.value)
+    assert "response body" not in str(exc_info.value)
+    assert SECRET_SENTINEL not in str(exc_info.value)
+    assert SECRET_SENTINEL not in repr(exc_info.value)
+    assert CREDENTIAL_VALUE not in str(exc_info.value)
+    assert CREDENTIAL_VALUE not in repr(exc_info.value)
+    assert response.read_sizes == []
+    assert response.closed is True
+    assert StubHttpsConnection.instances[0].closed is True
+
+
+def test_default_transport_cleanup_failures_cannot_replace_primary_failure(
+    monkeypatch,
+) -> None:
+    class FailingCleanupResponse(StubHttpResponse):
+        def read(self, size: int) -> bytes:
+            raise TimeoutError(SECRET_SENTINEL)
+
+        def close(self) -> None:
+            raise RuntimeError("unsafe response cleanup detail")
+
+    class FailingCleanupConnection(StubHttpsConnection):
+        def close(self) -> None:
+            raise RuntimeError("unsafe connection cleanup detail")
+
+    request = instrument_plan().requests[0]
+    body = response_body(request.role, "QQQ", "request")
+    response = FailingCleanupResponse(body)
+    FailingCleanupConnection.instances = []
+    FailingCleanupConnection.next_response = response
+    monkeypatch.setattr(acquisition_module, "HTTPSConnection", FailingCleanupConnection)
+    monkeypatch.setattr(
+        acquisition_module.ssl,
+        "create_default_context",
+        lambda: object(),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataTransportError) as exc_info:
+        acquisition_module._StdlibMassiveDailyMarketDataHttpTransport(
+            CREDENTIAL_VALUE
+        ).get(
+            request=request,
+            credential=MassiveApiCredential(CREDENTIAL_VALUE),
+        )
+
+    assert str(exc_info.value).startswith(
+        "Massive HTTPS response body read failed for BAR_RESPONSE at "
+    )
+    rendered = "".join(traceback.format_exception(exc_info.value))
+    assert SECRET_SENTINEL not in rendered
+    assert "cleanup detail" not in rendered
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
 
 
 def test_import_scope_excludes_closed_boundaries() -> None:

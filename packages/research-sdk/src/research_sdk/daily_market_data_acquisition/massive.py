@@ -339,6 +339,7 @@ def acquire_and_plan_massive_daily_market_data_source_capture_pair(
     secret = _capture_credential(credential)
     _require_credential_absent_from_plan(secret, canonical_asset)
     _require_credential_absent_from_plan(secret, canonical_benchmark)
+    preserve_internal_transport_errors = transport is None
     effective_transport = (
         _StdlibMassiveDailyMarketDataHttpTransport(secret)
         if transport is None
@@ -351,12 +352,14 @@ def acquire_and_plan_massive_daily_market_data_source_capture_pair(
         secret=secret,
         transport=effective_transport,
         clock=effective_clock,
+        preserve_internal_transport_errors=preserve_internal_transport_errors,
     )
     benchmark = _acquire_instrument(
         plan=canonical_benchmark,
         secret=secret,
         transport=effective_transport,
         clock=effective_clock,
+        preserve_internal_transport_errors=preserve_internal_transport_errors,
     )
     if asset.response_size_bytes + benchmark.response_size_bytes > (
         _PAIR_RESPONSE_SIZE_LIMIT_BYTES
@@ -397,66 +400,114 @@ class _StdlibMassiveDailyMarketDataHttpTransport:
         deadline = _start_request_deadline()
         connection: Any | None = None
         response: Any | None = None
-        result: MassiveDailyMarketDataHttpResponse | None = None
-        unsafe_failure = False
         try:
-            connection = HTTPSConnection(
-                _MASSIVE_API_HOST,
-                timeout=_CONNECT_TIMEOUT_SECONDS,
-                context=ssl.create_default_context(),
-            )
-            connection.timeout = min(
-                _CONNECT_TIMEOUT_SECONDS,
-                _observe_request_deadline(deadline),
-            )
-            connection.connect()
-            socket = connection.sock
-            if socket is None:
+            connect_failed = False
+            try:
+                connection = HTTPSConnection(
+                    _MASSIVE_API_HOST,
+                    timeout=_CONNECT_TIMEOUT_SECONDS,
+                    context=ssl.create_default_context(),
+                )
+                connection.timeout = min(
+                    _CONNECT_TIMEOUT_SECONDS,
+                    _observe_request_deadline(deadline),
+                )
+                connection.connect()
+                socket = connection.sock
+                if socket is None:
+                    raise MassiveDailyMarketDataTransportError(
+                        "Massive HTTPS connection did not expose a connected socket"
+                    )
+            except MassiveDailyMarketDataAcquisitionError:
+                raise
+            except Exception:
+                connect_failed = True
+            if connect_failed or connection is None:
                 raise MassiveDailyMarketDataTransportError(
-                    "Massive HTTPS connection did not expose a connected socket"
-                )
-            _set_next_socket_timeout(socket, deadline)
-            connection.request("GET", target, headers=headers)
-            _set_next_socket_timeout(socket, deadline)
-            response = connection.getresponse()
-            _observe_request_deadline(deadline)
-            status_code = response.status
-            response_headers = tuple(response.getheaders())
-            if type(status_code) is not int:
-                raise MassiveDailyMarketDataResponseError(
-                    "Massive HTTP status must be an exact integer"
-                )
-            _validate_header_runtime_shape(response_headers)
+                    "Massive HTTPS connect failed for "
+                    f"{request.role.value} at {request.path}"
+                ) from None
+
+            request_send_failed = False
+            try:
+                _set_next_socket_timeout(socket, deadline)
+                connection.request("GET", target, headers=headers)
+            except MassiveDailyMarketDataAcquisitionError:
+                raise
+            except Exception:
+                request_send_failed = True
+            if request_send_failed:
+                raise MassiveDailyMarketDataTransportError(
+                    "Massive HTTPS request send failed for "
+                    f"{request.role.value} at {request.path}"
+                ) from None
+
+            response_headers_failed = False
+            declared_length: int | None = None
+            try:
+                _set_next_socket_timeout(socket, deadline)
+                response = connection.getresponse()
+                _observe_request_deadline(deadline)
+                status_code = response.status
+                response_headers = tuple(response.getheaders())
+                if type(status_code) is not int:
+                    raise MassiveDailyMarketDataResponseError(
+                        "Massive HTTP status must be an exact integer"
+                    )
+                _validate_header_runtime_shape(response_headers)
+                if status_code == 200:
+                    declared_length = _parse_content_length(
+                        response_headers,
+                        response_size_limit_bytes=request.response_size_limit_bytes,
+                    )
+            except MassiveDailyMarketDataAcquisitionError:
+                raise
+            except Exception:
+                response_headers_failed = True
+            if response_headers_failed:
+                raise MassiveDailyMarketDataTransportError(
+                    "Massive HTTPS response headers failed for "
+                    f"{request.role.value} at {request.path}"
+                ) from None
+
             if status_code != 200:
-                result = MassiveDailyMarketDataHttpResponse(
+                return MassiveDailyMarketDataHttpResponse(
                     status_code=status_code,
                     headers=response_headers,
                     body=b"",
                 )
-            else:
-                declared_length = _parse_content_length(
-                    response_headers,
-                    response_size_limit_bytes=request.response_size_limit_bytes,
-                )
+
+            response_body_failed = False
+            body: bytes | None = None
+            try:
                 body = _read_bounded_body(
                     response=response,
                     socket=socket,
                     deadline=deadline,
                     response_size_limit_bytes=request.response_size_limit_bytes,
                 )
-                if declared_length is not None and len(body) != declared_length:
-                    raise MassiveDailyMarketDataResponseError(
-                        "Massive response body length does not match Content-Length"
-                    )
-                result = MassiveDailyMarketDataHttpResponse(
-                    status_code=status_code,
-                    headers=response_headers,
-                    body=body,
+            except MassiveDailyMarketDataAcquisitionError:
+                raise
+            except Exception:
+                response_body_failed = True
+            if response_body_failed:
+                raise MassiveDailyMarketDataTransportError(
+                    "Massive HTTPS response body read failed for "
+                    f"{request.role.value} at {request.path}"
+                ) from None
+            if body is None:
+                raise MassiveDailyMarketDataTransportError(
+                    f"Massive HTTPS GET produced no result for {request.role.value}"
                 )
-        except MassiveDailyMarketDataAcquisitionError:
-            raise
-        except Exception:
-            unsafe_failure = True
+            if declared_length is not None and len(body) != declared_length:
+                raise MassiveDailyMarketDataResponseError(
+                    "Massive response body length does not match Content-Length"
+                )
+            return MassiveDailyMarketDataHttpResponse(
+                status_code=status_code,
+                headers=response_headers,
+                body=body,
+            )
         finally:
             if response is not None:
                 try:
@@ -468,15 +519,6 @@ class _StdlibMassiveDailyMarketDataHttpTransport:
                     connection.close()
                 except Exception:
                     pass
-        if unsafe_failure:
-            raise MassiveDailyMarketDataTransportError(
-                f"Massive HTTPS GET failed for {request.role.value} at {request.path}"
-            )
-        if result is None:
-            raise MassiveDailyMarketDataTransportError(
-                f"Massive HTTPS GET produced no result for {request.role.value}"
-            )
-        return result
 
 
 def _capture_instrument(value: object) -> DailyMarketDataInstrument:
@@ -756,6 +798,7 @@ def _acquire_instrument(
     secret: str,
     transport: MassiveDailyMarketDataHttpTransport,
     clock: Callable[[], datetime],
+    preserve_internal_transport_errors: bool,
 ) -> _CompletedInstrumentAcquisition:
     accepted: list[
         tuple[MassiveDailyMarketDataAcquisitionRequest, _AcceptedResponse]
@@ -768,6 +811,9 @@ def _acquire_instrument(
                 request=request,
                 credential=MassiveApiCredential(secret),
             )
+        except MassiveDailyMarketDataAcquisitionError:
+            if preserve_internal_transport_errors:
+                raise
         except Exception:
             pass
         if response is _FAILED_OPERATION:
