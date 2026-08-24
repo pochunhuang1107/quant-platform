@@ -907,6 +907,65 @@ def test_request_failures_return_no_prepared_or_durable_state(
     assert caught.value.__context__ is None
 
 
+def test_internal_transport_stage_reason_reaches_s3c3c6_without_publication(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    class StubSocket:
+        def settimeout(self, _value: float) -> None:
+            pass
+
+    class FailingRequestConnection:
+        instances = 0
+
+        def __init__(self, _host, *, timeout, context) -> None:
+            type(self).instances += 1
+            self.timeout = timeout
+            self.sock = StubSocket()
+
+        def connect(self) -> None:
+            pass
+
+        def request(self, _method, _target, *, headers) -> None:
+            raise OSError(f"SECRET_SENTINEL Bearer {SECRET}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        acquisition_module,
+        "HTTPSConnection",
+        FailingRequestConnection,
+    )
+    monkeypatch.setattr(
+        acquisition_module.ssl,
+        "create_default_context",
+        lambda: object(),
+    )
+    authority = preflight(tmp_path)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=authority.approval_fingerprint,
+            credential=MassiveApiCredential(SECRET),
+            transport=None,
+            clock=SequenceClock(),
+        )
+
+    assert (
+        "reason: Massive HTTPS request send failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    ) in str(caught.value)
+    assert "SECRET_SENTINEL" not in str(caught.value)
+    assert SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert FailingRequestConnection.instances == 1
+    assert tuple(tmp_path.iterdir()) == ()
+
+
 def test_safe_http_403_corporate_action_reason_survives_without_body(
     tmp_path,
     bypass_git_gate,
