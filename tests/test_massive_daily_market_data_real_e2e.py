@@ -1123,6 +1123,96 @@ def test_internal_transport_stage_reason_reaches_s3c3c6_without_publication(
     assert tuple(tmp_path.iterdir()) == ()
 
 
+def test_internal_body_read_reason_reaches_s3c3c6_without_publication(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    unsafe_detail = f"SECRET_SENTINEL Bearer {SECRET}"
+
+    class StubSocket:
+        def settimeout(self, _value: float) -> None:
+            pass
+
+    class FailingBodyResponse:
+        status = 200
+
+        def __init__(self) -> None:
+            self.read_calls = 0
+            self.closed = False
+
+        def getheaders(self):
+            return (
+                ("Content-Type", "application/json"),
+                ("Content-Length", "1"),
+            )
+
+        def read(self, _size: int) -> bytes:
+            self.read_calls += 1
+            raise ssl.SSLEOFError(unsafe_detail)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FailingBodyConnection:
+        instances: list[FailingBodyConnection] = []
+
+        def __init__(self, _host, *, timeout, context) -> None:
+            self.timeout = timeout
+            self.sock = StubSocket()
+            self.response = FailingBodyResponse()
+            self.closed = False
+            type(self).instances.append(self)
+
+        def connect(self) -> None:
+            pass
+
+        def request(self, _method, _target, *, headers) -> None:
+            pass
+
+        def getresponse(self) -> FailingBodyResponse:
+            return self.response
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(
+        acquisition_module,
+        "HTTPSConnection",
+        FailingBodyConnection,
+    )
+    monkeypatch.setattr(
+        acquisition_module.ssl,
+        "create_default_context",
+        lambda: object(),
+    )
+    authority = preflight(tmp_path)
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=authority.approval_fingerprint,
+            credential=MassiveApiCredential(SECRET),
+            transport=None,
+            clock=SequenceClock(),
+        )
+
+    assert (
+        "reason: Massive HTTPS response body TLS EOF failed for BAR_RESPONSE at "
+        "/v2/aggs/ticker/QQQ/range/1/day/2024-01-02/2024-12-31"
+    ) in str(caught.value)
+    assert "SECRET_SENTINEL" not in str(caught.value)
+    assert SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert len(FailingBodyConnection.instances) == 1
+    connection = FailingBodyConnection.instances[0]
+    assert connection.response.read_calls == 1
+    assert connection.response.closed is True
+    assert connection.closed is True
+    assert tuple(tmp_path.iterdir()) == ()
+
+
 def test_safe_http_403_corporate_action_reason_survives_without_body(
     tmp_path,
     bypass_git_gate,
