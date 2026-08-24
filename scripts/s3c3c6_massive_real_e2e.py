@@ -3,17 +3,17 @@
 
 Network-capable code is not authorization to contact Massive.  The execute
 path requires a separately reviewed operational fingerprint, two exact human
-confirmations, and an interactive runtime credential before invoking the
-S3c3c5 acquisition boundary.
+confirmations, and a fingerprint-bound AWS Secrets Manager source before
+invoking the S3c3c5 acquisition boundary.
 """
 
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
+import os
+import subprocess
 import sys
-import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -25,12 +25,14 @@ from backtest_engine.snapshot_pair import (
     prepare_daily_market_data_snapshot_pair_v2,
 )
 from research_sdk.daily_market_data_acquisition import (
+    MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
     MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
     MASSIVE_REAL_E2E_END_DATE,
     MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
     MASSIVE_REAL_E2E_OPERATOR_VERSION,
     MASSIVE_REAL_E2E_START_DATE,
     MassiveApiCredential,
+    MassiveAwsSecretsManagerCredentialSource,
     MassiveDailyMarketDataHttpTransport,
     MassiveDailyMarketDataRealE2EConfig,
     MassiveDailyMarketDataRealE2EError,
@@ -48,6 +50,18 @@ from research_sdk.daily_market_data_storage import (
 )
 
 _FAILED = object()
+_AWS_CLI_CONNECT_TIMEOUT_SECONDS = "5"
+_AWS_CLI_READ_TIMEOUT_SECONDS = "15"
+_AWS_CLI_PROCESS_TIMEOUT_SECONDS = 25
+_TRUSTED_CREDENTIAL_LOADER_STAGES = frozenset(
+    {
+        "AWS Secrets Manager executable",
+        "AWS Secrets Manager retrieval",
+        "AWS Secrets Manager SecretString JSON",
+        "AWS Secrets Manager credential field",
+        "runtime credential validation",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--data-root", required=True, type=Path)
         command.add_argument("--created-by", required=True)
         command.add_argument("--license-notes", required=True)
+        command.add_argument("--credential-source", required=True)
+        command.add_argument("--aws-region", required=True)
+        command.add_argument("--aws-secret-id", required=True)
+        command.add_argument("--aws-secret-json-key", required=True)
+        command.add_argument("--aws-secret-version-stage", required=True)
         if mode == "execute":
             command.add_argument("--approval-fingerprint", required=True)
     return parser
@@ -83,7 +102,10 @@ def run(
     argv: Sequence[str] | None = None,
     *,
     input_fn: Callable[[str], str] = input,
-    credential_prompt: Callable[[str], str] | None = None,
+    credential_loader: (
+        Callable[[MassiveAwsSecretsManagerCredentialSource], MassiveApiCredential]
+        | None
+    ) = None,
     transport: MassiveDailyMarketDataHttpTransport | None = None,
     clock: Callable[[], datetime] | None = None,
     stdout: TextIO = sys.stdout,
@@ -92,12 +114,20 @@ def run(
     """Run one preflight or explicitly authorized execute command."""
 
     args = build_parser().parse_args(argv)
+    credential_source = MassiveAwsSecretsManagerCredentialSource(
+        source_kind=args.credential_source,
+        region=args.aws_region,
+        secret_id=args.aws_secret_id,
+        json_key=args.aws_secret_json_key,
+        version_stage=args.aws_secret_version_stage,
+    )
     config = MassiveDailyMarketDataRealE2EConfig(
         expected_repository_commit=args.expected_commit,
         acquisition_batch_id=args.batch_id,
         data_root=args.data_root,
         created_by=args.created_by,
         license_notes=args.license_notes,
+        credential_source=credential_source,
     )
     repository_root = Path.cwd()
     try:
@@ -130,9 +160,20 @@ def run(
             MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
             "acquisition confirmation",
         )
-        credential = _prompt_credential(credential_prompt)
+        final_recheck = build_massive_daily_market_data_real_e2e_preflight(
+            config=config,
+            repository_root=repository_root,
+        )
+        if final_recheck.approval_fingerprint != approved_fingerprint:
+            raise MassiveDailyMarketDataRealE2EError(
+                "final pre-secret Git/root/fingerprint recheck"
+            )
+        credential = _retrieve_credential(
+            final_recheck.config.credential_source,
+            credential_loader,
+        )
         prepared = prepare_massive_daily_market_data_real_e2e(
-            preflight=rechecked,
+            preflight=final_recheck,
             approved_fingerprint=approved_fingerprint,
             credential=credential,
             transport=transport,
@@ -362,37 +403,183 @@ def _require_confirmation(
         raise MassiveDailyMarketDataRealE2EError(stage)
 
 
-def _prompt_credential(
-    credential_prompt: Callable[[str], str] | None,
+def _retrieve_credential(
+    source: MassiveAwsSecretsManagerCredentialSource,
+    credential_loader: (
+        Callable[[MassiveAwsSecretsManagerCredentialSource], MassiveApiCredential]
+        | None
+    ),
 ) -> MassiveApiCredential:
-    if credential_prompt is None:
-        if not sys.stdin.isatty() or not sys.stderr.isatty():
-            raise MassiveDailyMarketDataRealE2EError("interactive credential terminal")
-        prompt = getpass.getpass
-    else:
-        prompt = credential_prompt
-    value: str = ""
-    attempted: _Attempt[str]
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", getpass.GetPassWarning)
-        attempted = _attempt_credential_prompt(prompt)
-    value = _stage_value(
-        attempted,
-        "interactive credential prompt",
-        durable_artifacts=(),
+    trusted_internal_loader = credential_loader is None
+    loader = (
+        _load_massive_credential_from_aws_secrets_manager
+        if credential_loader is None
+        else credential_loader
     )
-    return _stage_value(
-        _attempt(lambda: MassiveApiCredential(value)),
-        "runtime credential validation",
-        durable_artifacts=(),
-    )
-
-
-def _attempt_credential_prompt(prompt: Callable[[str], str]) -> _Attempt[str]:
+    succeeded = False
+    value: object = _FAILED
+    safe_stage: str | None = None
     try:
-        return _Attempt(succeeded=True, value=prompt("Massive API key: "))
+        value = loader(source)
+        succeeded = True
+    except MassiveDailyMarketDataRealE2EError as error:
+        if (
+            trusted_internal_loader
+            and type(error) is MassiveDailyMarketDataRealE2EError
+            and type(error.stage) is str
+            and error.stage in _TRUSTED_CREDENTIAL_LOADER_STAGES
+            and error.durable_artifacts == ()
+        ):
+            safe_stage = error.stage
     except (Exception, KeyboardInterrupt):
-        return _Attempt(succeeded=False, value=_FAILED)
+        pass
+    if succeeded and type(value) is MassiveApiCredential:
+        return value
+    if safe_stage is not None:
+        raise MassiveDailyMarketDataRealE2EError(safe_stage) from None
+    stage = (
+        "runtime credential validation"
+        if succeeded
+        else "AWS Secrets Manager retrieval"
+    )
+    raise MassiveDailyMarketDataRealE2EError(stage) from None
+
+
+def _load_massive_credential_from_aws_secrets_manager(
+    source: MassiveAwsSecretsManagerCredentialSource,
+    *,
+    command_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+) -> MassiveApiCredential:
+    if (
+        type(source) is not MassiveAwsSecretsManagerCredentialSource
+        or source.source_kind != MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND
+    ):
+        raise MassiveDailyMarketDataRealE2EError(
+            "AWS Secrets Manager retrieval"
+        ) from None
+    argv = (
+        "aws",
+        "secretsmanager",
+        "get-secret-value",
+        "--region",
+        source.region,
+        "--secret-id",
+        source.secret_id,
+        "--version-stage",
+        source.version_stage,
+        "--query",
+        "SecretString",
+        "--output",
+        "text",
+        "--no-cli-pager",
+        "--cli-connect-timeout",
+        _AWS_CLI_CONNECT_TIMEOUT_SECONDS,
+        "--cli-read-timeout",
+        _AWS_CLI_READ_TIMEOUT_SECONDS,
+    )
+    environment = os.environ.copy()
+    environment.pop("AWS_ENDPOINT_URL", None)
+    environment.pop("AWS_ENDPOINT_URL_SECRETS_MANAGER", None)
+    environment.update(
+        {
+            "AWS_MAX_ATTEMPTS": "1",
+            "AWS_RETRY_MODE": "standard",
+            "AWS_PAGER": "",
+            "AWS_CLI_AUTO_PROMPT": "off",
+            "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS": "true",
+        }
+    )
+    runner = subprocess.run if command_runner is None else command_runner
+    completed: object = _FAILED
+    missing_executable = False
+    try:
+        completed = runner(
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            shell=False,
+            timeout=_AWS_CLI_PROCESS_TIMEOUT_SECONDS,
+            env=environment,
+        )
+    except FileNotFoundError:
+        missing_executable = True
+    except (Exception, KeyboardInterrupt):
+        pass
+    del environment
+    if missing_executable:
+        raise MassiveDailyMarketDataRealE2EError(
+            "AWS Secrets Manager executable"
+        ) from None
+    if (
+        type(completed) is not subprocess.CompletedProcess
+        or type(completed.returncode) is not int
+        or completed.returncode != 0
+        or type(completed.stdout) is not str
+    ):
+        raise MassiveDailyMarketDataRealE2EError(
+            "AWS Secrets Manager retrieval"
+        ) from None
+    raw_stdout = completed.stdout
+    del completed
+    if (
+        not raw_stdout.endswith("\n")
+        or raw_stdout.count("\n") != 1
+        or "\r" in raw_stdout
+    ):
+        del raw_stdout
+        raise MassiveDailyMarketDataRealE2EError(
+            "AWS Secrets Manager retrieval"
+        ) from None
+    secret_string = raw_stdout[:-1]
+    del raw_stdout
+    parsed: object = _FAILED
+    try:
+        parsed = json.loads(
+            secret_string,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (TypeError, ValueError):
+        pass
+    del secret_string
+    if type(parsed) is not dict:
+        raise MassiveDailyMarketDataRealE2EError(
+            "AWS Secrets Manager SecretString JSON"
+        ) from None
+    credential_value = parsed.get(source.json_key, _FAILED)
+    del parsed
+    if type(credential_value) is not str:
+        del credential_value
+        raise MassiveDailyMarketDataRealE2EError(
+            "AWS Secrets Manager credential field"
+        ) from None
+    credential: object = _FAILED
+    try:
+        credential = MassiveApiCredential(credential_value)
+    except Exception:
+        pass
+    del credential_value
+    if type(credential) is not MassiveApiCredential:
+        raise MassiveDailyMarketDataRealE2EError(
+            "runtime credential validation"
+        ) from None
+    return credential
+
+
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON object key")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(_value: str) -> object:
+    raise ValueError("non-finite JSON value")
 
 
 def _pair_result_authority(

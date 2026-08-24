@@ -104,10 +104,11 @@ from research_sdk.daily_market_data_storage.verification_v2 import (
     verify_daily_market_data_snapshot_bundle_v2,
 )
 
-MASSIVE_REAL_E2E_OPERATOR_VERSION: Final[str] = "massive-real-e2e-operator-v1"
+MASSIVE_REAL_E2E_OPERATOR_VERSION: Final[str] = "massive-real-e2e-operator-v2"
 MASSIVE_REAL_E2E_APPROVAL_DOMAIN: Final[str] = (
-    "massive-real-e2e-operational-approval-v1"
+    "massive-real-e2e-operational-approval-v2"
 )
+MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND: Final[str] = "aws-secrets-manager"
 MASSIVE_REAL_E2E_FIXED_HOST: Final[str] = _MASSIVE_API_HOST
 MASSIVE_REAL_E2E_CURRENCY: Final[str] = "USD"
 MASSIVE_REAL_E2E_START_DATE: Final[date] = date(2024, 1, 2)
@@ -159,6 +160,17 @@ class MassiveDailyMarketDataRealE2EError(ValueError):
 
 
 @dataclass(frozen=True)
+class MassiveAwsSecretsManagerCredentialSource:
+    """Exact non-secret authority for the operator's credential source."""
+
+    source_kind: str
+    region: str
+    secret_id: str
+    json_key: str
+    version_stage: str
+
+
+@dataclass(frozen=True)
 class MassiveDailyMarketDataRealE2EConfig:
     """Explicit non-secret authority for one operator-reviewed run."""
 
@@ -167,6 +179,7 @@ class MassiveDailyMarketDataRealE2EConfig:
     data_root: Path
     created_by: str
     license_notes: str
+    credential_source: MassiveAwsSecretsManagerCredentialSource
 
 
 @dataclass(frozen=True)
@@ -252,6 +265,7 @@ def build_massive_daily_market_data_real_e2e_preflight(
         data_root=resolved_data_root,
         created_by=captured_config.created_by,
         license_notes=captured_config.license_notes,
+        credential_source=captured_config.credential_source,
     )
     source_directory = resolved_data_root / _SOURCE_CAPTURE_MANAGED_DIRECTORY
     snapshot_directory = resolved_data_root / _SNAPSHOT_MANAGED_DIRECTORY
@@ -883,7 +897,16 @@ def render_massive_daily_market_data_real_e2e_preflight(
             "NETWORK: HTTPS GET only; Authorization Bearer header only; "
             "redirects not followed"
         ),
+        f"CREDENTIAL SOURCE: {canonical.config.credential_source.source_kind}",
+        f"AWS REGION: {canonical.config.credential_source.region}",
+        f"AWS SECRET ID: {canonical.config.credential_source.secret_id}",
+        f"AWS SECRET JSON KEY: {canonical.config.credential_source.json_key}",
+        (
+            "AWS SECRET VERSION STAGE: "
+            f"{canonical.config.credential_source.version_stage}"
+        ),
         "CREDENTIAL STATUS: NOT REQUESTED",
+        "AWS SECRETS MANAGER STATUS: NOT CONTACTED",
         _instrument_summary("ASSET", canonical.asset_plan.instrument),
         _instrument_summary("BENCHMARK", canonical.benchmark_plan.instrument),
         f"CURRENCY: {MASSIVE_REAL_E2E_CURRENCY}",
@@ -1070,6 +1093,7 @@ def _capture_config(
     data_root = config.data_root
     created_by = config.created_by
     license_notes = config.license_notes
+    credential_source = _capture_credential_source(config.credential_source)
     if type(commit) is not str or _SHA1_PATTERN.fullmatch(commit) is None:
         raise MassiveDailyMarketDataRealE2EError("expected repository commit")
     _require_nonblank(batch_id, "acquisition batch ID")
@@ -1083,6 +1107,38 @@ def _capture_config(
         data_root=data_root,
         created_by=created_by,
         license_notes=license_notes,
+        credential_source=credential_source,
+    )
+
+
+def _capture_credential_source(
+    source: MassiveAwsSecretsManagerCredentialSource,
+) -> MassiveAwsSecretsManagerCredentialSource:
+    if type(source) is not MassiveAwsSecretsManagerCredentialSource:
+        raise MassiveDailyMarketDataRealE2EError("credential source authority")
+    source_kind = _require_nonblank(source.source_kind, "credential source kind")
+    region = _require_nonblank(source.region, "AWS region")
+    secret_id = _require_nonblank(source.secret_id, "AWS secret ID")
+    json_key = _require_nonblank(source.json_key, "AWS secret JSON key")
+    version_stage = _require_nonblank(
+        source.version_stage,
+        "AWS secret version stage",
+    )
+    if source_kind != MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND:
+        raise MassiveDailyMarketDataRealE2EError("credential source kind")
+    for value, field in (
+        (region, "AWS region"),
+        (secret_id, "AWS secret ID"),
+        (version_stage, "AWS secret version stage"),
+    ):
+        if value.startswith("-"):
+            raise MassiveDailyMarketDataRealE2EError(field)
+    return MassiveAwsSecretsManagerCredentialSource(
+        source_kind=source_kind,
+        region=region,
+        secret_id=secret_id,
+        json_key=json_key,
+        version_stage=version_stage,
     )
 
 
@@ -1265,6 +1321,7 @@ def _approval_payload(
         "asset_plan": _plan_payload(asset_plan),
         "benchmark_plan": _plan_payload(benchmark_plan),
         "network_policy": _build_operational_network_policy(),
+        "credential_source": _credential_source_payload(config.credential_source),
         "acquisition_batch_id": config.acquisition_batch_id,
         "expected_sessions": expected_sessions.model_dump(mode="json"),
         "expected_sessions_hash": expected_sessions_hash,
@@ -1282,6 +1339,19 @@ def _approval_payload(
             MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
             MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
         ),
+    }
+
+
+def _credential_source_payload(
+    source: MassiveAwsSecretsManagerCredentialSource,
+) -> dict[str, str]:
+    canonical = _capture_credential_source(source)
+    return {
+        "source_kind": canonical.source_kind,
+        "region": canonical.region,
+        "secret_id": canonical.secret_id,
+        "json_key": canonical.json_key,
+        "version_stage": canonical.version_stage,
     }
 
 
@@ -1671,6 +1741,7 @@ def _utc_now() -> datetime:
 
 
 __all__ = [
+    "MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND",
     "MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION",
     "MASSIVE_REAL_E2E_APPROVAL_DOMAIN",
     "MASSIVE_REAL_E2E_CURRENCY",
@@ -1683,6 +1754,7 @@ __all__ = [
     "MASSIVE_REAL_E2E_POLICY_HASH",
     "MASSIVE_REAL_E2E_RESEARCH_PROFILE_HASH",
     "MASSIVE_REAL_E2E_START_DATE",
+    "MassiveAwsSecretsManagerCredentialSource",
     "MassiveDailyMarketDataRealE2EConfig",
     "MassiveDailyMarketDataRealE2EError",
     "MassiveDailyMarketDataRealE2EPreflight",
