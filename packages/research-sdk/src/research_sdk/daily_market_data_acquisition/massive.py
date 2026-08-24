@@ -9,7 +9,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from http.client import HTTPSConnection
+from http.client import HTTPSConnection, IncompleteRead
 from math import isfinite
 from time import monotonic
 from typing import Any, NoReturn, Protocol, SupportsIndex
@@ -484,6 +484,8 @@ class _StdlibMassiveDailyMarketDataHttpTransport:
                     response=response,
                     socket=socket,
                     deadline=deadline,
+                    role=request.role,
+                    path=request.path,
                     response_size_limit_bytes=request.response_size_limit_bytes,
                 )
             except MassiveDailyMarketDataAcquisitionError:
@@ -1193,17 +1195,39 @@ def _read_bounded_body(
     response: Any,
     socket: Any,
     deadline: _RequestDeadline,
+    role: DailyMarketDataSourceCaptureRole,
+    path: str,
     response_size_limit_bytes: int,
 ) -> bytes:
     chunks: list[bytes] = []
     total = 0
     while True:
-        _set_next_socket_timeout(socket, deadline)
+        timeout_setup_failed = False
+        try:
+            _set_next_socket_timeout(socket, deadline)
+        except MassiveDailyMarketDataAcquisitionError:
+            raise
+        except Exception:
+            timeout_setup_failed = True
+        if timeout_setup_failed:
+            raise MassiveDailyMarketDataTransportError(
+                "Massive HTTPS response body timeout setup failed for "
+                f"{role.value} at {path}"
+            ) from None
         read_size = min(
             _READ_CHUNK_SIZE_BYTES,
             response_size_limit_bytes + 1 - total,
         )
-        chunk = response.read(read_size)
+        chunk: object = _FAILED_OPERATION
+        read_failure: str | None = None
+        try:
+            chunk = response.read(read_size)
+        except Exception as error:
+            read_failure = _classify_response_body_read_failure(error)
+        if read_failure is not None:
+            raise MassiveDailyMarketDataTransportError(
+                f"Massive HTTPS response body {read_failure} for {role.value} at {path}"
+            ) from None
         if type(chunk) is not bytes:
             raise MassiveDailyMarketDataResponseError(
                 "Massive HTTPS response chunks must be exact bytes"
@@ -1217,6 +1241,20 @@ def _read_bounded_body(
             raise MassiveDailyMarketDataResponseError(
                 "Massive HTTPS response exceeds the role byte limit"
             )
+
+
+def _classify_response_body_read_failure(error: Exception) -> str:
+    if type(error) is TimeoutError:
+        return "read timed out"
+    if type(error) is ssl.SSLEOFError:
+        return "TLS EOF failed"
+    if isinstance(error, ssl.SSLError):
+        return "TLS read failed"
+    if type(error) is IncompleteRead:
+        return "incomplete"
+    if isinstance(error, ConnectionError):
+        return "connection read failed"
+    return "read failed"
 
 
 __all__ = [
