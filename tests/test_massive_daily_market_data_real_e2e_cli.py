@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import os
 import socket
 import ssl
 import subprocess
 import sys
 import textwrap
-import warnings
+import traceback
 from dataclasses import replace
 from pathlib import Path
 
@@ -17,14 +18,21 @@ import pytest
 import research_sdk.daily_market_data_acquisition.massive as acquisition_module
 import research_sdk.daily_market_data_acquisition.massive_real_e2e as e2e_module
 from research_sdk.daily_market_data_acquisition import (
+    MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
     MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
     MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
+    MassiveApiCredential,
+    MassiveAwsSecretsManagerCredentialSource,
     MassiveDailyMarketDataHttpResponse,
     MassiveDailyMarketDataRealE2EConfig,
     MassiveDailyMarketDataRealE2EError,
     build_massive_daily_market_data_real_e2e_preflight,
 )
 from test_massive_daily_market_data_real_e2e import (
+    AWS_REGION,
+    AWS_SECRET_ID,
+    AWS_SECRET_JSON_KEY,
+    AWS_SECRET_VERSION_STAGE,
     BATCH_ID,
     CREATED_BY,
     EXPECTED_COMMIT,
@@ -87,10 +95,30 @@ def arguments(mode: str, root: Path, *, fingerprint: str | None = None):
         CREATED_BY,
         "--license-notes",
         LICENSE_NOTES,
+        "--credential-source",
+        MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
+        "--aws-region",
+        AWS_REGION,
+        "--aws-secret-id",
+        AWS_SECRET_ID,
+        "--aws-secret-json-key",
+        AWS_SECRET_JSON_KEY,
+        "--aws-secret-version-stage",
+        AWS_SECRET_VERSION_STAGE,
     ]
     if fingerprint is not None:
         values.extend(("--approval-fingerprint", fingerprint))
     return values
+
+
+def credential_source() -> MassiveAwsSecretsManagerCredentialSource:
+    return MassiveAwsSecretsManagerCredentialSource(
+        source_kind=MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
+        region=AWS_REGION,
+        secret_id=AWS_SECRET_ID,
+        json_key=AWS_SECRET_JSON_KEY,
+        version_stage=AWS_SECRET_VERSION_STAGE,
+    )
 
 
 def authority(root: Path):
@@ -101,6 +129,7 @@ def authority(root: Path):
             data_root=root,
             created_by=CREATED_BY,
             license_notes=LICENSE_NOTES,
+            credential_source=credential_source(),
         ),
         repository_root=REPOSITORY_ROOT,
     )
@@ -115,7 +144,7 @@ def test_preflight_command_never_prompts_or_uses_transport(
     result = cli_module.run(
         arguments("preflight", tmp_path),
         input_fn=lambda _prompt: pytest.fail("preflight requested confirmation"),
-        credential_prompt=lambda _prompt: pytest.fail("preflight requested credential"),
+        credential_loader=lambda _source: pytest.fail("preflight requested credential"),
         transport=FakeTransport(fail_at=1),
         stdout=output,
         stderr=io.StringIO(),
@@ -123,6 +152,12 @@ def test_preflight_command_never_prompts_or_uses_transport(
 
     assert result == 0
     assert "CREDENTIAL STATUS: NOT REQUESTED" in output.getvalue()
+    assert "CREDENTIAL SOURCE: aws-secrets-manager" in output.getvalue()
+    assert "AWS REGION: us-west-2" in output.getvalue()
+    assert "AWS SECRET ID: massive/api-key" in output.getvalue()
+    assert "AWS SECRET JSON KEY: api_key" in output.getvalue()
+    assert "AWS SECRET VERSION STAGE: AWSCURRENT" in output.getvalue()
+    assert "AWS SECRETS MANAGER STATUS: NOT CONTACTED" in output.getvalue()
     assert "NO NETWORK REQUEST HAS OCCURRED" in output.getvalue()
     assert tuple(tmp_path.iterdir()) == ()
 
@@ -142,7 +177,7 @@ def test_wrong_fingerprint_fails_before_confirmation_or_prompt(
     result = cli_module.run(
         arguments("execute", tmp_path, fingerprint=f"sha256:{'0' * 64}"),
         input_fn=prompt,
-        credential_prompt=prompt,
+        credential_loader=prompt,
         transport=FakeTransport(),
         stdout=io.StringIO(),
         stderr=error,
@@ -151,6 +186,52 @@ def test_wrong_fingerprint_fails_before_confirmation_or_prompt(
     assert result == 1
     assert not prompted
     assert "fingerprint" in error.getvalue()
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_failed_initial_recheck_prevents_credential_retrieval(
+    tmp_path,
+    cli_module,
+    monkeypatch,
+) -> None:
+    reviewed = authority(tmp_path)
+    original_build = cli_module.build_massive_daily_market_data_real_e2e_preflight
+    calls = 0
+    loader_calls = 0
+
+    def build(**kwargs):
+        nonlocal calls
+        calls += 1
+        value = original_build(**kwargs)
+        if calls == 2:
+            return replace(value, approval_fingerprint=f"sha256:{'0' * 64}")
+        return value
+
+    def loader(_source):
+        nonlocal loader_calls
+        loader_calls += 1
+        return MassiveApiCredential(SECRET)
+
+    monkeypatch.setattr(
+        cli_module,
+        "build_massive_daily_market_data_real_e2e_preflight",
+        build,
+    )
+    result = cli_module.run(
+        arguments(
+            "execute",
+            tmp_path,
+            fingerprint=reviewed.approval_fingerprint,
+        ),
+        input_fn=lambda _prompt: pytest.fail("initial recheck requested confirmation"),
+        credential_loader=loader,
+        transport=FakeTransport(),
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+    )
+
+    assert result == 1
+    assert loader_calls == 0
     assert tuple(tmp_path.iterdir()) == ()
 
 
@@ -187,7 +268,7 @@ def test_safe_http_401_bar_reason_reaches_cli_without_secret_or_body(
             fingerprint=reviewed.approval_fingerprint,
         ),
         input_fn=lambda _prompt: next(answers),
-        credential_prompt=lambda _prompt: SECRET,
+        credential_loader=lambda _source: MassiveApiCredential(SECRET),
         transport=transport,
         clock=SequenceClock(),
         stdout=output,
@@ -218,12 +299,12 @@ def test_confirmation_mismatch_fails_before_credential_and_network(
 ) -> None:
     reviewed = authority(tmp_path)
     answer_iterator = iter(answers)
-    credential_prompted = False
+    credential_loaded = False
 
-    def credential(_prompt):
-        nonlocal credential_prompted
-        credential_prompted = True
-        return SECRET
+    def credential(_source):
+        nonlocal credential_loaded
+        credential_loaded = True
+        return MassiveApiCredential(SECRET)
 
     result = cli_module.run(
         arguments(
@@ -232,18 +313,18 @@ def test_confirmation_mismatch_fails_before_credential_and_network(
             fingerprint=reviewed.approval_fingerprint,
         ),
         input_fn=lambda _prompt: next(answer_iterator),
-        credential_prompt=credential,
+        credential_loader=credential,
         transport=FakeTransport(),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
 
     assert result == 1
-    assert not credential_prompted
+    assert not credential_loaded
     assert tuple(tmp_path.iterdir()) == ()
 
 
-def test_credential_prompt_occurs_after_both_confirmations(
+def test_credential_retrieval_occurs_after_both_confirmations_and_final_recheck(
     tmp_path,
     cli_module,
     monkeypatch,
@@ -261,9 +342,15 @@ def test_credential_prompt_occurs_after_both_confirmations(
         events.append("confirmation")
         return next(answers)
 
-    def credential(_prompt):
+    original_build = cli_module.build_massive_daily_market_data_real_e2e_preflight
+
+    def build(**kwargs):
+        events.append("recheck")
+        return original_build(**kwargs)
+
+    def credential(_source):
         events.append("credential")
-        return SECRET
+        return MassiveApiCredential(SECRET)
 
     def stop_after_prompt(**_kwargs):
         events.append("prepare")
@@ -274,6 +361,11 @@ def test_credential_prompt_occurs_after_both_confirmations(
         "prepare_massive_daily_market_data_real_e2e",
         stop_after_prompt,
     )
+    monkeypatch.setattr(
+        cli_module,
+        "build_massive_daily_market_data_real_e2e_preflight",
+        build,
+    )
     result = cli_module.run(
         arguments(
             "execute",
@@ -281,61 +373,25 @@ def test_credential_prompt_occurs_after_both_confirmations(
             fingerprint=reviewed.approval_fingerprint,
         ),
         input_fn=input_fn,
-        credential_prompt=credential,
+        credential_loader=credential,
         transport=FakeTransport(),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
 
     assert result == 1
-    assert events == ["confirmation", "confirmation", "credential", "prepare"]
+    assert events == [
+        "recheck",
+        "recheck",
+        "confirmation",
+        "confirmation",
+        "recheck",
+        "credential",
+        "prepare",
+    ]
 
 
-def test_getpass_warning_fails_safely(cli_module) -> None:
-    def warning_prompt(_prompt):
-        warnings.warn("would echo", cli_module.getpass.GetPassWarning)
-        return SECRET
-
-    with pytest.raises(MassiveDailyMarketDataRealE2EError):
-        cli_module._prompt_credential(warning_prompt)
-
-
-@pytest.mark.parametrize(
-    "failure",
-    (
-        EOFError(f"unsafe {SECRET}"),
-        KeyboardInterrupt(),
-        ValueError(f"unsafe {SECRET}"),
-    ),
-)
-def test_credential_prompt_failures_are_sanitized_without_context(
-    cli_module,
-    failure,
-) -> None:
-    def prompt(_prompt):
-        raise failure
-
-    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
-        cli_module._prompt_credential(prompt)
-
-    assert SECRET not in str(caught.value)
-    assert caught.value.__cause__ is None
-    assert caught.value.__context__ is None
-
-
-def test_default_prompt_requires_interactive_terminal(cli_module, monkeypatch) -> None:
-    class NonInteractive(io.StringIO):
-        def isatty(self) -> bool:
-            return False
-
-    monkeypatch.setattr(cli_module.sys, "stdin", NonInteractive())
-    monkeypatch.setattr(cli_module.sys, "stderr", NonInteractive())
-
-    with pytest.raises(MassiveDailyMarketDataRealE2EError):
-        cli_module._prompt_credential(None)
-
-
-def test_final_root_recheck_after_credential_prevents_network(
+def test_final_pre_secret_recheck_failure_prevents_retrieval_and_network(
     tmp_path,
     cli_module,
 ) -> None:
@@ -348,12 +404,320 @@ def test_final_root_recheck_after_credential_prevents_network(
         )
     )
 
-    def prompt(_prompt):
-        managed = tmp_path / "daily-market-data-source-captures"
-        target = tmp_path / "hostile-managed-target"
-        target.mkdir()
-        managed.symlink_to(target, target_is_directory=True)
-        return SECRET
+    loader_calls = 0
+
+    def input_fn(_prompt):
+        answer = next(answers)
+        if answer == MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION:
+            managed = tmp_path / "daily-market-data-source-captures"
+            target = tmp_path / "hostile-managed-target"
+            target.mkdir()
+            managed.symlink_to(target, target_is_directory=True)
+        return answer
+
+    def loader(_source):
+        nonlocal loader_calls
+        loader_calls += 1
+        return MassiveApiCredential(SECRET)
+
+    result = cli_module.run(
+        arguments(
+            "execute",
+            tmp_path,
+            fingerprint=reviewed.approval_fingerprint,
+        ),
+        input_fn=input_fn,
+        credential_loader=loader,
+        transport=transport,
+        clock=SequenceClock(),
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+    )
+
+    assert result == 1
+    assert loader_calls == 0
+    assert transport.calls == []
+
+
+def test_aws_cli_command_authority_is_exact_and_bounded(cli_module) -> None:
+    calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    def runner(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=json.dumps({AWS_SECRET_JSON_KEY: SECRET}) + "\n",
+            stderr=f"ignored hostile stderr {SECRET}",
+        )
+
+    credential = cli_module._load_massive_credential_from_aws_secrets_manager(
+        credential_source(),
+        command_runner=runner,
+    )
+
+    assert type(credential) is MassiveApiCredential
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert argv == (
+        "aws",
+        "secretsmanager",
+        "get-secret-value",
+        "--region",
+        "us-west-2",
+        "--secret-id",
+        "massive/api-key",
+        "--version-stage",
+        "AWSCURRENT",
+        "--query",
+        "SecretString",
+        "--output",
+        "text",
+        "--no-cli-pager",
+        "--cli-connect-timeout",
+        "5",
+        "--cli-read-timeout",
+        "15",
+    )
+    assert kwargs["check"] is False
+    assert kwargs["capture_output"] is True
+    assert kwargs["text"] is True
+    assert kwargs["encoding"] == "utf-8"
+    assert kwargs["errors"] == "strict"
+    assert kwargs["shell"] is False
+    assert kwargs["timeout"] == 25
+    environment = kwargs["env"]
+    assert type(environment) is dict
+    assert environment["AWS_MAX_ATTEMPTS"] == "1"
+    assert environment["AWS_RETRY_MODE"] == "standard"
+    assert environment["AWS_PAGER"] == ""
+    assert environment["AWS_CLI_AUTO_PROMPT"] == "off"
+    assert environment["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"] == "true"
+    assert SECRET not in argv
+    assert "api.massive.com" not in argv
+    assert repr(credential) == "MassiveApiCredential(<redacted>)"
+
+
+def test_hostile_aws_environment_cannot_override_endpoint_retry_or_interaction(
+    cli_module,
+    monkeypatch,
+) -> None:
+    hostile_endpoint = "https://hostile.invalid"
+    monkeypatch.setenv("AWS_ENDPOINT_URL", hostile_endpoint)
+    monkeypatch.setenv("AWS_ENDPOINT_URL_SECRETS_MANAGER", hostile_endpoint)
+    monkeypatch.setenv("AWS_MAX_ATTEMPTS", "99")
+    monkeypatch.setenv("AWS_RETRY_MODE", "adaptive")
+    monkeypatch.setenv("AWS_PAGER", "hostile-pager")
+    monkeypatch.setenv("AWS_CLI_AUTO_PROMPT", "on")
+    monkeypatch.setenv("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "false")
+    monkeypatch.setenv("AWS_CONFIG_FILE", "/synthetic/hostile-aws-config")
+    calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    def runner(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=json.dumps({AWS_SECRET_JSON_KEY: SECRET}) + "\n",
+            stderr="",
+        )
+
+    cli_module._load_massive_credential_from_aws_secrets_manager(
+        credential_source(),
+        command_runner=runner,
+    )
+
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    environment = kwargs["env"]
+    assert type(environment) is dict
+    assert "--endpoint-url" not in argv
+    assert "AWS_ENDPOINT_URL" not in environment
+    assert "AWS_ENDPOINT_URL_SECRETS_MANAGER" not in environment
+    assert environment["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"] == "true"
+    assert environment["AWS_MAX_ATTEMPTS"] == "1"
+    assert environment["AWS_RETRY_MODE"] == "standard"
+    assert environment["AWS_PAGER"] == ""
+    assert environment["AWS_CLI_AUTO_PROMPT"] == "off"
+    assert environment["AWS_CONFIG_FILE"] == "/synthetic/hostile-aws-config"
+    assert hostile_endpoint not in argv
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_stage"),
+    (
+        ("missing-executable", "AWS Secrets Manager executable"),
+        ("timeout", "AWS Secrets Manager retrieval"),
+        ("unicode-output", "AWS Secrets Manager retrieval"),
+        ("nonzero", "AWS Secrets Manager retrieval"),
+        ("invalid-output-type", "AWS Secrets Manager retrieval"),
+        ("invalid-json", "AWS Secrets Manager SecretString JSON"),
+        ("non-object", "AWS Secrets Manager SecretString JSON"),
+        ("missing-field", "AWS Secrets Manager credential field"),
+        ("non-string-field", "AWS Secrets Manager credential field"),
+        ("invalid-credential", "runtime credential validation"),
+        ("control-invalid-credential", "runtime credential validation"),
+    ),
+)
+def test_aws_retrieval_failures_are_fixed_and_exception_safe(
+    cli_module,
+    case,
+    expected_stage,
+) -> None:
+    def runner(argv, **_kwargs):
+        if case == "missing-executable":
+            raise FileNotFoundError(f"missing executable {SECRET}")
+        if case == "timeout":
+            raise subprocess.TimeoutExpired(argv, 25, stderr=f"timeout {SECRET}")
+        if case == "unicode-output":
+            raise UnicodeError(f"invalid UTF-8 output {SECRET}")
+        if case == "nonzero":
+            return subprocess.CompletedProcess(
+                argv,
+                255,
+                stdout=f"hostile stdout {SECRET}",
+                stderr=f"hostile stderr {SECRET}",
+            )
+        if case == "invalid-output-type":
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=f'{{"api_key":"{SECRET}"}}\n'.encode(),
+                stderr=b"invalid UTF-8-like output",
+            )
+        payload: object
+        if case == "invalid-json":
+            stdout = f"not JSON {SECRET}\n"
+        elif case == "non-object":
+            stdout = json.dumps([SECRET]) + "\n"
+        elif case == "missing-field":
+            stdout = json.dumps({"other": SECRET}) + "\n"
+        elif case == "non-string-field":
+            stdout = json.dumps({AWS_SECRET_JSON_KEY: [SECRET]}) + "\n"
+        elif case == "invalid-credential":
+            payload = {AWS_SECRET_JSON_KEY: f" {SECRET}"}
+            stdout = json.dumps(payload) + "\n"
+        else:
+            payload = {AWS_SECRET_JSON_KEY: f"{SECRET}\ncontrol"}
+            stdout = json.dumps(payload) + "\n"
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout=stdout,
+            stderr=f"hostile stderr {SECRET}",
+        )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        cli_module._load_massive_credential_from_aws_secrets_manager(
+            credential_source(),
+            command_runner=runner,
+        )
+
+    rendered_traceback = "".join(traceback.format_exception(caught.value))
+    assert caught.value.stage == expected_stage
+    assert SECRET not in str(caught.value)
+    assert SECRET not in repr(caught.value)
+    assert SECRET not in rendered_traceback
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    (
+        '{"api_key":"synthetic"}',
+        '{"api_key":"synthetic"}\r\n',
+        '{"api_key":"synthetic"}\nextra\n',
+        '{"api_key":"first","api_key":"second"}\n',
+        '{"api_key":"synthetic","value":NaN}\n',
+    ),
+)
+def test_aws_stdout_requires_one_strict_json_text_record(
+    cli_module,
+    stdout,
+) -> None:
+    def runner(argv, **_kwargs):
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        cli_module._load_massive_credential_from_aws_secrets_manager(
+            credential_source(),
+            command_runner=runner,
+        )
+
+    assert caught.value.stage in {
+        "AWS Secrets Manager retrieval",
+        "AWS Secrets Manager SecretString JSON",
+    }
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+def test_injected_loader_cannot_forge_trusted_aws_diagnostics(cli_module) -> None:
+    def forged(_source):
+        raise MassiveDailyMarketDataRealE2EError(
+            f"AWS Secrets Manager executable {SECRET}"
+        )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        cli_module._retrieve_credential(credential_source(), forged)
+
+    assert caught.value.stage == "AWS Secrets Manager retrieval"
+    assert SECRET not in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+def test_only_internal_loader_can_preserve_fixed_aws_stage(
+    cli_module,
+    monkeypatch,
+) -> None:
+    def internal(_source):
+        raise MassiveDailyMarketDataRealE2EError("AWS Secrets Manager executable")
+
+    monkeypatch.setattr(
+        cli_module,
+        "_load_massive_credential_from_aws_secrets_manager",
+        internal,
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        cli_module._retrieve_credential(credential_source(), None)
+
+    assert caught.value.stage == "AWS Secrets Manager executable"
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
+def test_successful_execute_loads_once_before_first_massive_request(
+    tmp_path,
+    cli_module,
+    monkeypatch,
+) -> None:
+    reviewed = authority(tmp_path)
+    answers = iter(
+        (
+            MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
+            MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
+        )
+    )
+    events: list[str] = []
+    loader_calls = 0
+
+    def loader(source):
+        nonlocal loader_calls
+        loader_calls += 1
+        events.append("credential-retrieval")
+        assert source == credential_source()
+        assert tuple(tmp_path.iterdir()) == ()
+        return MassiveApiCredential(SECRET)
+
+    def response(request, call_number):
+        events.append(f"massive-request-{call_number}")
+        return valid_response(request, call_number)
+
+    transport = FakeTransport(response_factory=response)
+    monkeypatch.chdir(REPOSITORY_ROOT)
 
     result = cli_module.run(
         arguments(
@@ -362,15 +726,72 @@ def test_final_root_recheck_after_credential_prevents_network(
             fingerprint=reviewed.approval_fingerprint,
         ),
         input_fn=lambda _prompt: next(answers),
-        credential_prompt=prompt,
+        credential_loader=loader,
         transport=transport,
         clock=SequenceClock(),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
 
+    assert result == 0
+    assert loader_calls == 1
+    assert len(transport.calls) == 6
+    assert events[0] == "credential-retrieval"
+    assert events[1:] == [f"massive-request-{index}" for index in range(1, 7)]
+
+
+def test_hostile_injected_aws_failure_reaches_no_operator_stream_or_data_root(
+    tmp_path,
+    cli_module,
+) -> None:
+    reviewed = authority(tmp_path)
+    answers = iter(
+        (
+            MASSIVE_REAL_E2E_ENTITLEMENT_CONFIRMATION,
+            MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
+        )
+    )
+    output = io.StringIO()
+    error = io.StringIO()
+
+    def loader(_source):
+        raise ValueError(f"hostile AWS stdout/stderr Authorization {SECRET}")
+
+    result = cli_module.run(
+        arguments(
+            "execute",
+            tmp_path,
+            fingerprint=reviewed.approval_fingerprint,
+        ),
+        input_fn=lambda _prompt: next(answers),
+        credential_loader=loader,
+        transport=FakeTransport(),
+        stdout=output,
+        stderr=error,
+    )
+
     assert result == 1
-    assert transport.calls == []
+    assert "AWS Secrets Manager retrieval" in error.getvalue()
+    assert SECRET not in output.getvalue()
+    assert SECRET not in error.getvalue()
+    assert "hostile AWS" not in error.getvalue()
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_production_cli_has_no_secret_prompt_or_secret_bearing_option(
+    cli_module,
+) -> None:
+    source = SCRIPT_PATH.read_text()
+    parser_help = cli_module.build_parser().format_help()
+
+    assert "getpass" not in source
+    assert "Massive API key:" not in source
+    assert "--api-key" not in source
+    assert "--api-key-file" not in source
+    assert "--api-key-env" not in source
+    assert "--secret-value" not in source
+    assert "--credential-source" in source
+    assert "Massive API key:" not in parser_help
 
 
 def test_prepublication_s3d2a_occurs_before_snapshot_publication(
@@ -684,7 +1105,7 @@ def test_full_fake_execute_command_and_safe_success_report(
             fingerprint=reviewed.approval_fingerprint,
         ),
         input_fn=lambda _prompt: next(answers),
-        credential_prompt=lambda _prompt: SECRET,
+        credential_loader=lambda _source: MassiveApiCredential(SECRET),
         transport=FakeTransport(),
         clock=SequenceClock(),
         stdout=output,

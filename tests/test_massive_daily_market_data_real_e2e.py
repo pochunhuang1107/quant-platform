@@ -23,10 +23,14 @@ from research_sdk.daily_market_data import (
     validate_daily_market_data_snapshot_profile_compatibility,
 )
 from research_sdk.daily_market_data_acquisition import (
+    MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
+    MASSIVE_REAL_E2E_APPROVAL_DOMAIN,
     MASSIVE_REAL_E2E_EXPECTED_SESSION_HASH,
+    MASSIVE_REAL_E2E_OPERATOR_VERSION,
     MASSIVE_REAL_E2E_POLICY_HASH,
     MASSIVE_REAL_E2E_RESEARCH_PROFILE_HASH,
     MassiveApiCredential,
+    MassiveAwsSecretsManagerCredentialSource,
     MassiveDailyMarketDataAcquisitionError,
     MassiveDailyMarketDataAcquisitionRequest,
     MassiveDailyMarketDataHttpResponse,
@@ -47,6 +51,10 @@ BATCH_ID = "massive-qqq-spy-2024-01-02-to-2024-12-31-run-001"
 CREATED_BY = "operator:synthetic-test"
 LICENSE_NOTES = "synthetic test subscription notes; no usage approval asserted"
 SECRET = "synthetic-only-massive-key-Z9"
+AWS_REGION = "us-west-2"
+AWS_SECRET_ID = "massive/api-key"
+AWS_SECRET_JSON_KEY = "api_key"
+AWS_SECRET_VERSION_STAGE = "AWSCURRENT"
 ASSET_OBSERVED_AT = datetime(2026, 8, 20, 16, 0, tzinfo=UTC)
 BENCHMARK_OBSERVED_AT = datetime(2026, 8, 20, 17, 0, tzinfo=UTC)
 INGESTION_COMPLETED_AT = datetime(2026, 8, 20, 18, 0, tzinfo=UTC)
@@ -124,6 +132,13 @@ def config(data_root: Path, **overrides: object):
         "data_root": data_root,
         "created_by": CREATED_BY,
         "license_notes": LICENSE_NOTES,
+        "credential_source": MassiveAwsSecretsManagerCredentialSource(
+            source_kind=MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
+            region=AWS_REGION,
+            secret_id=AWS_SECRET_ID,
+            json_key=AWS_SECRET_JSON_KEY,
+            version_stage=AWS_SECRET_VERSION_STAGE,
+        ),
     }
     data.update(overrides)
     return MassiveDailyMarketDataRealE2EConfig(**data)  # type: ignore[arg-type]
@@ -228,6 +243,15 @@ def test_preflight_freezes_approved_authorities(tmp_path, bypass_git_gate) -> No
     assert (
         derive_daily_market_data_expected_sessions_hash(authority.expected_sessions)
         == MASSIVE_REAL_E2E_EXPECTED_SESSION_HASH
+    )
+    assert authority.config.credential_source == (
+        MassiveAwsSecretsManagerCredentialSource(
+            source_kind="aws-secrets-manager",
+            region="us-west-2",
+            secret_id="massive/api-key",
+            json_key="api_key",
+            version_stage="AWSCURRENT",
+        )
     )
 
 
@@ -368,6 +392,12 @@ def test_preflight_summary_is_complete_and_credential_free(
     assert summary.count("REQUEST: ") == 6
     assert "MODE: PREFLIGHT ONLY" in summary
     assert "CREDENTIAL STATUS: NOT REQUESTED" in summary
+    assert "CREDENTIAL SOURCE: aws-secrets-manager" in summary
+    assert "AWS REGION: us-west-2" in summary
+    assert "AWS SECRET ID: massive/api-key" in summary
+    assert "AWS SECRET JSON KEY: api_key" in summary
+    assert "AWS SECRET VERSION STAGE: AWSCURRENT" in summary
+    assert "AWS SECRETS MANAGER STATUS: NOT CONTACTED" in summary
     assert "NO NETWORK REQUEST HAS OCCURRED" in summary
     assert "instrument-us-etf-qqq-xnas" in summary
     assert "instrument-us-etf-spy-arcx" in summary
@@ -427,6 +457,84 @@ def test_fingerprint_changes_for_resolved_data_root(
     )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("region", "us-east-1"),
+        ("secret_id", "massive/alternate-api-key"),
+        ("json_key", "alternate_api_key"),
+        ("version_stage", "AWSPREVIOUS"),
+    ),
+)
+def test_fingerprint_changes_for_credential_source_authority(
+    tmp_path,
+    bypass_git_gate,
+    field,
+    value,
+) -> None:
+    original = preflight(tmp_path)
+    changed_source = replace(
+        original.config.credential_source,
+        **{field: value},
+    )
+    changed = build_massive_daily_market_data_real_e2e_preflight(
+        config=config(tmp_path, credential_source=changed_source),
+        repository_root=REPOSITORY_ROOT,
+    )
+
+    assert changed.approval_fingerprint != original.approval_fingerprint
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("source_kind", "other"),
+        ("region", " us-west-2"),
+        ("region", "--profile"),
+        ("secret_id", "massive/api-key\nunsafe"),
+        ("secret_id", "--endpoint-url"),
+        ("json_key", ""),
+        ("version_stage", "AWSCURRENT\u202e"),
+        ("version_stage", "--debug"),
+    ),
+)
+def test_credential_source_rejects_noncanonical_or_unsupported_authority(
+    tmp_path,
+    bypass_git_gate,
+    field,
+    value,
+) -> None:
+    source = replace(config(tmp_path).credential_source, **{field: value})
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError):
+        build_massive_daily_market_data_real_e2e_preflight(
+            config=config(tmp_path, credential_source=source),
+            repository_root=REPOSITORY_ROOT,
+        )
+
+
+def test_credential_source_requires_exact_runtime_type(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    class CredentialSourceSubclass(MassiveAwsSecretsManagerCredentialSource):
+        pass
+
+    source = CredentialSourceSubclass(
+        source_kind=MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
+        region=AWS_REGION,
+        secret_id=AWS_SECRET_ID,
+        json_key=AWS_SECRET_JSON_KEY,
+        version_stage=AWS_SECRET_VERSION_STAGE,
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError):
+        build_massive_daily_market_data_real_e2e_preflight(
+            config=config(tmp_path, credential_source=source),
+            repository_root=REPOSITORY_ROOT,
+        )
+
+
 def test_fingerprint_payload_is_canonical_complete_and_runtime_secret_free(
     tmp_path,
     bypass_git_gate,
@@ -461,6 +569,7 @@ def test_fingerprint_payload_is_canonical_complete_and_runtime_secret_free(
         "asset_plan",
         "benchmark_plan",
         "network_policy",
+        "credential_source",
         "acquisition_batch_id",
         "expected_sessions",
         "expected_sessions_hash",
@@ -475,6 +584,13 @@ def test_fingerprint_payload_is_canonical_complete_and_runtime_secret_free(
         "license_notes",
         "context_limitations",
         "confirmation_phrases",
+    }
+    assert payload["credential_source"] == {
+        "source_kind": "aws-secrets-manager",
+        "region": "us-west-2",
+        "secret_id": "massive/api-key",
+        "json_key": "api_key",
+        "version_stage": "AWSCURRENT",
     }
     network_policy = payload["network_policy"]
     assert network_policy == {
@@ -541,6 +657,47 @@ def test_fingerprint_payload_is_canonical_complete_and_runtime_secret_free(
     assert e2e_module._approval_fingerprint(changed_payload) != (
         authority.approval_fingerprint
     )
+
+
+def test_v2_authority_rejects_historical_v1_fingerprint(
+    tmp_path,
+    bypass_git_gate,
+) -> None:
+    authority = preflight(tmp_path)
+    payload = e2e_module._approval_payload(
+        config=authority.config,
+        repository_root=authority.repository_root,
+        source_directory=authority.source_capture_managed_directory,
+        snapshot_directory=authority.snapshot_managed_directory,
+        asset_plan=authority.asset_plan,
+        benchmark_plan=authority.benchmark_plan,
+        expected_sessions=authority.expected_sessions,
+        expected_sessions_hash=authority.expected_sessions_hash,
+        policy=authority.policy,
+        policy_hash=authority.policy_hash,
+        research_profile=authority.research_profile,
+        research_profile_hash=authority.research_profile_hash,
+    )
+    historical = dict(payload)
+    historical["domain"] = "massive-real-e2e-operational-approval-v1"
+    historical["operator_version"] = "massive-real-e2e-operator-v1"
+    historical_fingerprint = e2e_module._approval_fingerprint(historical)
+    transport = FakeTransport()
+
+    assert MASSIVE_REAL_E2E_OPERATOR_VERSION == "massive-real-e2e-operator-v2"
+    assert MASSIVE_REAL_E2E_APPROVAL_DOMAIN == (
+        "massive-real-e2e-operational-approval-v2"
+    )
+    assert historical_fingerprint != authority.approval_fingerprint
+    with pytest.raises(MassiveDailyMarketDataRealE2EError):
+        prepare_massive_daily_market_data_real_e2e(
+            preflight=authority,
+            approved_fingerprint=historical_fingerprint,
+            credential=MassiveApiCredential(SECRET),
+            transport=transport,
+            clock=SequenceClock(),
+        )
+    assert transport.calls == []
 
 
 def test_fixed_instrument_builders_do_not_reuse_mutable_contract_instances() -> None:

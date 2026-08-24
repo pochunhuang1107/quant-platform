@@ -14,6 +14,7 @@ from research_sdk.daily_market_data_acquisition.massive import (
     plan_massive_daily_market_data_acquisition,
 )
 from research_sdk.daily_market_data_acquisition.massive_real_e2e import (
+    MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND,
     MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION,
     MASSIVE_REAL_E2E_APPROVAL_DOMAIN,
     MASSIVE_REAL_E2E_CURRENCY,
@@ -26,6 +27,7 @@ from research_sdk.daily_market_data_acquisition.massive_real_e2e import (
     MASSIVE_REAL_E2E_POLICY_HASH,
     MASSIVE_REAL_E2E_RESEARCH_PROFILE_HASH,
     MASSIVE_REAL_E2E_START_DATE,
+    MassiveAwsSecretsManagerCredentialSource,
     MassiveDailyMarketDataRealE2EConfig,
     MassiveDailyMarketDataRealE2EError,
     MassiveDailyMarketDataRealE2EPreflight,
@@ -37,6 +39,7 @@ from research_sdk.daily_market_data_acquisition.massive_real_e2e import (
 )
 
 __all__ = [
+    "MASSIVE_AWS_SECRETS_MANAGER_SOURCE_KIND",
     "MASSIVE_REAL_E2E_ACQUISITION_CONFIRMATION",
     "MASSIVE_REAL_E2E_APPROVAL_DOMAIN",
     "MASSIVE_REAL_E2E_CURRENCY",
@@ -49,6 +52,7 @@ __all__ = [
     "MASSIVE_REAL_E2E_POLICY_HASH",
     "MASSIVE_REAL_E2E_RESEARCH_PROFILE_HASH",
     "MASSIVE_REAL_E2E_START_DATE",
+    "MassiveAwsSecretsManagerCredentialSource",
     "MassiveApiCredential",
     "MassiveDailyMarketDataAcquisitionError",
     "MassiveDailyMarketDataAcquisitionRequest",
