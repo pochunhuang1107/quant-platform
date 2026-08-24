@@ -7,6 +7,7 @@ from decimal import Decimal, localcontext
 
 import pytest
 
+import research_sdk.daily_market_data_adapters.massive as adapter_module
 from research_sdk.contracts.daily_market_data import (
     CanonicalDailyBar,
     DailyMarketDataInstrument,
@@ -31,10 +32,12 @@ from research_sdk.daily_market_data_adapters.massive import (
     MASSIVE_SPLIT_ENDPOINT_VERSION,
     AdaptedMassiveDailyMarketData,
     MassiveDailyMarketDataAdapterContext,
+    MassiveDailyMarketDataAdapterDiagnostic,
     MassiveResponseParsingError,
     MassiveResponseValidationError,
     MassiveUnsupportedSemanticError,
     adapt_massive_daily_market_data_source_capture,
+    adapt_massive_daily_market_data_source_capture_with_diagnostics,
 )
 from research_sdk.daily_market_data_source_capture.models import (
     DailyMarketDataSourceCaptureMemberInput,
@@ -59,6 +62,7 @@ INSTRUMENT = DailyMarketDataInstrument(
     symbol="QQQ",
     venue="XNAS",
 )
+PROVIDER_SENTINEL = "PROVIDER_CONTROLLED_SENTINEL_7d3a"
 
 
 def test_adapts_valid_source_capture_and_retains_lineage() -> None:
@@ -410,6 +414,265 @@ def test_strict_json_parser_rejects_invalid_provider_bytes(
 
     with pytest.raises(MassiveResponseParsingError):
         adapt_valid(verified)
+
+
+def test_safe_adapter_diagnostic_set_is_exact_and_finite() -> None:
+    assert tuple(
+        diagnostic.value for diagnostic in MassiveDailyMarketDataAdapterDiagnostic
+    ) == (
+        "capture/context authority",
+        "BAR_RESPONSE member authority",
+        "DIVIDEND_RESPONSE member authority",
+        "SPLIT_RESPONSE member authority",
+        "BAR_RESPONSE request authority",
+        "DIVIDEND_RESPONSE request authority",
+        "SPLIT_RESPONSE request authority",
+        "corporate-action request compatibility",
+        "BAR_RESPONSE parsing",
+        "DIVIDEND_RESPONSE parsing",
+        "SPLIT_RESPONSE parsing",
+        "BAR_RESPONSE semantic adaptation",
+        "DIVIDEND_RESPONSE semantic adaptation",
+        "SPLIT_RESPONSE semantic adaptation",
+        "corporate-action canonicalization",
+        "adapted-result construction",
+        "unknown adapter failure",
+    )
+
+
+def test_safe_adapter_success_is_exactly_equal_to_ordinary_adapter_output() -> None:
+    verified = sample_verified_capture()
+
+    ordinary = adapt_valid(verified)
+    safe = adapt_massive_daily_market_data_source_capture_with_diagnostics(
+        source_capture=verified,
+        context=MassiveDailyMarketDataAdapterContext(
+            instrument=INSTRUMENT,
+            currency="USD",
+        ),
+    )
+
+    assert safe.diagnostic is None
+    assert safe.adapted == ordinary
+
+
+@pytest.mark.parametrize(
+    ("role", "diagnostic"),
+    (
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_MEMBER_AUTHORITY,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_MEMBER_AUTHORITY,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_MEMBER_AUTHORITY,
+        ),
+    ),
+)
+def test_safe_adapter_categorizes_each_member_authority_failure(
+    role: DailyMarketDataSourceCaptureRole,
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic,
+) -> None:
+    verified = sample_verified_capture(
+        member_overrides={role: {"endpoint_family": PROVIDER_SENTINEL}}
+    )
+
+    assert_safe_diagnostic(verified, diagnostic)
+
+
+@pytest.mark.parametrize(
+    ("role", "diagnostic"),
+    (
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_REQUEST_AUTHORITY,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_REQUEST_AUTHORITY,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_REQUEST_AUTHORITY,
+        ),
+    ),
+)
+def test_safe_adapter_categorizes_each_request_authority_failure(
+    role: DailyMarketDataSourceCaptureRole,
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic,
+) -> None:
+    verified = sample_verified_capture(
+        request_overrides={role: {PROVIDER_SENTINEL: "provider-value"}}
+    )
+
+    assert_safe_diagnostic(verified, diagnostic)
+
+
+@pytest.mark.parametrize(
+    ("role", "diagnostic"),
+    (
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_PARSING,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_PARSING,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_PARSING,
+        ),
+    ),
+)
+def test_safe_adapter_categorizes_each_response_parsing_failure(
+    role: DailyMarketDataSourceCaptureRole,
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic,
+) -> None:
+    payload = (
+        b'{"status":"OK","'
+        + PROVIDER_SENTINEL.encode()
+        + b'":1,"'
+        + PROVIDER_SENTINEL.encode()
+        + b'":2}\n'
+    )
+    verified = sample_verified_capture(
+        bar_bytes=payload
+        if role is DailyMarketDataSourceCaptureRole.BAR_RESPONSE
+        else None,
+        dividend_bytes=payload
+        if role is DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE
+        else None,
+        split_bytes=payload
+        if role is DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE
+        else None,
+    )
+
+    assert_safe_diagnostic(verified, diagnostic)
+
+
+@pytest.mark.parametrize(
+    ("role", "diagnostic"),
+    (
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_SEMANTIC_ADAPTATION,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.DIVIDEND_RESPONSE_SEMANTIC_ADAPTATION,
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_SEMANTIC_ADAPTATION,
+        ),
+    ),
+)
+def test_safe_adapter_categorizes_each_semantic_adaptation_failure(
+    role: DailyMarketDataSourceCaptureRole,
+    diagnostic: MassiveDailyMarketDataAdapterDiagnostic,
+) -> None:
+    payload = add_json_key(sample_response_for_role(role), PROVIDER_SENTINEL, 1)
+    verified = sample_verified_capture(
+        bar_bytes=payload
+        if role is DailyMarketDataSourceCaptureRole.BAR_RESPONSE
+        else None,
+        dividend_bytes=payload
+        if role is DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE
+        else None,
+        split_bytes=payload
+        if role is DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE
+        else None,
+    )
+
+    assert_safe_diagnostic(verified, diagnostic)
+
+
+def test_safe_adapter_categorizes_capture_and_context_authority_failure() -> None:
+    verified = sample_verified_capture(provider=PROVIDER_SENTINEL)
+
+    assert_safe_diagnostic(
+        verified,
+        MassiveDailyMarketDataAdapterDiagnostic.CAPTURE_CONTEXT_AUTHORITY,
+    )
+
+
+def test_safe_adapter_categorizes_cross_endpoint_request_compatibility() -> None:
+    verified = sample_verified_capture(
+        request_overrides={
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE: {
+                "execution_date.lte": "2026-06-30"
+            }
+        }
+    )
+
+    assert_safe_diagnostic(
+        verified,
+        MassiveDailyMarketDataAdapterDiagnostic.CORPORATE_ACTION_REQUEST_COMPATIBILITY,
+    )
+
+
+def test_safe_adapter_categorizes_corporate_action_canonicalization() -> None:
+    verified = sample_verified_capture(
+        dividend_bytes=dividend_response_bytes(
+            [dividend_row(event_id=PROVIDER_SENTINEL)]
+        ),
+        split_bytes=split_response_bytes([split_row(event_id=PROVIDER_SENTINEL)]),
+    )
+
+    assert_safe_diagnostic(
+        verified,
+        MassiveDailyMarketDataAdapterDiagnostic.CORPORATE_ACTION_CANONICALIZATION,
+    )
+
+
+def test_safe_adapter_categorizes_adapted_result_construction(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        adapter_module,
+        "_build_adapted_result",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            MassiveResponseValidationError(PROVIDER_SENTINEL)
+        ),
+    )
+
+    assert_safe_diagnostic(
+        sample_verified_capture(),
+        MassiveDailyMarketDataAdapterDiagnostic.ADAPTED_RESULT_CONSTRUCTION,
+    )
+
+
+@pytest.mark.parametrize("error_type", (ValueError, RuntimeError, KeyError))
+def test_safe_adapter_unexpected_internal_exception_fails_closed(
+    monkeypatch,
+    error_type,
+) -> None:
+    monkeypatch.setattr(
+        adapter_module,
+        "_adapt_bars",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(error_type(PROVIDER_SENTINEL)),
+    )
+
+    assert_safe_diagnostic(
+        sample_verified_capture(),
+        MassiveDailyMarketDataAdapterDiagnostic.UNKNOWN_ADAPTER_FAILURE,
+    )
+
+
+def test_ordinary_adapter_keeps_detailed_developer_facing_error() -> None:
+    verified = sample_verified_capture(
+        bar_bytes=add_json_key(sample_bar_response(), PROVIDER_SENTINEL, 1)
+    )
+
+    with pytest.raises(MassiveResponseValidationError) as caught:
+        adapt_valid(verified)
+
+    assert PROVIDER_SENTINEL in str(caught.value)
 
 
 @pytest.mark.parametrize(
@@ -1287,6 +1550,25 @@ def adapt_valid(
             currency="USD",
         ),
     )
+
+
+def assert_safe_diagnostic(
+    verified: VerifiedDailyMarketDataSourceCapture,
+    expected: MassiveDailyMarketDataAdapterDiagnostic,
+) -> None:
+    result = adapt_massive_daily_market_data_source_capture_with_diagnostics(
+        source_capture=verified,
+        context=MassiveDailyMarketDataAdapterContext(
+            instrument=INSTRUMENT,
+            currency="USD",
+        ),
+    )
+
+    assert result.adapted is None
+    assert result.diagnostic is expected
+    assert PROVIDER_SENTINEL not in str(result)
+    assert PROVIDER_SENTINEL not in repr(result)
+    assert not any(isinstance(value, BaseException) for value in vars(result).values())
 
 
 def sample_verified_capture(

@@ -5,6 +5,7 @@ import json
 import socket
 import ssl
 import subprocess
+import traceback
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta, timezone
@@ -212,6 +213,105 @@ def response_body(role, symbol, request_id):
     else:
         payload = {"request_id": request_id, "results": [], "status": "OK"}
     return (json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n").encode()
+
+
+def adapter_failure_response_factory(
+    *,
+    target_symbol: str,
+    role: DailyMarketDataSourceCaptureRole,
+    mutation: str,
+    sentinel: str,
+):
+    def response(request, call_number):
+        symbol = dict(request.request_parameters)["ticker"]
+        if symbol != target_symbol or request.role is not role:
+            return valid_response(request, call_number)
+        payload = json.loads(response_body(role, symbol, sentinel))
+        if role is DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE:
+            payload["results"] = [
+                {
+                    "cash_amount": 1,
+                    "currency": "USD",
+                    "distribution_type": "recurring",
+                    "ex_dividend_date": "2024-03-15",
+                    "id": "synthetic-dividend",
+                    "ticker": symbol,
+                }
+            ]
+        elif role is DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE:
+            payload["results"] = [
+                {
+                    "adjustment_type": "forward_split",
+                    "execution_date": "2024-06-01",
+                    "id": "synthetic-split",
+                    "split_from": 1,
+                    "split_to": 2,
+                    "ticker": symbol,
+                }
+            ]
+        if mutation == "unknown top-level field":
+            payload[sentinel] = "provider-value"
+        elif mutation == "unknown row field":
+            payload["results"][0][sentinel] = "provider-value"
+        elif mutation == "malformed value":
+            field = {
+                DailyMarketDataSourceCaptureRole.BAR_RESPONSE: "ticker",
+                DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE: (
+                    "distribution_type"
+                ),
+                DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE: "execution_date",
+            }[role]
+            if role is DailyMarketDataSourceCaptureRole.BAR_RESPONSE:
+                payload[field] = sentinel
+            else:
+                payload["results"][0][field] = sentinel
+        elif mutation == "provider event id":
+            payload["results"][0]["id"] = (
+                f"https://provider.invalid/event?api_key={sentinel}"
+            )
+        elif mutation == "invalid split value":
+            payload["results"][0]["split_to"] = sentinel
+        elif mutation == "request id plus unknown field":
+            payload["request_id"] = sentinel
+            payload[sentinel] = "provider-value"
+        else:
+            raise AssertionError(f"unsupported synthetic mutation: {mutation}")
+        body = (
+            json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
+        ).encode()
+        return MassiveDailyMarketDataHttpResponse(
+            status_code=200,
+            headers=(
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(body))),
+            ),
+            body=body,
+        )
+
+    return response
+
+
+def assert_final_exception_sanitized(
+    error: MassiveDailyMarketDataRealE2EError,
+    *sentinels: str,
+) -> None:
+    rendered_traceback = "".join(
+        traceback.format_exception(type(error), error, error.__traceback__)
+    )
+    observable = (
+        str(error),
+        repr(error),
+        repr(error.args),
+        repr(error.__cause__),
+        repr(error.__context__),
+        rendered_traceback,
+    )
+    for sentinel in sentinels:
+        assert all(sentinel not in value for value in observable)
+        assert all(sentinel not in str(argument) for argument in error.args)
+        assert all(sentinel not in repr(argument) for argument in error.args)
+    assert error.__cause__ is None
+    assert error.__context__ is None
 
 
 def test_preflight_freezes_approved_authorities(tmp_path, bypass_git_gate) -> None:
@@ -1566,7 +1666,9 @@ def test_both_in_memory_verifications_precede_publication(
 ) -> None:
     events: list[str] = []
     original_verify = e2e_module.verify_daily_market_data_source_capture
-    original_adapt = e2e_module.adapt_massive_daily_market_data_source_capture
+    original_adapt = (
+        e2e_module.adapt_massive_daily_market_data_source_capture_with_diagnostics
+    )
     original_pair = (
         e2e_module.validate_massive_daily_market_data_capture_pair_compatibility
     )
@@ -1596,7 +1698,7 @@ def test_both_in_memory_verifications_precede_publication(
     )
     monkeypatch.setattr(
         e2e_module,
-        "adapt_massive_daily_market_data_source_capture",
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
         adapt,
     )
     monkeypatch.setattr(
@@ -1647,7 +1749,9 @@ def test_each_in_memory_adapter_failure_prevents_publication(
     monkeypatch,
     fail_at,
 ) -> None:
-    original = e2e_module.adapt_massive_daily_market_data_source_capture
+    original = (
+        e2e_module.adapt_massive_daily_market_data_source_capture_with_diagnostics
+    )
     calls = 0
 
     def adapt(**kwargs):
@@ -1659,7 +1763,7 @@ def test_each_in_memory_adapter_failure_prevents_publication(
 
     monkeypatch.setattr(
         e2e_module,
-        "adapt_massive_daily_market_data_source_capture",
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
         adapt,
     )
 
@@ -1822,6 +1926,309 @@ def test_adapter_failure_prevents_publication(
     with pytest.raises(MassiveDailyMarketDataRealE2EError):
         prepare(tmp_path, transport=FakeTransport(response_factory=invalid_response))
     assert not tuple(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("target_symbol", "expected_stage", "expected_adapted_symbols"),
+    (
+        (
+            "QQQ",
+            "in-memory QQQ Massive adaptation",
+            ["QQQ"],
+        ),
+        (
+            "SPY",
+            "in-memory SPY Massive adaptation",
+            ["QQQ", "SPY"],
+        ),
+    ),
+)
+def test_safe_in_memory_adapter_diagnostic_is_fixed_for_qqq_and_spy(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+    target_symbol,
+    expected_stage,
+    expected_adapted_symbols,
+) -> None:
+    sentinel = f"PROVIDER_{target_symbol}_SENTINEL_419d"
+    original = (
+        e2e_module.adapt_massive_daily_market_data_source_capture_with_diagnostics
+    )
+    adapted_symbols: list[str] = []
+
+    def adapt(*, source_capture, context):
+        adapted_symbols.append(context.instrument.symbol)
+        return original(source_capture=source_capture, context=context)
+
+    monkeypatch.setattr(
+        e2e_module,
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
+        adapt,
+    )
+    transport = FakeTransport(
+        response_factory=adapter_failure_response_factory(
+            target_symbol=target_symbol,
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            mutation="unknown top-level field",
+            sentinel=sentinel,
+        )
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path, transport=transport)
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: "
+        f"{expected_stage} (reason: BAR_RESPONSE semantic adaptation)"
+    )
+    assert adapted_symbols == expected_adapted_symbols
+    assert len(transport.calls) == 6
+    assert tuple(tmp_path.iterdir()) == ()
+    assert_final_exception_sanitized(caught.value, sentinel, SECRET)
+
+
+@pytest.mark.parametrize(
+    ("role", "mutation", "expected_reason"),
+    (
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            "unknown row field",
+            "BAR_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            "malformed value",
+            "BAR_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            "unknown top-level field",
+            "DIVIDEND_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            "unknown row field",
+            "DIVIDEND_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            "malformed value",
+            "DIVIDEND_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
+            "provider event id",
+            "DIVIDEND_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            "unknown top-level field",
+            "SPLIT_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            "unknown row field",
+            "SPLIT_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            "malformed value",
+            "SPLIT_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
+            "invalid split value",
+            "SPLIT_RESPONSE semantic adaptation",
+        ),
+        (
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            "request id plus unknown field",
+            "BAR_RESPONSE semantic adaptation",
+        ),
+    ),
+)
+def test_provider_controlled_adapter_sentinels_never_reach_final_exception(
+    tmp_path,
+    bypass_git_gate,
+    role,
+    mutation,
+    expected_reason,
+) -> None:
+    sentinel = f"PROVIDER_SENTINEL_{role.value}_{mutation.replace(' ', '_')}"
+    transport = FakeTransport(
+        response_factory=adapter_failure_response_factory(
+            target_symbol="QQQ",
+            role=role,
+            mutation=mutation,
+            sentinel=sentinel,
+        )
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path, transport=transport)
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: in-memory QQQ Massive adaptation "
+        f"(reason: {expected_reason})"
+    )
+    assert tuple(tmp_path.iterdir()) == ()
+    assert_final_exception_sanitized(caught.value, sentinel, SECRET)
+
+
+@pytest.mark.parametrize(
+    ("fail_at", "expected_stage", "expected_durable"),
+    (
+        (1, "in-memory QQQ Massive adaptation", 0),
+        (2, "in-memory SPY Massive adaptation", 0),
+        (3, "readback QQQ Massive adaptation", 2),
+        (4, "readback SPY Massive adaptation", 2),
+    ),
+)
+def test_safe_diagnostic_applies_to_every_prepare_adapter_site(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+    fail_at,
+    expected_stage,
+    expected_durable,
+) -> None:
+    original = (
+        e2e_module.adapt_massive_daily_market_data_source_capture_with_diagnostics
+    )
+    calls = 0
+
+    def adapt(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == fail_at:
+            return e2e_module.MassiveDailyMarketDataAdapterDiagnosticResult(
+                adapted=None,
+                diagnostic=(
+                    e2e_module.MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_PARSING
+                ),
+            )
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        e2e_module,
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
+        adapt,
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path)
+
+    assert str(caught.value).startswith(
+        "Massive real-E2E stage failed: "
+        f"{expected_stage} (reason: BAR_RESPONSE parsing)"
+    )
+    assert calls == fail_at
+    assert len(caught.value.durable_artifacts) == expected_durable
+    assert_final_exception_sanitized(caught.value, SECRET)
+    if fail_at == 1:
+        assert tuple(tmp_path.iterdir()) == ()
+
+
+@pytest.mark.parametrize(
+    ("fail_at", "expected_stage"),
+    (
+        (1, "prepared QQQ readback adaptation"),
+        (2, "prepared SPY readback adaptation"),
+    ),
+)
+def test_safe_diagnostic_applies_to_each_prepared_boundary_adapter_site(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+    fail_at,
+    expected_stage,
+) -> None:
+    prepared = prepare(tmp_path)
+    original = (
+        e2e_module.adapt_massive_daily_market_data_source_capture_with_diagnostics
+    )
+    calls = 0
+
+    def adapt(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == fail_at:
+            return e2e_module.MassiveDailyMarketDataAdapterDiagnosticResult(
+                adapted=None,
+                diagnostic=(
+                    e2e_module.MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_SEMANTIC_ADAPTATION
+                ),
+            )
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        e2e_module,
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
+        adapt,
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        validate_massive_daily_market_data_real_e2e_prepared(prepared)
+
+    assert str(caught.value).startswith(
+        "Massive real-E2E stage failed: "
+        f"{expected_stage} (reason: SPLIT_RESPONSE semantic adaptation)"
+    )
+    assert calls == fail_at
+    assert len(caught.value.durable_artifacts) == 2
+    assert_final_exception_sanitized(caught.value, SECRET)
+
+
+def test_arbitrary_safe_adapter_exception_is_unknown_and_fully_sanitized(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    provider_sentinel = "ARBITRARY_PROVIDER_ADAPTER_EXCEPTION_59ef"
+    monkeypatch.setattr(
+        e2e_module,
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(f"{provider_sentinel} {SECRET}")
+        ),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path)
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: in-memory QQQ Massive adaptation "
+        "(reason: unknown adapter failure)"
+    )
+    assert tuple(tmp_path.iterdir()) == ()
+    assert_final_exception_sanitized(caught.value, provider_sentinel, SECRET)
+
+
+def test_untrusted_safe_result_reason_is_unknown_and_fully_sanitized(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+) -> None:
+    provider_sentinel = "UNTRUSTED_SAFE_RESULT_REASON_48b2"
+    monkeypatch.setattr(
+        e2e_module,
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
+        lambda **_kwargs: e2e_module.MassiveDailyMarketDataAdapterDiagnosticResult(
+            adapted=None,
+            diagnostic=provider_sentinel,
+        ),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path)
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: in-memory QQQ Massive adaptation "
+        "(reason: unknown adapter failure)"
+    )
+    assert tuple(tmp_path.iterdir()) == ()
+    assert_final_exception_sanitized(caught.value, provider_sentinel, SECRET)
 
 
 @pytest.mark.parametrize("fail_at", (1, 2))
@@ -2102,7 +2509,9 @@ def test_readback_captures_drive_second_adaptation(
 ) -> None:
     seen: list[object] = []
     loaded: list[object] = []
-    original = e2e_module.adapt_massive_daily_market_data_source_capture
+    original = (
+        e2e_module.adapt_massive_daily_market_data_source_capture_with_diagnostics
+    )
     original_load = e2e_module.load_local_daily_market_data_source_capture
 
     def adapt(*, source_capture, context):
@@ -2116,7 +2525,7 @@ def test_readback_captures_drive_second_adaptation(
 
     monkeypatch.setattr(
         e2e_module,
-        "adapt_massive_daily_market_data_source_capture",
+        "adapt_massive_daily_market_data_source_capture_with_diagnostics",
         adapt,
     )
     monkeypatch.setattr(e2e_module, "load_local_daily_market_data_source_capture", load)

@@ -79,7 +79,9 @@ from research_sdk.daily_market_data_adapters.massive import (
     MASSIVE_SOURCE_FAMILY,
     AdaptedMassiveDailyMarketData,
     MassiveDailyMarketDataAdapterContext,
-    adapt_massive_daily_market_data_source_capture,
+    MassiveDailyMarketDataAdapterDiagnostic,
+    MassiveDailyMarketDataAdapterDiagnosticResult,
+    adapt_massive_daily_market_data_source_capture_with_diagnostics,
 )
 from research_sdk.daily_market_data_adapters.massive_snapshot_v2 import (
     MassiveDailyMarketDataSnapshotBridgeContext,
@@ -1587,18 +1589,52 @@ def _adapt(
     *,
     durable_artifacts: tuple[str, ...] = (),
 ) -> AdaptedMassiveDailyMarketData:
-    return _stage_value(
-        _attempt(
-            lambda: adapt_massive_daily_market_data_source_capture(
-                source_capture=capture,
-                context=MassiveDailyMarketDataAdapterContext(
-                    instrument=instrument,
-                    currency=MASSIVE_REAL_E2E_CURRENCY,
-                ),
-            )
-        ),
-        stage,
+    outcome = _attempt_safe_adapter(
+        capture=capture,
+        instrument=instrument,
+    )
+    if outcome.adapted is not None:
+        return outcome.adapted
+    diagnostic = outcome.diagnostic
+    if type(diagnostic) is not MassiveDailyMarketDataAdapterDiagnostic:
+        diagnostic = MassiveDailyMarketDataAdapterDiagnostic.UNKNOWN_ADAPTER_FAILURE
+    safe_stage = f"{stage} (reason: {diagnostic.value})"
+    raise MassiveDailyMarketDataRealE2EError(
+        safe_stage,
         durable_artifacts=durable_artifacts,
+    ) from None
+
+
+def _attempt_safe_adapter(
+    *,
+    capture: VerifiedDailyMarketDataSourceCapture,
+    instrument: DailyMarketDataInstrument,
+) -> MassiveDailyMarketDataAdapterDiagnosticResult:
+    outcome: object = _FAILED
+    try:
+        outcome = adapt_massive_daily_market_data_source_capture_with_diagnostics(
+            source_capture=capture,
+            context=MassiveDailyMarketDataAdapterContext(
+                instrument=instrument,
+                currency=MASSIVE_REAL_E2E_CURRENCY,
+            ),
+        )
+    except Exception:
+        pass
+    if type(outcome) is MassiveDailyMarketDataAdapterDiagnosticResult:
+        if (
+            type(outcome.adapted) is AdaptedMassiveDailyMarketData
+            and outcome.diagnostic is None
+        ):
+            return outcome
+        if (
+            outcome.adapted is None
+            and type(outcome.diagnostic) is MassiveDailyMarketDataAdapterDiagnostic
+        ):
+            return outcome
+    return MassiveDailyMarketDataAdapterDiagnosticResult(
+        adapted=None,
+        diagnostic=MassiveDailyMarketDataAdapterDiagnostic.UNKNOWN_ADAPTER_FAILURE,
     )
 
 
