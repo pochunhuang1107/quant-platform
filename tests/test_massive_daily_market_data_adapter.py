@@ -432,6 +432,19 @@ def test_safe_adapter_diagnostic_set_is_exact_and_finite() -> None:
         "DIVIDEND_RESPONSE parsing",
         "SPLIT_RESPONSE parsing",
         "BAR_RESPONSE semantic adaptation",
+        "BAR_RESPONSE top-level field authority",
+        "BAR_RESPONSE response metadata authority",
+        "BAR_RESPONSE ticker/adjusted authority",
+        "BAR_RESPONSE results authority",
+        "BAR_RESPONSE count metadata authority",
+        "BAR_RESPONSE row structure authority",
+        "BAR_RESPONSE OHLC numeric authority",
+        "BAR_RESPONSE volume authority",
+        "BAR_RESPONSE timestamp/session authority",
+        "BAR_RESPONSE optional metrics authority",
+        "BAR_RESPONSE requested-range authority",
+        "BAR_RESPONSE canonical OHLCV authority",
+        "BAR_RESPONSE duplicate-session authority",
         "DIVIDEND_RESPONSE semantic adaptation",
         "SPLIT_RESPONSE semantic adaptation",
         "corporate-action canonicalization",
@@ -560,7 +573,7 @@ def test_safe_adapter_categorizes_each_response_parsing_failure(
     (
         (
             DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
-            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_SEMANTIC_ADAPTATION,
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TOP_LEVEL_FIELD_AUTHORITY,
         ),
         (
             DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
@@ -590,6 +603,126 @@ def test_safe_adapter_categorizes_each_semantic_adaptation_failure(
     )
 
     assert_safe_diagnostic(verified, diagnostic)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected", "ordinary_match"),
+    (
+        (
+            "unknown top-level field",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TOP_LEVEL_FIELD_AUTHORITY,
+            "unknown provider fields",
+        ),
+        (
+            "bad status",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_METADATA_AUTHORITY,
+            "status",
+        ),
+        (
+            "missing request id",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_METADATA_AUTHORITY,
+            "request_id",
+        ),
+        (
+            "ticker mismatch",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TICKER_ADJUSTED_AUTHORITY,
+            "ticker",
+        ),
+        (
+            "adjusted not false",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TICKER_ADJUSTED_AUTHORITY,
+            "adjusted",
+        ),
+        (
+            "invalid results",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_RESULTS_AUTHORITY,
+            "results must be a list",
+        ),
+        (
+            "missing results",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_RESULTS_AUTHORITY,
+            "results list is required",
+        ),
+        (
+            "count mismatch",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_COUNT_METADATA_AUTHORITY,
+            "resultsCount",
+        ),
+        (
+            "non-object row",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_ROW_STRUCTURE_AUTHORITY,
+            "row 0 must be an object",
+        ),
+        (
+            "unknown row field",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_ROW_STRUCTURE_AUTHORITY,
+            "unknown provider fields",
+        ),
+        (
+            "invalid ohlc",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_OHLC_NUMERIC_AUTHORITY,
+            "exact JSON number",
+        ),
+        (
+            "non-integral volume",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_VOLUME_AUTHORITY,
+            "exact nonnegative integer",
+        ),
+        (
+            "out-of-range timestamp",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TIMESTAMP_SESSION_AUTHORITY,
+            "timestamp is out of range",
+        ),
+        (
+            "invalid vw",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_OPTIONAL_METRICS_AUTHORITY,
+            "vw must be an exact JSON number",
+        ),
+        (
+            "invalid n",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_OPTIONAL_METRICS_AUTHORITY,
+            "n must be an exact nonnegative integer",
+        ),
+        (
+            "invalid otc",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_OPTIONAL_METRICS_AUTHORITY,
+            "otc must be boolean",
+        ),
+        (
+            "outside requested range",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_REQUESTED_RANGE_AUTHORITY,
+            "outside requested range",
+        ),
+        (
+            "canonical invalidity",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_CANONICAL_OHLCV_AUTHORITY,
+            "canonical OHLCV validation",
+        ),
+        (
+            "duplicate session",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_DUPLICATE_SESSION_AUTHORITY,
+            "duplicate normalized session dates",
+        ),
+    ),
+)
+def test_fine_bar_diagnostics_preserve_ordinary_rejection_and_details(
+    mutation: str,
+    expected: MassiveDailyMarketDataAdapterDiagnostic,
+    ordinary_match: str,
+) -> None:
+    verified = sample_verified_capture(
+        bar_bytes=fine_bar_failure_response(mutation),
+        member_overrides={
+            DailyMarketDataSourceCaptureRole.BAR_RESPONSE: {
+                "api_request_id": PROVIDER_SENTINEL
+            }
+        },
+    )
+
+    with pytest.raises(MassiveResponseValidationError, match=ordinary_match):
+        adapt_valid(verified)
+
+    assert_safe_diagnostic(verified, expected)
 
 
 def test_safe_adapter_categorizes_capture_and_context_authority_failure() -> None:
@@ -664,6 +797,23 @@ def test_safe_adapter_unexpected_internal_exception_fails_closed(
     )
 
 
+@pytest.mark.parametrize("error_type", (ValueError, RuntimeError, KeyError))
+def test_safe_adapter_unexpected_exception_inside_fine_bar_phase_is_unknown(
+    monkeypatch,
+    error_type,
+) -> None:
+    monkeypatch.setattr(
+        adapter_module,
+        "_required_decimal",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(error_type(PROVIDER_SENTINEL)),
+    )
+
+    assert_safe_diagnostic(
+        sample_verified_capture(),
+        MassiveDailyMarketDataAdapterDiagnostic.UNKNOWN_ADAPTER_FAILURE,
+    )
+
+
 def test_ordinary_adapter_keeps_detailed_developer_facing_error() -> None:
     verified = sample_verified_capture(
         bar_bytes=add_json_key(sample_bar_response(), PROVIDER_SENTINEL, 1)
@@ -673,6 +823,20 @@ def test_ordinary_adapter_keeps_detailed_developer_facing_error() -> None:
         adapt_valid(verified)
 
     assert PROVIDER_SENTINEL in str(caught.value)
+
+
+def test_ordinary_bar_row_error_keeps_provider_field_and_row_index() -> None:
+    row = bar_row("2026-01-05T05:00:00+00:00")
+    row[PROVIDER_SENTINEL] = 1
+    verified = sample_verified_capture(bar_bytes=bar_response_bytes([row]))
+
+    with pytest.raises(MassiveResponseValidationError) as caught:
+        adapt_valid(verified)
+
+    assert (
+        f"BAR_RESPONSE row 0 contains unknown provider fields: ['{PROVIDER_SENTINEL}']"
+        in str(caught.value)
+    )
 
 
 @pytest.mark.parametrize(
@@ -1750,6 +1914,59 @@ def sample_bar_response() -> bytes:
             ),
         ]
     )
+
+
+def fine_bar_failure_response(mutation: str) -> bytes:
+    payload = json.loads(sample_bar_response(), parse_float=Decimal, parse_int=int)
+    payload["request_id"] = PROVIDER_SENTINEL
+    rows = payload["results"]
+    assert isinstance(rows, list)
+    first = rows[0]
+    assert isinstance(first, dict)
+
+    if mutation == "unknown top-level field":
+        payload[PROVIDER_SENTINEL] = "provider-value"
+    elif mutation == "bad status":
+        payload["status"] = PROVIDER_SENTINEL
+    elif mutation == "missing request id":
+        del payload["request_id"]
+        payload["ticker"] = PROVIDER_SENTINEL
+    elif mutation == "ticker mismatch":
+        payload["ticker"] = PROVIDER_SENTINEL
+    elif mutation == "adjusted not false":
+        payload["adjusted"] = PROVIDER_SENTINEL
+    elif mutation == "invalid results":
+        payload["results"] = PROVIDER_SENTINEL
+    elif mutation == "missing results":
+        del payload["results"]
+        payload["resultsCount"] = 1
+    elif mutation == "count mismatch":
+        payload["resultsCount"] = PROVIDER_SENTINEL
+    elif mutation == "non-object row":
+        rows[0] = PROVIDER_SENTINEL
+    elif mutation == "unknown row field":
+        first[PROVIDER_SENTINEL] = "provider-value"
+    elif mutation == "invalid ohlc":
+        first["o"] = PROVIDER_SENTINEL
+    elif mutation == "non-integral volume":
+        first["v"] = Decimal("1.5")
+    elif mutation == "out-of-range timestamp":
+        first["t"] = 10**30
+    elif mutation == "invalid vw":
+        first["vw"] = PROVIDER_SENTINEL
+    elif mutation == "invalid n":
+        first["n"] = PROVIDER_SENTINEL
+    elif mutation == "invalid otc":
+        first["otc"] = PROVIDER_SENTINEL
+    elif mutation == "outside requested range":
+        first["t"] = epoch_millis_from_iso("2025-12-31T05:00:00+00:00")
+    elif mutation == "canonical invalidity":
+        first["c"] = -1
+    elif mutation == "duplicate session":
+        rows[1] = dict(first)
+    else:
+        raise AssertionError(f"unsupported fine BAR mutation: {mutation}")
+    return json_response_bytes(payload)
 
 
 def sample_dividend_response() -> bytes:

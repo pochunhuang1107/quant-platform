@@ -15,6 +15,7 @@ import pytest
 
 import research_sdk.daily_market_data_acquisition.massive as acquisition_module
 import research_sdk.daily_market_data_acquisition.massive_real_e2e as e2e_module
+import research_sdk.daily_market_data_adapters.massive as adapter_module
 from research_sdk.daily_market_data import (
     DailyMarketDataSnapshotProfileCompatibilityError,
     derive_daily_market_data_expected_sessions_hash,
@@ -1980,7 +1981,7 @@ def test_safe_in_memory_adapter_diagnostic_is_fixed_for_qqq_and_spy(
 
     assert str(caught.value) == (
         "Massive real-E2E stage failed: "
-        f"{expected_stage} (reason: BAR_RESPONSE semantic adaptation)"
+        f"{expected_stage} (reason: BAR_RESPONSE top-level field authority)"
     )
     assert adapted_symbols == expected_adapted_symbols
     assert len(transport.calls) == 6
@@ -1989,17 +1990,102 @@ def test_safe_in_memory_adapter_diagnostic_is_fixed_for_qqq_and_spy(
 
 
 @pytest.mark.parametrize(
+    ("target", "expected_reason"),
+    (
+        ("_validate_known_fields", "BAR_RESPONSE top-level field authority"),
+        (
+            "_validate_common_response_metadata",
+            "BAR_RESPONSE response metadata authority",
+        ),
+        (
+            "_validate_bar_ticker_and_adjusted",
+            "BAR_RESPONSE ticker/adjusted authority",
+        ),
+        ("_results_list", "BAR_RESPONSE results authority"),
+        ("_validate_count_metadata", "BAR_RESPONSE count metadata authority"),
+        ("_validate_bar_row_structure", "BAR_RESPONSE row structure authority"),
+        ("_required_decimal", "BAR_RESPONSE OHLC numeric authority"),
+        ("_required_integral", "BAR_RESPONSE volume authority"),
+        ("_required_epoch_millis", "BAR_RESPONSE timestamp/session authority"),
+        (
+            "_validate_bar_optional_metrics",
+            "BAR_RESPONSE optional metrics authority",
+        ),
+        (
+            "_validate_bar_requested_range",
+            "BAR_RESPONSE requested-range authority",
+        ),
+        ("_canonical_bar", "BAR_RESPONSE canonical OHLCV authority"),
+        (
+            "_order_and_validate_unique_bar_sessions",
+            "BAR_RESPONSE duplicate-session authority",
+        ),
+    ),
+)
+def test_each_fine_bar_reason_reaches_real_e2e_without_sentinel_leakage(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+    target,
+    expected_reason,
+) -> None:
+    provider_sentinel = f"PROVIDER_FINE_BAR_{target}_63c1"
+    monkeypatch.setattr(
+        adapter_module,
+        target,
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            adapter_module.MassiveResponseValidationError(provider_sentinel)
+        ),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path)
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: in-memory QQQ Massive adaptation "
+        f"(reason: {expected_reason})"
+    )
+    assert tuple(tmp_path.iterdir()) == ()
+    assert_final_exception_sanitized(caught.value, provider_sentinel, SECRET)
+
+
+@pytest.mark.parametrize("error_type", (ValueError, RuntimeError, KeyError))
+def test_unexpected_fine_bar_exception_is_unknown_in_real_e2e(
+    tmp_path,
+    bypass_git_gate,
+    monkeypatch,
+    error_type,
+) -> None:
+    provider_sentinel = f"PROVIDER_UNEXPECTED_FINE_BAR_{error_type.__name__}_91af"
+    monkeypatch.setattr(
+        adapter_module,
+        "_required_decimal",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(error_type(provider_sentinel)),
+    )
+
+    with pytest.raises(MassiveDailyMarketDataRealE2EError) as caught:
+        prepare(tmp_path)
+
+    assert str(caught.value) == (
+        "Massive real-E2E stage failed: in-memory QQQ Massive adaptation "
+        "(reason: unknown adapter failure)"
+    )
+    assert tuple(tmp_path.iterdir()) == ()
+    assert_final_exception_sanitized(caught.value, provider_sentinel, SECRET)
+
+
+@pytest.mark.parametrize(
     ("role", "mutation", "expected_reason"),
     (
         (
             DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
             "unknown row field",
-            "BAR_RESPONSE semantic adaptation",
+            "BAR_RESPONSE row structure authority",
         ),
         (
             DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
             "malformed value",
-            "BAR_RESPONSE semantic adaptation",
+            "BAR_RESPONSE ticker/adjusted authority",
         ),
         (
             DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
@@ -2044,7 +2130,7 @@ def test_safe_in_memory_adapter_diagnostic_is_fixed_for_qqq_and_spy(
         (
             DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
             "request id plus unknown field",
-            "BAR_RESPONSE semantic adaptation",
+            "BAR_RESPONSE top-level field authority",
         ),
     ),
 )
@@ -2105,7 +2191,7 @@ def test_safe_diagnostic_applies_to_every_prepare_adapter_site(
             return e2e_module.MassiveDailyMarketDataAdapterDiagnosticResult(
                 adapted=None,
                 diagnostic=(
-                    e2e_module.MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_PARSING
+                    e2e_module.MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_VOLUME_AUTHORITY
                 ),
             )
         return original(**kwargs)
@@ -2121,7 +2207,7 @@ def test_safe_diagnostic_applies_to_every_prepare_adapter_site(
 
     assert str(caught.value).startswith(
         "Massive real-E2E stage failed: "
-        f"{expected_stage} (reason: BAR_RESPONSE parsing)"
+        f"{expected_stage} (reason: BAR_RESPONSE volume authority)"
     )
     assert calls == fail_at
     assert len(caught.value.durable_artifacts) == expected_durable
@@ -2157,7 +2243,7 @@ def test_safe_diagnostic_applies_to_each_prepared_boundary_adapter_site(
             return e2e_module.MassiveDailyMarketDataAdapterDiagnosticResult(
                 adapted=None,
                 diagnostic=(
-                    e2e_module.MassiveDailyMarketDataAdapterDiagnostic.SPLIT_RESPONSE_SEMANTIC_ADAPTATION
+                    e2e_module.MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_VOLUME_AUTHORITY
                 ),
             )
         return original(**kwargs)
@@ -2173,7 +2259,7 @@ def test_safe_diagnostic_applies_to_each_prepared_boundary_adapter_site(
 
     assert str(caught.value).startswith(
         "Massive real-E2E stage failed: "
-        f"{expected_stage} (reason: SPLIT_RESPONSE semantic adaptation)"
+        f"{expected_stage} (reason: BAR_RESPONSE volume authority)"
     )
     assert calls == fail_at
     assert len(caught.value.durable_artifacts) == 2
