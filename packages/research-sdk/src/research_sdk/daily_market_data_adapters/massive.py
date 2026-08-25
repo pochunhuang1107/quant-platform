@@ -53,6 +53,7 @@ _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _BAR_TOP_LEVEL_FIELDS = frozenset(
     {
         "adjusted",
+        "count",
         "next_url",
         "queryCount",
         "request_id",
@@ -1482,6 +1483,13 @@ def _validate_count_metadata(
     role: DailyMarketDataSourceCaptureRole,
     capture_id: str,
 ) -> None:
+    if "count" in response:
+        count = _nonnegative_int(response["count"], field="count")
+        if count != len(results):
+            _validation_error(
+                f"{role.value} count must match result row count",
+                capture_id=capture_id,
+            )
     if "queryCount" in response and response["queryCount"] is not None:
         _nonnegative_int(response["queryCount"], field="queryCount")
     if "resultsCount" in response and response["resultsCount"] is not None:
