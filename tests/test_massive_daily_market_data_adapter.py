@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, localcontext
+from pathlib import Path
 
 import pytest
 
@@ -63,6 +64,12 @@ INSTRUMENT = DailyMarketDataInstrument(
     venue="XNAS",
 )
 PROVIDER_SENTINEL = "PROVIDER_CONTROLLED_SENTINEL_7d3a"
+SANITIZED_LIVE_BAR_RESPONSE = (
+    Path(__file__).parent
+    / "fixtures"
+    / "massive"
+    / "sanitized-live-bar-response-count.json"
+)
 
 
 def test_adapts_valid_source_capture_and_retains_lineage() -> None:
@@ -646,6 +653,11 @@ def test_safe_adapter_categorizes_each_semantic_adaptation_failure(
         (
             "count mismatch",
             MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_COUNT_METADATA_AUTHORITY,
+            "count",
+        ),
+        (
+            "results count invalid",
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_COUNT_METADATA_AUTHORITY,
             "resultsCount",
         ),
         (
@@ -963,12 +975,11 @@ def test_bar_top_level_validation_fails(mutation: str, match: str) -> None:
 @pytest.mark.parametrize(
     "role",
     (
-        DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
         DailyMarketDataSourceCaptureRole.DIVIDEND_RESPONSE,
         DailyMarketDataSourceCaptureRole.SPLIT_RESPONSE,
     ),
 )
-def test_stocks_responses_reject_undocumented_top_level_count(
+def test_corporate_action_responses_reject_bar_only_top_level_count(
     role: DailyMarketDataSourceCaptureRole,
 ) -> None:
     payload = add_json_key(sample_response_for_role(role), "count", 1)
@@ -985,6 +996,33 @@ def test_stocks_responses_reject_undocumented_top_level_count(
     )
 
     with pytest.raises(MassiveResponseValidationError, match="unknown"):
+        adapt_valid(verified)
+
+
+def test_sanitized_live_bar_count_metadata_is_validated_and_semantically_neutral() -> (
+    None
+):
+    live_shape_bytes = SANITIZED_LIVE_BAR_RESPONSE.read_bytes()
+    without_count_bytes = drop_json_key(live_shape_bytes, "count")
+
+    live_shape = adapt_valid(sample_verified_capture(bar_bytes=live_shape_bytes))
+    without_count = adapt_valid(sample_verified_capture(bar_bytes=without_count_bytes))
+
+    assert live_shape.bars == without_count.bars
+    assert live_shape.parser_version == MASSIVE_DAILY_MARKET_DATA_ADAPTER_VERSION
+    assert without_count.parser_version == MASSIVE_DAILY_MARKET_DATA_ADAPTER_VERSION
+
+
+@pytest.mark.parametrize("count", (True, -1, 1, Decimal("2.0"), "2", None))
+def test_sanitized_live_bar_count_metadata_malformed_variants_fail(
+    count: object,
+) -> None:
+    payload = replace_json_value(
+        SANITIZED_LIVE_BAR_RESPONSE.read_bytes(), "count", count
+    )
+    verified = sample_verified_capture(bar_bytes=payload)
+
+    with pytest.raises(MassiveResponseValidationError, match="count"):
         adapt_valid(verified)
 
 
@@ -1941,6 +1979,8 @@ def fine_bar_failure_response(mutation: str) -> bytes:
         del payload["results"]
         payload["resultsCount"] = 1
     elif mutation == "count mismatch":
+        payload["count"] = 1
+    elif mutation == "results count invalid":
         payload["resultsCount"] = PROVIDER_SENTINEL
     elif mutation == "non-object row":
         rows[0] = PROVIDER_SENTINEL
