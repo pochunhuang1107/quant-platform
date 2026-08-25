@@ -154,6 +154,23 @@ class MassiveDailyMarketDataAdapterDiagnostic(StrEnum):
     DIVIDEND_RESPONSE_PARSING = "DIVIDEND_RESPONSE parsing"
     SPLIT_RESPONSE_PARSING = "SPLIT_RESPONSE parsing"
     BAR_RESPONSE_SEMANTIC_ADAPTATION = "BAR_RESPONSE semantic adaptation"
+    BAR_RESPONSE_TOP_LEVEL_FIELD_AUTHORITY = "BAR_RESPONSE top-level field authority"
+    BAR_RESPONSE_METADATA_AUTHORITY = "BAR_RESPONSE response metadata authority"
+    BAR_RESPONSE_TICKER_ADJUSTED_AUTHORITY = "BAR_RESPONSE ticker/adjusted authority"
+    BAR_RESPONSE_RESULTS_AUTHORITY = "BAR_RESPONSE results authority"
+    BAR_RESPONSE_COUNT_METADATA_AUTHORITY = "BAR_RESPONSE count metadata authority"
+    BAR_RESPONSE_ROW_STRUCTURE_AUTHORITY = "BAR_RESPONSE row structure authority"
+    BAR_RESPONSE_OHLC_NUMERIC_AUTHORITY = "BAR_RESPONSE OHLC numeric authority"
+    BAR_RESPONSE_VOLUME_AUTHORITY = "BAR_RESPONSE volume authority"
+    BAR_RESPONSE_TIMESTAMP_SESSION_AUTHORITY = (
+        "BAR_RESPONSE timestamp/session authority"
+    )
+    BAR_RESPONSE_OPTIONAL_METRICS_AUTHORITY = "BAR_RESPONSE optional metrics authority"
+    BAR_RESPONSE_REQUESTED_RANGE_AUTHORITY = "BAR_RESPONSE requested-range authority"
+    BAR_RESPONSE_CANONICAL_OHLCV_AUTHORITY = "BAR_RESPONSE canonical OHLCV authority"
+    BAR_RESPONSE_DUPLICATE_SESSION_AUTHORITY = (
+        "BAR_RESPONSE duplicate-session authority"
+    )
     DIVIDEND_RESPONSE_SEMANTIC_ADAPTATION = "DIVIDEND_RESPONSE semantic adaptation"
     SPLIT_RESPONSE_SEMANTIC_ADAPTATION = "SPLIT_RESPONSE semantic adaptation"
     CORPORATE_ACTION_CANONICALIZATION = "corporate-action canonicalization"
@@ -383,6 +400,7 @@ def _adapt_massive_daily_market_data_source_capture(
             symbol=source_capture.capture_manifest.symbol,
             requested_scope=bar_scope,
             capture_id=source_capture.capture_id,
+            safe_diagnostics=safe_diagnostics,
         ),
         safe_diagnostics=safe_diagnostics,
     )
@@ -445,6 +463,8 @@ def _run_adapter_stage[T](
     failure: _MassiveDailyMarketDataAdapterDiagnosticFailure | None = None
     try:
         return operation()
+    except _MassiveDailyMarketDataAdapterDiagnosticFailure:
+        raise
     except (MassiveDailyMarketDataAdapterError, ValidationError):
         failure = _MassiveDailyMarketDataAdapterDiagnosticFailure(diagnostic)
     except Exception:
@@ -875,14 +895,140 @@ def _adapt_bars(
     symbol: str,
     requested_scope: tuple[date, date],
     capture_id: str,
+    safe_diagnostics: bool,
 ) -> tuple[CanonicalDailyBar, ...]:
-    _validate_known_fields(response, _BAR_TOP_LEVEL_FIELDS, "BAR_RESPONSE")
-    _validate_common_response_metadata(
-        response,
-        member=member,
-        role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
-        capture_id=capture_id,
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TOP_LEVEL_FIELD_AUTHORITY,
+        lambda: _validate_known_fields(response, _BAR_TOP_LEVEL_FIELDS, "BAR_RESPONSE"),
+        safe_diagnostics=safe_diagnostics,
     )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_METADATA_AUTHORITY,
+        lambda: _validate_common_response_metadata(
+            response,
+            member=member,
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            capture_id=capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TICKER_ADJUSTED_AUTHORITY,
+        lambda: _validate_bar_ticker_and_adjusted(
+            response,
+            symbol=symbol,
+            capture_id=capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    results = _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_RESULTS_AUTHORITY,
+        lambda: _results_list(
+            response,
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            capture_id=capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_COUNT_METADATA_AUTHORITY,
+        lambda: _validate_count_metadata(
+            response,
+            results,
+            role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
+            capture_id=capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+    bars = []
+    for index, row in enumerate(results):
+        _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_ROW_STRUCTURE_AUTHORITY,
+            lambda: _validate_bar_row_structure(
+                row,
+                index=index,
+                capture_id=capture_id,
+            ),
+            safe_diagnostics=safe_diagnostics,
+        )
+        open_, high, low, close = _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_OHLC_NUMERIC_AUTHORITY,
+            lambda: (
+                _required_decimal(row, "o", role="BAR_RESPONSE", capture_id=capture_id),
+                _required_decimal(row, "h", role="BAR_RESPONSE", capture_id=capture_id),
+                _required_decimal(row, "l", role="BAR_RESPONSE", capture_id=capture_id),
+                _required_decimal(row, "c", role="BAR_RESPONSE", capture_id=capture_id),
+            ),
+            safe_diagnostics=safe_diagnostics,
+        )
+        volume = _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_VOLUME_AUTHORITY,
+            lambda: _required_integral(
+                row,
+                "v",
+                role="BAR_RESPONSE",
+                capture_id=capture_id,
+                allow_decimal=True,
+            ),
+            safe_diagnostics=safe_diagnostics,
+        )
+        timestamp = _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TIMESTAMP_SESSION_AUTHORITY,
+            lambda: _required_epoch_millis(
+                row, "t", role="BAR_RESPONSE", capture_id=capture_id
+            ),
+            safe_diagnostics=safe_diagnostics,
+        )
+        session_date = _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_TIMESTAMP_SESSION_AUTHORITY,
+            lambda: _session_date_from_massive_timestamp(timestamp),
+            safe_diagnostics=safe_diagnostics,
+        )
+        _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_OPTIONAL_METRICS_AUTHORITY,
+            lambda: _validate_bar_optional_metrics(row, capture_id=capture_id),
+            safe_diagnostics=safe_diagnostics,
+        )
+        _run_adapter_stage(
+            MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_REQUESTED_RANGE_AUTHORITY,
+            lambda: _validate_bar_requested_range(
+                session_date,
+                requested_scope=requested_scope,
+                capture_id=capture_id,
+            ),
+            safe_diagnostics=safe_diagnostics,
+        )
+        bars.append(
+            _run_adapter_stage(
+                MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_CANONICAL_OHLCV_AUTHORITY,
+                lambda: _canonical_bar(
+                    session_date=session_date,
+                    open_=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=volume,
+                    index=index,
+                ),
+                safe_diagnostics=safe_diagnostics,
+            )
+        )
+    return _run_adapter_stage(
+        MassiveDailyMarketDataAdapterDiagnostic.BAR_RESPONSE_DUPLICATE_SESSION_AUTHORITY,
+        lambda: _order_and_validate_unique_bar_sessions(
+            bars,
+            capture_id=capture_id,
+        ),
+        safe_diagnostics=safe_diagnostics,
+    )
+
+
+def _validate_bar_ticker_and_adjusted(
+    response: Mapping[str, Any],
+    *,
+    symbol: str,
+    capture_id: str,
+) -> None:
     if response.get("ticker") != symbol:
         _validation_error(
             "BAR_RESPONSE ticker must match capture symbol", capture_id=capture_id
@@ -891,69 +1037,81 @@ def _adapt_bars(
         _validation_error(
             "BAR_RESPONSE adjusted must be boolean false", capture_id=capture_id
         )
-    results = _results_list(
-        response,
-        role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
-        capture_id=capture_id,
-    )
-    _validate_count_metadata(
-        response,
-        results,
-        role=DailyMarketDataSourceCaptureRole.BAR_RESPONSE,
-        capture_id=capture_id,
-    )
-    bars = []
-    for index, row in enumerate(results):
-        if not isinstance(row, dict):
-            _validation_error(
-                f"BAR_RESPONSE row {index} must be an object", capture_id=capture_id
-            )
-        _validate_known_fields(row, _BAR_ROW_FIELDS, f"BAR_RESPONSE row {index}")
-        open_ = _required_decimal(row, "o", role="BAR_RESPONSE", capture_id=capture_id)
-        high = _required_decimal(row, "h", role="BAR_RESPONSE", capture_id=capture_id)
-        low = _required_decimal(row, "l", role="BAR_RESPONSE", capture_id=capture_id)
-        close = _required_decimal(row, "c", role="BAR_RESPONSE", capture_id=capture_id)
-        volume = _required_integral(
-            row,
-            "v",
-            role="BAR_RESPONSE",
+
+
+def _validate_bar_row_structure(
+    row: object,
+    *,
+    index: int,
+    capture_id: str,
+) -> None:
+    if not isinstance(row, dict):
+        _validation_error(
+            f"BAR_RESPONSE row {index} must be an object", capture_id=capture_id
+        )
+    _validate_known_fields(row, _BAR_ROW_FIELDS, f"BAR_RESPONSE row {index}")
+
+
+def _validate_bar_optional_metrics(
+    row: Mapping[str, Any],
+    *,
+    capture_id: str,
+) -> None:
+    if "vw" in row:
+        _required_decimal(row, "vw", role="BAR_RESPONSE", capture_id=capture_id)
+    if "n" in row:
+        _required_integral(
+            row, "n", role="BAR_RESPONSE", capture_id=capture_id, allow_decimal=True
+        )
+    if "otc" in row and type(row["otc"]) is not bool:
+        _validation_error(
+            "BAR_RESPONSE otc must be boolean when present", capture_id=capture_id
+        )
+
+
+def _validate_bar_requested_range(
+    session_date: date,
+    *,
+    requested_scope: tuple[date, date],
+    capture_id: str,
+) -> None:
+    if not requested_scope[0] <= session_date <= requested_scope[1]:
+        _validation_error(
+            "BAR_RESPONSE row session date is outside requested range",
             capture_id=capture_id,
-            allow_decimal=True,
         )
-        timestamp = _required_epoch_millis(
-            row, "t", role="BAR_RESPONSE", capture_id=capture_id
+
+
+def _canonical_bar(
+    *,
+    session_date: date,
+    open_: Decimal,
+    high: Decimal,
+    low: Decimal,
+    close: Decimal,
+    volume: int,
+    index: int,
+) -> CanonicalDailyBar:
+    try:
+        return CanonicalDailyBar(
+            session_date=session_date,
+            open=open_,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
         )
-        session_date = _session_date_from_massive_timestamp(timestamp)
-        if "vw" in row:
-            _required_decimal(row, "vw", role="BAR_RESPONSE", capture_id=capture_id)
-        if "n" in row:
-            _required_integral(
-                row, "n", role="BAR_RESPONSE", capture_id=capture_id, allow_decimal=True
-            )
-        if "otc" in row and type(row["otc"]) is not bool:
-            _validation_error(
-                "BAR_RESPONSE otc must be boolean when present", capture_id=capture_id
-            )
-        if not requested_scope[0] <= session_date <= requested_scope[1]:
-            _validation_error(
-                "BAR_RESPONSE row session date is outside requested range",
-                capture_id=capture_id,
-            )
-        try:
-            bars.append(
-                CanonicalDailyBar(
-                    session_date=session_date,
-                    open=open_,
-                    high=high,
-                    low=low,
-                    close=close,
-                    volume=volume,
-                )
-            )
-        except Exception as exc:
-            raise MassiveResponseValidationError(
-                f"BAR_RESPONSE row {index} failed canonical OHLCV validation"
-            ) from exc
+    except Exception as exc:
+        raise MassiveResponseValidationError(
+            f"BAR_RESPONSE row {index} failed canonical OHLCV validation"
+        ) from exc
+
+
+def _order_and_validate_unique_bar_sessions(
+    bars: Sequence[CanonicalDailyBar],
+    *,
+    capture_id: str,
+) -> tuple[CanonicalDailyBar, ...]:
     ordered = tuple(sorted(bars, key=lambda bar: bar.session_date))
     session_dates = tuple(bar.session_date for bar in ordered)
     if len(set(session_dates)) != len(session_dates):
