@@ -776,7 +776,9 @@ S3c3c5 performs no publication, calendar inference, missing-bar repair,
 provider-row normalization, snapshot planning, S3d2a invocation, or real-data
 call in CI. S3c3c6 owns the later explicit human authorization and runtime-key
 gate for real acquisition and publication. Adding fixed-host network capability
-does not itself authorize its use, and S3d2b remains blocked.
+does not itself authorize its use. At the S3c3c5 stage, S3d2b therefore remained
+blocked pending the separate S3c3c6 gate. Human-accepted run-008 has now
+satisfied that prerequisite and unblocked S3d2b.
 
 ## Fake-Provider Real-E2E Operator Gate
 
