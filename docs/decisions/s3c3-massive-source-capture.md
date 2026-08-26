@@ -10,8 +10,8 @@ publication, execution, persistence, migrations, paper trading, or live trading.
 
 S3c3a freezes the primary development source decision and the immutable
 source-capture design needed before S3c3b can implement capture and offline
-adapter code. S3d1 and S3d2a are closed. S3d2b remains deferred until S3c3
-produces real verified QQQ/SPY snapshot-v2 inputs.
+adapter code. S3d1 and S3d2a are closed. The human-accepted S3c3c run-008 now
+provides the trusted QQQ/SPY snapshot-v2 inputs required to unblock S3d2b.
 
 ## Owner Decision
 
@@ -482,8 +482,9 @@ S3c3a Massive decision/capture design
 -> resume S3d2b economic execution integration
 ```
 
-S3d2b must not begin before S3c3 is complete enough to provide trusted QQQ/SPY
-snapshot-v2 execution-input bundles.
+Human-accepted S3c3c run-008 satisfies the prerequisite by providing trusted
+QQQ/SPY snapshot-v2 execution-input bundles. S3d2b is now unblocked but is not
+started by this documentation closure.
 
 ## Explicit Non-Goals
 

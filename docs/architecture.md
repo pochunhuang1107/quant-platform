@@ -923,7 +923,8 @@ the exact bodies and credential-free request authority and remains solely
 responsible for member hashes/sizes, the CA source manifest, and capture
 identity. S3c3c5 does not call the immutable publisher. S3c3c6 must complete
 both plans and separately pass the human-authorized publication/orchestration
-gate; S3d2b remains blocked.
+gate. At the S3c3c5 stage, S3d2b therefore remained blocked. Human-accepted
+S3c3c run-008 has now completed the separate gate and unblocked S3d2b.
 
 S3c3c6a adds that operator gate as fake-provider-only orchestration. Its
 credential-free preflight requires a clean `main` checkout whose local
@@ -1113,10 +1114,10 @@ The S3c3 implementation sequence is S3c3a design, then S3c3b immutable capture
 and offline Massive adapter, then S3c3c1 raw/canonical bar authority, S3c3c2
 exact local readback, S3c3c3 provider composition and acquisition-vintage
 validation, S3c3c4 common U.S.-equity expected-session date authority, S3c3c5
-bounded acquisition plus planning, and later human-authorized real QQQ/SPY
-acquisition and snapshot-v2 publication. S3d2b economic
-execution integration remains deferred until S3c3 produces trusted QQQ/SPY
-snapshot-v2 execution-input bundles.
+bounded acquisition plus planning, and human-authorized real QQQ/SPY
+acquisition and snapshot-v2 publication. Human-accepted run-008 completed that
+sequence and produced trusted QQQ/SPY snapshot-v2 execution-input bundles, so
+S3d2b economic execution integration is unblocked.
 
 ## Deterministic ETF Baseline
 

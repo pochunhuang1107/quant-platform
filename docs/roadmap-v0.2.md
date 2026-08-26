@@ -7,6 +7,11 @@
 - Date: 2026-08-05.
 - Relationship to v0.1: v0.2 revises sequencing based on the implemented
   repository state while preserving the strategic principles of v0.1.
+- S3c3c status: the bounded real QQQ/SPY 2024 validation completed, and the
+  human owner accepted formal run-008. Trusted snapshot-v2 execution-input
+  bundles now exist, so S3d2b is unblocked. The evidence remains
+  `LATEST_KNOWN`; paper and live trading remain unapproved. See
+  `docs/validation/s3c3c-qqq-spy-2024.md`.
 
 Roadmap v0.1 remains the historical baseline. This version does not erase prior
 decisions; it records what the repository has actually implemented and splits
