@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from decimal import ROUND_FLOOR, Decimal
+from decimal import Decimal
 
+from backtest_engine.economic_models import EconomicPortfolioState
 from backtest_engine.identity import (
     derive_execution_identity,
     validate_run_id_contract_compatibility,
@@ -24,8 +25,7 @@ from backtest_engine.models import (
     TradeRecord,
     quantize_money,
 )
-
-_BPS_DENOMINATOR = Decimal("10000")
+from backtest_engine.strategy_execution import apply_initial_integer_buy
 
 
 def run_buy_and_hold_backtest(
@@ -47,35 +47,32 @@ def run_buy_and_hold_backtest(
 
     first_qqq = aligned.qqq_bars[0]
     first_spy = aligned.spy_bars[0]
-    slippage_rate = config.slippage.bps / _BPS_DENOMINATOR
-    commission_rate = config.commission.bps / _BPS_DENOMINATOR
-    fill_price = quantize_money(first_qqq.open * (Decimal("1") + slippage_rate))
-    per_share_cash_required = fill_price * (Decimal("1") + commission_rate)
-    quantity = int(
-        (config.initial_capital / per_share_cash_required).to_integral_value(
-            rounding=ROUND_FLOOR
-        )
+    strategy_state, buy_fill = apply_initial_integer_buy(
+        state=EconomicPortfolioState(
+            instrument_id=config.asset_symbol,
+            currency=snapshot.currency,
+            cash=config.initial_capital,
+            quantity=0,
+            total_book_cost=Decimal("0"),
+        ),
+        raw_execution_price=first_qqq.open,
+        commission=config.commission,
+        slippage=config.slippage,
     )
-    if quantity <= 0:
-        raise ValueError("initial capital cannot buy one QQQ share")
-
-    executed_notional = quantize_money(Decimal(quantity) * fill_price)
-    commission = quantize_money(executed_notional * commission_rate)
-    slippage = quantize_money(Decimal(quantity) * (fill_price - first_qqq.open))
-    total_cash_spent = quantize_money(executed_notional + commission)
-    cash = quantize_money(config.initial_capital - total_cash_spent)
+    quantity = strategy_state.quantity
+    cash = strategy_state.cash
 
     trade = TradeRecord(
         trading_date=first_qqq.trading_date,
         symbol=config.asset_symbol,
         side="buy",
         quantity=quantity,
-        raw_price=quantize_money(first_qqq.open),
-        fill_price=fill_price,
-        executed_notional=executed_notional,
-        commission=commission,
-        slippage=slippage,
-        total_cash_spent=total_cash_spent,
+        raw_price=buy_fill.raw_price,
+        fill_price=buy_fill.fill_price,
+        executed_notional=buy_fill.executed_notional,
+        commission=buy_fill.commission,
+        slippage=buy_fill.slippage,
+        total_cash_spent=buy_fill.total_cash_spent,
     )
     signal = SignalRecord(
         trading_date=first_qqq.trading_date,
@@ -127,8 +124,8 @@ def run_buy_and_hold_backtest(
         trades=trades,
         signals=(signal,),
         metrics=metrics,
-        total_realized_commission=commission,
-        total_realized_slippage=slippage,
+        total_realized_commission=buy_fill.commission,
+        total_realized_slippage=buy_fill.slippage,
         ending_cash=cash,
         ending_quantity=quantity,
         ending_equity=daily_equity[-1].strategy_equity,

@@ -1080,6 +1080,26 @@ contracts only. The application boundary constructs the
 service. Executing the mapper itself does not load SQLAlchemy, psycopg,
 `research_sdk.persistence`, or `research_sdk.experiment_recording`.
 
+### S3d2b Economic Foundation Models
+
+The S3d2b economic-foundation models are frozen engine-operational models, not
+durable research-sdk contracts or JSON schemas. Strategy holdings retain the
+existing integer-share `EconomicPortfolioState`. The approved gross SPY
+benchmark instead has a dedicated twelve-decimal fractional-unit state with
+cash, outstanding distribution receivables, and applied corporate-action event
+IDs. Its policy version is
+`daily-etf-gross-benchmark-economic-accounting-v1`.
+
+Both states use raw prices and explicit corporate actions. SPY distributions
+become receivables, settle to retained cash, and are never automatically
+reinvested. SPY commission and slippage policies are `none`. Splits alter
+fractional benchmark units without cash-in-lieu. Benchmark valuation is cash
+plus fractional units times raw close plus outstanding receivables. The pure
+initial QQQ buy transition records integer quantity, raw and slipped fill
+prices, commission, remaining cash, and total book cost. These models do not
+define a snapshot-v2 runner, completed economic result, artifacts, lineage,
+ledger, persistence, provider access, or trading integration.
+
 ## Research Report Card Contract
 
 `ResearchReportCard` is a stable `research_sdk` contract for deterministic
