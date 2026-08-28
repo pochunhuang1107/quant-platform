@@ -869,6 +869,59 @@ claim research/experiment readiness. A later orchestration boundary may bridge
 local snapshot IDs to exact authoritative bundle bytes before calling this pure
 in-memory input layer.
 
+## Snapshot-V2 Economic Execution
+
+S3d2b adds the pure
+`run_snapshot_v2_buy_and_hold_backtest(...)` application boundary. Callers
+supply exact QQQ and SPY snapshot-v2 bundle bytes, the required research
+profile, a resolved versioned economic configuration, and injected runtime
+lineage. The boundary invokes S3d2a verification and exact pair validation
+itself; it does not accept a caller-constructed parsed pair. It performs no
+filesystem, network, database, provider, clock, broker, paper-trading, or
+live-trading work.
+
+Both portfolios begin each run with cash and zero holdings. On the first
+session, the S3d1 strategy and benchmark accounting kernels settle and validate
+events, apply zero-position splits, and record zero-position distribution
+entitlements before the unconditional allocations execute at the raw open.
+Consequently, shares or units bought on a first-session ex-date do not earn
+that distribution. Later sessions use carried holdings for split and
+distribution accounting before raw-close valuation. QQQ uses integer shares
+and configured commission/slippage; SPY uses twelve-decimal fractional units
+and zero costs. Both retain settled distribution cash without reinvestment.
+
+`CompletedEconomicBacktestResult` is separate from the legacy synthetic
+`CompletedBacktestResult`. Its daily rows reconcile cash, position, raw close,
+market value, outstanding receivables, book cost where applicable, economic
+equity, and cumulative QQQ costs. Metrics are calculated from economic equity,
+so explicit distribution receivables offset corresponding raw-price drops,
+settlement is equity-neutral, and splits are economically neutral within the
+declared integer/fractional precision policies.
+
+Economic identity is `snapshot-v2-economic-execution-identity-v1`. It binds
+the complete resolved economic policy and dedicated pair market-data lineage:
+both snapshot IDs and verifier hashes, exact bundle file authority, both
+verified snapshot manifests, the research-profile hash and contract, exact run
+sessions, accounting/timing policies, capital, costs, and price/share/
+distribution policies. Injected Git/runtime metadata remains result lineage but
+does not change the economic run ID. `LATEST_KNOWN` is mandatory and is
+recorded as a limitation, never as point-in-time strategy knowledge.
+
+The economic artifact writer emits the ten required run artifacts plus
+`economic_corporate_action_audit.parquet`. Payload bytes use deterministic
+JSON/Parquet policies, bind the economic run ID, expose both snapshot lineages,
+and contain no current-time value. Artifact timestamps derive from the already
+identity-bound snapshot manifests. No object-store publication is included.
+
+Pair-aware experiment recording adds
+`CompletedExperimentPairRecordBundle` and
+`record_completed_experiment_pair(...)`. The QQQ manifest is the run's primary
+`data_snapshot_id`; the distinct SPY manifest is the benchmark
+`snapshot_id`. Both manifests are written before the run and artifact manifest
+inside the caller-owned transaction. The existing table can store both
+manifests, so S3d2b requires no migration. The legacy single-snapshot recording
+service and synthetic runner retain their behavior.
+
 ## Massive Primary Source Capture
 
 Slice 3 S3c3a records the owner-selected S3c3 development-source decision and

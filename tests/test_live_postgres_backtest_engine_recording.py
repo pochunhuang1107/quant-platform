@@ -16,12 +16,26 @@ from backtest_engine import (
     ENGINE_VERSION,
     BasisPointAssumption,
     CompletedBacktestLedgerMappingInput,
+    CompletedEconomicBacktestLedgerMappingInput,
     ExecutionMetadata,
     ResolvedBacktestConfig,
     generate_artifact_bundle,
+    generate_economic_artifact_bundle,
     load_daily_bar_snapshot,
     map_completed_backtest_to_ledger_records,
+    map_completed_economic_backtest_to_ledger_records,
     run_buy_and_hold_backtest,
+    run_snapshot_v2_buy_and_hold_backtest,
+)
+from helpers_backtest_engine_economic import (
+    compatible_profile as economic_compatible_profile,
+)
+from helpers_backtest_engine_economic import (
+    execution_metadata as economic_execution_metadata,
+)
+from helpers_backtest_engine_economic import qqq_bundle_files, spy_bundle_files
+from helpers_backtest_engine_economic import (
+    resolved_config as economic_resolved_config,
 )
 from live_postgres_safety import (
     QUANT_RUN_LIVE_DB_TESTS_ENV_VAR,
@@ -36,8 +50,10 @@ from research_sdk.contracts import (
     ReviewStatus,
 )
 from research_sdk.experiment_recording import (
+    CompletedExperimentPairRecordBundle,
     CompletedExperimentRecordBundle,
     record_completed_experiment,
+    record_completed_experiment_pair,
 )
 from research_sdk.persistence.errors import ContractHashConflictError
 from research_sdk.persistence.results import PersistenceDisposition
@@ -298,6 +314,58 @@ def test_artifact_manifest_conflict_rolls_back_snapshot_and_run_writes(
         cleanup_bundles(migrated_engine, bundle)
 
 
+@pytest.mark.live_db
+def test_pair_aware_economic_recording_created_and_exact_replay(
+    migrated_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    bundle = build_economic_pair_bundle(tmp_path)
+    cleanup_pair_bundle(migrated_engine, bundle)
+    try:
+        created = record_completed_experiment_pair(
+            bundle=bundle,
+            transaction_factory=migrated_engine.begin,
+        )
+        replayed = record_completed_experiment_pair(
+            bundle=bundle,
+            transaction_factory=migrated_engine.begin,
+        )
+
+        assert (
+            created.asset_snapshot_result.disposition is PersistenceDisposition.CREATED
+        )
+        assert (
+            created.benchmark_snapshot_result.disposition
+            is PersistenceDisposition.CREATED
+        )
+        assert (
+            created.experiment_run_result.disposition is PersistenceDisposition.CREATED
+        )
+        assert (
+            created.artifact_manifest_result.disposition
+            is PersistenceDisposition.CREATED
+        )
+        assert (
+            replayed.asset_snapshot_result.disposition
+            is PersistenceDisposition.REPLAYED
+        )
+        assert (
+            replayed.benchmark_snapshot_result.disposition
+            is PersistenceDisposition.REPLAYED
+        )
+        assert (
+            replayed.experiment_run_result.disposition
+            is PersistenceDisposition.REPLAYED
+        )
+        assert (
+            replayed.artifact_manifest_result.disposition
+            is PersistenceDisposition.REPLAYED
+        )
+        assert durable_pair_counts(migrated_engine, bundle) == (2, 1, 1, 11)
+    finally:
+        cleanup_pair_bundle(migrated_engine, bundle)
+
+
 def build_bundle(
     tmp_path: Path,
     *,
@@ -326,6 +394,36 @@ def build_bundle(
     )
     return CompletedExperimentRecordBundle(
         snapshot=records.snapshot,
+        run=records.run,
+        manifest_id=records.manifest_id,
+        artifact_manifest=records.artifact_manifest,
+    )
+
+
+def build_economic_pair_bundle(tmp_path: Path) -> CompletedExperimentPairRecordBundle:
+    qqq = qqq_bundle_files()
+    result = run_snapshot_v2_buy_and_hold_backtest(
+        asset_files=qqq,
+        benchmark_files=spy_bundle_files(),
+        research_profile=economic_compatible_profile(qqq),
+        resolved_config=economic_resolved_config(),
+        execution_metadata=economic_execution_metadata(),
+    )
+    artifacts = generate_economic_artifact_bundle(
+        result=result,
+        artifact_base_dir=tmp_path / "economic-pair",
+    )
+    records = map_completed_economic_backtest_to_ledger_records(
+        CompletedEconomicBacktestLedgerMappingInput(
+            result=result,
+            artifacts=artifacts,
+            created_by="agent-codex",
+            review=review_metadata(),
+        )
+    )
+    return CompletedExperimentPairRecordBundle(
+        asset_snapshot=records.asset_snapshot,
+        benchmark_snapshot=records.benchmark_snapshot,
         run=records.run,
         manifest_id=records.manifest_id,
         artifact_manifest=records.artifact_manifest,
@@ -435,6 +533,42 @@ def durable_counts(
     return snapshot_count, run_count, manifest_count, entry_count
 
 
+def durable_pair_counts(
+    engine: Engine,
+    bundle: CompletedExperimentPairRecordBundle,
+) -> tuple[int, int, int, int]:
+    with engine.connect() as connection:
+        with connection.begin():
+            snapshot_count = connection.execute(
+                select(func.count())
+                .select_from(data_snapshot_manifests)
+                .where(
+                    data_snapshot_manifests.c.snapshot_id.in_(
+                        (
+                            bundle.asset_snapshot.snapshot_id,
+                            bundle.benchmark_snapshot.snapshot_id,
+                        )
+                    )
+                )
+            ).scalar_one()
+            run_count = connection.execute(
+                select(func.count())
+                .select_from(experiment_runs)
+                .where(experiment_runs.c.run_id == bundle.run.run_id)
+            ).scalar_one()
+            manifest_count = connection.execute(
+                select(func.count())
+                .select_from(run_artifact_manifests)
+                .where(run_artifact_manifests.c.manifest_id == bundle.manifest_id)
+            ).scalar_one()
+            entry_count = connection.execute(
+                select(func.count())
+                .select_from(run_artifact_entries)
+                .where(run_artifact_entries.c.manifest_id == bundle.manifest_id)
+            ).scalar_one()
+    return snapshot_count, run_count, manifest_count, entry_count
+
+
 def cleanup_bundles(
     engine: Engine,
     *bundles: CompletedExperimentRecordBundle,
@@ -464,6 +598,36 @@ def cleanup_bundles(
                     data_snapshot_manifests.c.snapshot_id.in_(snapshot_ids)
                 )
             )
+
+
+def cleanup_pair_bundle(
+    engine: Engine,
+    bundle: CompletedExperimentPairRecordBundle,
+) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            delete(run_artifact_entries).where(
+                run_artifact_entries.c.manifest_id == bundle.manifest_id
+            )
+        )
+        connection.execute(
+            delete(run_artifact_manifests).where(
+                run_artifact_manifests.c.manifest_id == bundle.manifest_id
+            )
+        )
+        connection.execute(
+            delete(experiment_runs).where(experiment_runs.c.run_id == bundle.run.run_id)
+        )
+        connection.execute(
+            delete(data_snapshot_manifests).where(
+                data_snapshot_manifests.c.snapshot_id.in_(
+                    (
+                        bundle.asset_snapshot.snapshot_id,
+                        bundle.benchmark_snapshot.snapshot_id,
+                    )
+                )
+            )
+        )
 
 
 def _require_live_database_url() -> str:

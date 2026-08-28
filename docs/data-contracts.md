@@ -1100,6 +1100,64 @@ prices, commission, remaining cash, and total book cost. These models do not
 define a snapshot-v2 runner, completed economic result, artifacts, lineage,
 ledger, persistence, provider access, or trading integration.
 
+### S3d2b Economic Execution Contracts
+
+`ResolvedEconomicBacktestConfig` freezes the versioned QQQ/SPY economic
+baseline: raw-open fills, raw-close valuation, integer QQQ shares,
+twelve-decimal fractional SPY units, explicit distributions retained as cash,
+no reinvestment, configured QQQ commission/slippage, zero SPY costs, and the
+strategy, benchmark, and timing policy versions. It is distinct from the
+legacy fixture-only `ResolvedBacktestConfig`.
+
+`EconomicMarketDataExecutionLineage` retains separate asset and benchmark
+authorities. Each side includes its verified snapshot-v2 ID, semantic content
+hash, policy hash, expected-session hash, bar-provenance hash, corporate-action
+semantic hash, corporate-action evidence-authority hash, exact bundle-manifest
+byte hash, canonical payload-file entries, verified `DataSnapshotManifest`,
+instrument, role, symbol, and `LATEST_KNOWN` coverage. Pair lineage also
+includes the exact research profile and hash plus the exact ordered run-session
+tuple and hash.
+
+Every `EconomicDailyRecord` contains:
+
+- session;
+- QQQ cash, integer quantity, raw close, market value, outstanding receivable
+  value, total book cost, and total economic equity;
+- SPY cash, fractional units, raw close, market value, outstanding receivable
+  value, and total economic equity; and
+- cumulative QQQ commission and slippage.
+
+The one signal record states `pre_run_unconditional`, first-session execution,
+no latest observable complete-bar session, an empty observable-bar tuple, and
+the timing/lookback/lag policy authority. Current-session close is valuation
+input only. Corporate-action evidence is accounting input only and is not
+point-in-time strategy knowledge.
+
+`CompletedEconomicBacktestResult` binds the deterministic run ID, resolved
+config, pair lineage, injected environment lineage, daily/trade/signal/action
+records, economic metrics, drawdown/monthly series, ending QQQ/SPY states,
+transaction-cost totals, and `LATEST_KNOWN` limitations. Its economic identity
+excludes environment metadata and all result outputs; changing an economically
+material config, profile, session, QQQ snapshot, or SPY snapshot changes the
+identity or fails validation.
+
+The deterministic artifact bundle contains the required ten artifacts and the
+optional diagnostic `economic_corporate_action_audit.parquet`. `config.json`
+contains the resolved economic config and both snapshot lineages.
+`daily_equity.parquet` contains the full daily reconciliation above. The action
+audit records strategy/benchmark role, event ID, session, event/action type,
+position-unit policy, pre/post/entitled position, receivable delta, and cash
+delta. Artifact times derive from verified input-manifest authority rather than
+a runtime clock.
+
+`CompletedExperimentPairRecordBundle` requires two distinct validated snapshot
+manifests. Its `ExperimentRunRecord.data_snapshot_id` must equal the QQQ
+snapshot ID, and `ExperimentRunRecord.benchmark.snapshot_id` must equal the SPY
+snapshot ID. The pair recording service writes both snapshots, then the run,
+then the artifact manifest in one caller-owned transaction. Exact replay is
+idempotent, same-identity content differences conflict, and any failure rolls
+back the transaction. No new persistence schema is required.
+
 ## Research Report Card Contract
 
 `ResearchReportCard` is a stable `research_sdk` contract for deterministic
