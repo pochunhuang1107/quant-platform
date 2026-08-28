@@ -366,6 +366,36 @@ def test_pair_aware_economic_recording_created_and_exact_replay(
         cleanup_pair_bundle(migrated_engine, bundle)
 
 
+@pytest.mark.live_db
+def test_pair_artifact_conflict_rolls_back_both_snapshots_and_run(
+    migrated_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    bundle = build_economic_pair_bundle(tmp_path)
+    conflicting_manifest = bundle.artifact_manifest.model_copy(
+        update={"created_at": datetime(2026, 2, 7, tzinfo=UTC)}
+    )
+    cleanup_pair_bundle(migrated_engine, bundle)
+    try:
+        with migrated_engine.begin() as connection:
+            repository = SqlAlchemyExperimentLedgerRepository(connection)
+            repository.record_run_artifact_manifest(
+                manifest_id=bundle.manifest_id,
+                manifest=conflicting_manifest,
+            )
+
+        with pytest.raises(ContractHashConflictError) as exc_info:
+            record_completed_experiment_pair(
+                bundle=bundle,
+                transaction_factory=migrated_engine.begin,
+            )
+
+        assert exc_info.value.context.table_name == "run_artifact_manifests"
+        assert durable_pair_counts(migrated_engine, bundle) == (0, 0, 1, 11)
+    finally:
+        cleanup_pair_bundle(migrated_engine, bundle)
+
+
 def build_bundle(
     tmp_path: Path,
     *,

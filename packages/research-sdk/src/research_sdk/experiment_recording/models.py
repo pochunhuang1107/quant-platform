@@ -10,6 +10,7 @@ from pydantic import ConfigDict, model_validator
 from research_sdk.contracts import (
     ArtifactStatus,
     DataSnapshotManifest,
+    DataSnapshotStatus,
     ExperimentRunRecord,
     ExperimentRunStatus,
     RunArtifactManifest,
@@ -101,6 +102,14 @@ def validate_completed_experiment_pair_bundle(
     _require(
         bundle.asset_snapshot.snapshot_id != bundle.benchmark_snapshot.snapshot_id,
         "asset and benchmark snapshot IDs must be distinct",
+    )
+    _require(
+        bundle.asset_snapshot.status == DataSnapshotStatus.COMPLETED,
+        "asset snapshot status must be completed",
+    )
+    _require(
+        bundle.benchmark_snapshot.status == DataSnapshotStatus.COMPLETED,
+        "benchmark snapshot status must be completed",
     )
     _require(
         bundle.run.data_snapshot_id == bundle.asset_snapshot.snapshot_id,

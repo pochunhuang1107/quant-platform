@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import NoReturn
 
 from backtest_engine.economic_artifacts import (
-    ECONOMIC_CORPORATE_ACTION_AUDIT_FILENAME,
-    economic_config_artifact_payload,
+    EconomicArtifactSemanticPayload,
+    build_economic_artifact_semantic_payloads,
 )
 from backtest_engine.economic_execution_models import (
     ECONOMIC_ARTIFACT_VALIDATOR_VERSION,
@@ -19,6 +19,9 @@ from backtest_engine.economic_execution_models import (
     deterministic_artifact_created_at,
 )
 from backtest_engine.economic_identity import identity_from_completed_economic_result
+from backtest_engine.economic_result_validation import (
+    canonicalize_completed_economic_backtest_result,
+)
 from backtest_engine.identity import (
     RUN_ID_PREFIX,
     canonical_json_bytes,
@@ -107,7 +110,13 @@ def map_completed_economic_backtest_to_ledger_records(
 ) -> CompletedEconomicBacktestLedgerRecords:
     """Verify artifacts and build a distinct-snapshot recording bundle."""
 
-    result = mapping_input.result
+    result = canonicalize_completed_economic_backtest_result(mapping_input.result)
+    canonical_input = CompletedEconomicBacktestLedgerMappingInput(
+        result=result,
+        artifacts=mapping_input.artifacts,
+        created_by=mapping_input.created_by,
+        review=mapping_input.review,
+    )
     if result.execution_metadata.repo_dirty:
         raise EconomicLedgerMappingError(
             "dirty repository state cannot be recorded as a completed backtest"
@@ -118,7 +127,7 @@ def map_completed_economic_backtest_to_ledger_records(
         artifacts=mapping_input.artifacts,
     )
     run = _build_run(
-        mapping_input=mapping_input,
+        mapping_input=canonical_input,
         config_entry=config_entry,
     )
     return CompletedEconomicBacktestLedgerRecords(
@@ -139,10 +148,11 @@ def verify_economic_artifact_bundle(
 ) -> tuple[RunArtifactManifest, RunArtifactEntry]:
     """Read and verify economic payloads against manifest and completed result."""
 
-    _verify_result_identity(result)
+    canonical_result = canonicalize_completed_economic_backtest_result(result)
+    _verify_result_identity(canonical_result)
     try:
         return _verify_economic_artifact_bundle_inner(
-            result=result,
+            result=canonical_result,
             artifacts=artifacts,
         )
     except EconomicArtifactBundleVerificationError:
@@ -184,9 +194,10 @@ def _verify_economic_artifact_bundle_inner(
     payload_filenames = tuple(item.filename for item in artifacts.payload_artifacts)
     if artifacts.write_order != payload_filenames + ("artifact_manifest.json",):
         _artifact_error("write_order must match payload metadata and end with manifest")
-    expected_filenames = {
-        filename for filename, _format in REQUIRED_ARTIFACT_SPECS.values()
-    } | {ECONOMIC_CORPORATE_ACTION_AUDIT_FILENAME}
+    semantic_payloads = build_economic_artifact_semantic_payloads(result)
+    expected_artifact_ids = tuple(payload.artifact_id for payload in semantic_payloads)
+    expected_by_id = {payload.artifact_id: payload for payload in semantic_payloads}
+    expected_filenames = {payload.filename for payload in semantic_payloads}
     if set(payload_filenames) != expected_filenames or len(payload_filenames) != len(
         expected_filenames
     ):
@@ -210,16 +221,29 @@ def _verify_economic_artifact_bundle_inner(
         or parsed_manifest.artifact_root_uri != artifacts.artifact_root_uri
     ):
         _artifact_error("artifact manifest identity must match completed result")
+    if not parsed_manifest.required_artifacts_complete:
+        _artifact_error("artifact manifest must declare complete required artifacts")
     expected_created_at = deterministic_artifact_created_at(result.market_data_lineage)
     if parsed_manifest.created_at != expected_created_at:
         _artifact_error("artifact manifest time must derive from input authority")
+    if (
+        tuple(item.artifact_id for item in artifacts.payload_artifacts)
+        != expected_artifact_ids
+        or tuple(entry.artifact_id for entry in parsed_manifest.artifacts)
+        != expected_artifact_ids
+    ):
+        _artifact_error("economic artifacts must use canonical deterministic order")
 
     entries_by_id = {entry.artifact_id: entry for entry in parsed_manifest.artifacts}
     metadata_by_id = {item.artifact_id: item for item in artifacts.payload_artifacts}
-    if len(entries_by_id) != len(parsed_manifest.artifacts) or set(
-        entries_by_id
-    ) != set(metadata_by_id):
-        _artifact_error("manifest and payload metadata must match one-to-one")
+    if (
+        len(entries_by_id) != len(parsed_manifest.artifacts)
+        or set(entries_by_id) != set(metadata_by_id)
+        or set(entries_by_id) != set(expected_by_id)
+    ):
+        _artifact_error(
+            "manifest, payload metadata, and semantic payloads must match one-to-one"
+        )
     if (
         sum(
             entry.artifact_kind is ArtifactKind.DIAGNOSTIC
@@ -242,6 +266,7 @@ def _verify_economic_artifact_bundle_inner(
             root=root,
             entry=entry,
             metadata=metadata,
+            expected=expected_by_id[artifact_id],
             expected_created_at=expected_created_at,
         )
         if entry.artifact_kind is ArtifactKind.CONFIG:
@@ -250,14 +275,6 @@ def _verify_economic_artifact_bundle_inner(
             metrics_entry = entry
     if config_entry is None or metrics_entry is None:
         _artifact_error("config and metrics artifacts are required")
-    if (root / config_entry.filename).read_bytes() != canonical_json_bytes(
-        economic_config_artifact_payload(result)
-    ):
-        _artifact_error("config.json must reconcile with completed result")
-    if (root / metrics_entry.filename).read_bytes() != canonical_json_bytes(
-        result.metrics
-    ):
-        _artifact_error("metrics.json must reconcile with completed result")
     return parsed_manifest, config_entry
 
 
@@ -266,6 +283,7 @@ def _verify_payload_file(
     root: Path,
     entry: RunArtifactEntry,
     metadata: object,
+    expected: EconomicArtifactSemanticPayload,
     expected_created_at: datetime,
 ) -> None:
     path = Path(getattr(metadata, "path"))
@@ -290,6 +308,21 @@ def _verify_payload_file(
     if entry.hash_algorithm is not HashAlgorithm.SHA256:
         _artifact_error("payload hash algorithm must be SHA256")
     content = resolved.read_bytes()
+    if (
+        entry.artifact_id != expected.artifact_id
+        or entry.filename != expected.filename
+        or entry.artifact_kind is not expected.artifact_kind
+        or entry.format is not expected.artifact_format
+        or entry.row_count != expected.row_count
+        or getattr(metadata, "artifact_id") != expected.artifact_id
+        or getattr(metadata, "filename") != expected.filename
+        or getattr(metadata, "artifact_kind") != expected.artifact_kind.value
+        or getattr(metadata, "format") != expected.artifact_format.value
+        or getattr(metadata, "row_count") != expected.row_count
+    ):
+        _artifact_error("payload metadata must match semantic artifact authority")
+    if content != expected.content:
+        _artifact_error(f"semantic artifact mismatch: {expected.filename}")
     expected_hash = f"sha256:{file_sha256_bytes(content)}"
     if (
         entry.content_hash != expected_hash

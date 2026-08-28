@@ -896,7 +896,12 @@ market value, outstanding receivables, book cost where applicable, economic
 equity, and cumulative QQQ costs. Metrics are calculated from economic equity,
 so explicit distribution receivables offset corresponding raw-price drops,
 settlement is equity-neutral, and splits are economically neutral within the
-declared integer/fractional precision policies.
+declared integer/fractional precision policies. Before artifacts or ledger
+records are produced, a pure canonical validation boundary reconstructs the
+result, recomputes metrics/drawdown/monthly returns and the initial fill, and
+reconciles terminal states, receivables, costs, and action-application audit
+authority. Initial capital must already be exactly representable at the
+six-decimal economic-money precision.
 
 Economic identity is `snapshot-v2-economic-execution-identity-v1`. It binds
 the complete resolved economic policy and dedicated pair market-data lineage:
@@ -911,7 +916,10 @@ The economic artifact writer emits the ten required run artifacts plus
 `economic_corporate_action_audit.parquet`. Payload bytes use deterministic
 JSON/Parquet policies, bind the economic run ID, expose both snapshot lineages,
 and contain no current-time value. Artifact timestamps derive from the already
-identity-bound snapshot manifests. No object-store publication is included.
+identity-bound snapshot manifests. Writer and verifier use the same semantic
+serialization functions for every payload, and verification compares stored
+bytes with result-derived expected bytes rather than trusting rebuilt hashes or
+row-count metadata. No object-store publication is included.
 
 Pair-aware experiment recording adds
 `CompletedExperimentPairRecordBundle` and

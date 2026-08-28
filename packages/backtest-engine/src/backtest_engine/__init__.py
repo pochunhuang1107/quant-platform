@@ -34,6 +34,10 @@ from backtest_engine.economic_ledger_mapping import (
     map_completed_economic_backtest_to_ledger_records,
     verify_economic_artifact_bundle,
 )
+from backtest_engine.economic_result_validation import (
+    CompletedEconomicResultValidationError,
+    canonicalize_completed_economic_backtest_result,
+)
 from backtest_engine.engine import run_buy_and_hold_backtest
 from backtest_engine.identity import (
     canonical_json_bytes,
@@ -101,6 +105,7 @@ __all__ = [
     "CompletedEconomicBacktestLedgerMappingInput",
     "CompletedEconomicBacktestLedgerRecords",
     "CompletedEconomicBacktestResult",
+    "CompletedEconomicResultValidationError",
     "DailyBar",
     "DailyBarSnapshot",
     "DailyEquityRecord",
@@ -131,6 +136,7 @@ __all__ = [
     "build_deterministic_etf_report_card",
     "canonical_json_bytes",
     "canonical_json_sha256",
+    "canonicalize_completed_economic_backtest_result",
     "derive_execution_identity",
     "derive_economic_execution_identity",
     "derive_deterministic_etf_report_card_id",

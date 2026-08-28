@@ -1107,7 +1107,10 @@ baseline: raw-open fills, raw-close valuation, integer QQQ shares,
 twelve-decimal fractional SPY units, explicit distributions retained as cash,
 no reinvestment, configured QQQ commission/slippage, zero SPY costs, and the
 strategy, benchmark, and timing policy versions. It is distinct from the
-legacy fixture-only `ResolvedBacktestConfig`.
+legacy fixture-only `ResolvedBacktestConfig`. Initial capital must be exactly
+representable at the six-decimal economic-money precision; equivalent
+representable Decimal spellings normalize to that canonical value, while
+nonrepresentable sub-precision amounts fail validation rather than rounding.
 
 `EconomicMarketDataExecutionLineage` retains separate asset and benchmark
 authorities. Each side includes its verified snapshot-v2 ID, semantic content
@@ -1148,7 +1151,11 @@ contains the resolved economic config and both snapshot lineages.
 audit records strategy/benchmark role, event ID, session, event/action type,
 position-unit policy, pre/post/entitled position, receivable delta, and cash
 delta. Artifact times derive from verified input-manifest authority rather than
-a runtime clock.
+a runtime clock. Writer and verifier share one deterministic semantic-byte
+authority for every JSON, Markdown, and Parquet payload. Verification compares
+stored bytes with bytes rederived from a canonically reconciled completed
+result, so consistently rewriting a payload plus its metadata and manifest
+still fails before ledger mapping.
 
 `CompletedExperimentPairRecordBundle` requires two distinct validated snapshot
 manifests. Its `ExperimentRunRecord.data_snapshot_id` must equal the QQQ

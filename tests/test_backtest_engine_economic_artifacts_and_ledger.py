@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
+import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
 import pytest
 
@@ -10,6 +12,9 @@ from backtest_engine import (
     CompletedEconomicBacktestLedgerMappingInput,
     CompletedEconomicBacktestResult,
     EconomicArtifactBundleVerificationError,
+    GeneratedArtifactBundle,
+    canonical_json_bytes,
+    file_sha256_bytes,
     generate_economic_artifact_bundle,
     map_completed_economic_backtest_to_ledger_records,
     run_snapshot_v2_buy_and_hold_backtest,
@@ -148,8 +153,75 @@ def test_artifact_verifier_accepts_exact_bundle_and_rejects_tampering(
 
     metrics_path = Path(bundle.artifact_root_path) / "metrics.json"
     metrics_path.write_bytes(metrics_path.read_bytes() + b" ")
-    with pytest.raises(EconomicArtifactBundleVerificationError, match="hashes"):
+    with pytest.raises(
+        EconomicArtifactBundleVerificationError,
+        match="semantic artifact mismatch",
+    ):
         verify_economic_artifact_bundle(result=result, artifacts=bundle)
+
+
+@pytest.mark.parametrize(
+    ("filename", "column", "replacement"),
+    [
+        ("daily_equity.parquet", "strategy_total_economic_equity", Decimal("1")),
+        ("trade_log.parquet", "quantity", 1),
+        ("signal_log.parquet", "signal_name", "tampered-signal"),
+        (
+            ECONOMIC_CORPORATE_ACTION_AUDIT_FILENAME,
+            "receivable_delta",
+            Decimal("1"),
+        ),
+    ],
+)
+def test_artifact_verifier_rejects_consistently_rebuilt_parquet_attack(
+    tmp_path: Path,
+    filename: str,
+    column: str,
+    replacement: object,
+) -> None:
+    result = completed_result_with_distribution()
+    bundle = generate_economic_artifact_bundle(
+        result=result,
+        artifact_base_dir=tmp_path,
+    )
+    path = Path(bundle.artifact_root_path) / filename
+    table = pq.read_table(path)
+    field = table.schema.field(column)
+    values = table[column].to_pylist()
+    values[0] = replacement
+    changed_table = table.set_column(
+        table.schema.get_field_index(column),
+        field,
+        pa.array(values, type=field.type),
+    )
+    pq.write_table(changed_table, path)
+    rebuilt = rebuild_consistent_bundle_after_payload_change(bundle, filename)
+
+    with pytest.raises(
+        EconomicArtifactBundleVerificationError,
+        match=f"semantic artifact mismatch: {filename}",
+    ):
+        verify_economic_artifact_bundle(result=result, artifacts=rebuilt)
+
+
+def test_artifact_verifier_rejects_consistently_rebuilt_markdown_attack(
+    tmp_path: Path,
+) -> None:
+    result = completed_result_with_distribution()
+    bundle = generate_economic_artifact_bundle(
+        result=result,
+        artifact_base_dir=tmp_path,
+    )
+    filename = "failure_analysis.md"
+    path = Path(bundle.artifact_root_path) / filename
+    path.write_bytes(path.read_bytes() + b"tampered\n")
+    rebuilt = rebuild_consistent_bundle_after_payload_change(bundle, filename)
+
+    with pytest.raises(
+        EconomicArtifactBundleVerificationError,
+        match=f"semantic artifact mismatch: {filename}",
+    ):
+        verify_economic_artifact_bundle(result=result, artifacts=rebuilt)
 
 
 def test_pair_aware_ledger_mapping_retains_both_distinct_verified_manifests(
@@ -244,4 +316,42 @@ def pending_review() -> ReviewMetadata:
     return ReviewMetadata(
         review_status=ReviewStatus.PENDING,
         risk_approval_required=True,
+    )
+
+
+def rebuild_consistent_bundle_after_payload_change(
+    bundle: GeneratedArtifactBundle,
+    filename: str,
+) -> GeneratedArtifactBundle:
+    path = Path(bundle.artifact_root_path) / filename
+    content = path.read_bytes()
+    content_hash = f"sha256:{file_sha256_bytes(content)}"
+    payload_artifacts = tuple(
+        item.model_copy(
+            update={"content_hash": content_hash, "size_bytes": len(content)}
+        )
+        if item.filename == filename
+        else item
+        for item in bundle.payload_artifacts
+    )
+    manifest = bundle.run_artifact_manifest.model_copy(
+        update={
+            "artifacts": tuple(
+                entry.model_copy(
+                    update={"content_hash": content_hash, "size_bytes": len(content)}
+                )
+                if entry.filename == filename
+                else entry
+                for entry in bundle.run_artifact_manifest.artifacts
+            )
+        }
+    )
+    manifest_bytes = canonical_json_bytes(manifest)
+    Path(bundle.artifact_manifest_path).write_bytes(manifest_bytes)
+    return bundle.model_copy(
+        update={
+            "artifact_manifest_hash": (f"sha256:{file_sha256_bytes(manifest_bytes)}"),
+            "payload_artifacts": payload_artifacts,
+            "run_artifact_manifest": manifest,
+        }
     )

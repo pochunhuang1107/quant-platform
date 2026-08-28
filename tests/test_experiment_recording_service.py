@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import Any, cast
@@ -10,6 +11,7 @@ from sqlalchemy.engine import Connection
 
 from research_sdk.contracts import (
     DataSnapshotManifest,
+    DataSnapshotStatus,
     ExperimentRunRecord,
     RunArtifactManifest,
 )
@@ -707,6 +709,37 @@ def test_pair_recording_rejects_artifact_mismatch_before_transaction(
     assert transaction_factory.call_count == 0
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "blank_run_environment",
+        "invalid_run_timestamp",
+        "invalid_snapshot_state",
+        "asset_not_completed",
+        "benchmark_not_completed",
+        "invalid_artifact_entry",
+    ),
+)
+def test_pair_recording_canonically_revalidates_before_transaction(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+    mutation: str,
+) -> None:
+    invalid = invalid_pair_bundle(pair_bundle, mutation)
+    context = _TransactionContext()
+    transaction_factory = _TransactionFactory(context)
+    repository_factory = _RepositoryFactory(pair_repository_with_dispositions())
+
+    with pytest.raises(ValueError):
+        record_completed_experiment_pair(
+            bundle=invalid,
+            transaction_factory=transaction_factory,
+            repository_factory=cast(RepositoryFactory, repository_factory),
+        )
+
+    assert transaction_factory.call_count == 0
+    assert repository_factory.call_count == 0
+
+
 def test_pair_benchmark_conflict_propagates_and_rolls_back_atomically(
     pair_bundle: CompletedExperimentPairRecordBundle,
 ) -> None:
@@ -870,6 +903,46 @@ def record_pair_with_fake_repository(
 
 def repository_method_names(calls: list[tuple[str, object]]) -> list[str]:
     return [name for name, _payload in calls]
+
+
+def invalid_pair_bundle(
+    bundle: CompletedExperimentPairRecordBundle,
+    mutation: str,
+) -> CompletedExperimentPairRecordBundle:
+    if mutation == "blank_run_environment":
+        environment = bundle.run.environment.model_copy(update={"platform": " "})
+        return bundle.model_copy(
+            update={"run": bundle.run.model_copy(update={"environment": environment})}
+        )
+    if mutation == "invalid_run_timestamp":
+        run = bundle.run.model_copy(
+            update={"status_updated_at": bundle.run.created_at - timedelta(days=1)}
+        )
+        return bundle.model_copy(update={"run": run})
+    if mutation == "invalid_snapshot_state":
+        snapshot = bundle.asset_snapshot.model_copy(
+            update={
+                "available_at": bundle.asset_snapshot.created_at + timedelta(days=1)
+            }
+        )
+        return bundle.model_copy(update={"asset_snapshot": snapshot})
+    if mutation == "asset_not_completed":
+        snapshot = bundle.asset_snapshot.model_copy(
+            update={"status": DataSnapshotStatus.CREATED}
+        )
+        return bundle.model_copy(update={"asset_snapshot": snapshot})
+    if mutation == "benchmark_not_completed":
+        snapshot = bundle.benchmark_snapshot.model_copy(
+            update={"status": DataSnapshotStatus.FAILED}
+        )
+        return bundle.model_copy(update={"benchmark_snapshot": snapshot})
+    if mutation == "invalid_artifact_entry":
+        entry = bundle.artifact_manifest.artifacts[0].model_copy(update={"uri": " "})
+        manifest = bundle.artifact_manifest.model_copy(
+            update={"artifacts": (entry, *bundle.artifact_manifest.artifacts[1:])}
+        )
+        return bundle.model_copy(update={"artifact_manifest": manifest})
+    raise AssertionError(f"unknown pair-bundle mutation: {mutation}")
 
 
 def expected_calls_for_failure(stage: str) -> list[str]:

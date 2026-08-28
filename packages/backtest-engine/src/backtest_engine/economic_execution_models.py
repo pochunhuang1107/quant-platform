@@ -103,7 +103,13 @@ class ResolvedEconomicBacktestConfig(BacktestEngineModel):
     def validate_initial_capital(cls, value: Decimal) -> Decimal:
         if value <= 0:
             raise ValueError("initial_capital must be positive")
-        return value
+        canonical = quantize_economic_money(value)
+        if value != canonical:
+            raise ValueError(
+                "initial_capital must be exactly representable at six-decimal "
+                "economic-money precision"
+            )
+        return canonical
 
     @field_validator(
         "experiment_id",

@@ -88,20 +88,23 @@ def record_completed_experiment_pair(
 ) -> CompletedExperimentPairRecordingResult:
     """Record distinct asset/benchmark snapshots and one run atomically."""
 
-    validate_completed_experiment_pair_bundle(bundle)
+    validated_bundle = CompletedExperimentPairRecordBundle.model_validate(
+        bundle.model_dump(mode="python")
+    )
+    validate_completed_experiment_pair_bundle(validated_bundle)
     recording_result: CompletedExperimentPairRecordingResult | None = None
     with transaction_factory() as connection:
         repository = repository_factory(connection)
         asset_snapshot_result = repository.record_data_snapshot_manifest(
-            bundle.asset_snapshot
+            validated_bundle.asset_snapshot
         )
         benchmark_snapshot_result = repository.record_data_snapshot_manifest(
-            bundle.benchmark_snapshot
+            validated_bundle.benchmark_snapshot
         )
-        experiment_run_result = repository.record_experiment_run(bundle.run)
+        experiment_run_result = repository.record_experiment_run(validated_bundle.run)
         artifact_manifest_result = repository.record_run_artifact_manifest(
-            manifest_id=bundle.manifest_id,
-            manifest=bundle.artifact_manifest,
+            manifest_id=validated_bundle.manifest_id,
+            manifest=validated_bundle.artifact_manifest,
         )
         recording_result = CompletedExperimentPairRecordingResult(
             asset_snapshot_result=asset_snapshot_result,
