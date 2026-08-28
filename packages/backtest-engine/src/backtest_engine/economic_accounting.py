@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from backtest_engine.corporate_action_accounting import (
+    validate_and_order_session_corporate_action_events,
+)
 from backtest_engine.economic_models import (
     CashDistributionReceivable,
     CorporateActionAccountingRecord,
@@ -21,9 +24,6 @@ from research_sdk.contracts.daily_market_data_economics import (
     DailyMarketDataCashDistribution,
     DailyMarketDataCorporateActionEvent,
     DailyMarketDataSplit,
-    DailyMarketDataUnsupportedCorporateAction,
-    corporate_action_event_economic_date,
-    corporate_action_event_sort_key,
 )
 
 
@@ -209,55 +209,31 @@ def _validate_current_session_events(
     expected_session_dates: tuple[date, ...],
     corporate_action_events: tuple[DailyMarketDataCorporateActionEvent, ...],
 ) -> tuple[DailyMarketDataCorporateActionEvent, ...]:
-    event_ids = tuple(event.event_id for event in corporate_action_events)
-    if len(set(event_ids)) != len(event_ids):
-        raise EconomicAccountingError("corporate_action_events contain duplicate IDs")
-    already_applied = set(state.applied_corporate_action_event_ids)
-    if already_applied.intersection(event_ids):
-        raise EconomicAccountingError("corporate action event was already applied")
-
-    splits: list[DailyMarketDataSplit] = []
-    distributions: list[DailyMarketDataCashDistribution] = []
-    for event in corporate_action_events:
-        if corporate_action_event_economic_date(event) != session_date:
-            raise EconomicAccountingError("event economic date must match session_date")
-        if event.instrument_id != state.instrument_id:
-            raise EconomicAccountingError("event instrument_id must match portfolio")
-        if isinstance(event, DailyMarketDataUnsupportedCorporateAction):
-            raise EconomicAccountingError("unsupported corporate action event")
-        if isinstance(event, DailyMarketDataSplit):
-            splits.append(event)
-        elif isinstance(event, DailyMarketDataCashDistribution):
-            if event.currency != state.currency:
-                raise EconomicAccountingError("cash distribution currency mismatch")
-            distributions.append(event)
-        else:
-            raise EconomicAccountingError("unknown corporate action event")
-
-    if state.quantity > 0 and splits and distributions:
-        raise EconomicAccountingError(
-            "same-day split and cash distribution are ambiguous for held positions"
-        )
-    if state.quantity > 0 and len(splits) > 1:
-        raise EconomicAccountingError("multiple same-day splits are unsupported")
+    ordered_events = validate_and_order_session_corporate_action_events(
+        session_date=session_date,
+        instrument_id=state.instrument_id,
+        currency=state.currency,
+        has_held_position=state.quantity > 0,
+        applied_event_ids=state.applied_corporate_action_event_ids,
+        corporate_action_events=corporate_action_events,
+    )
 
     if state.quantity > 0:
-        for split in splits:
-            _validate_split_quantity(quantity=state.quantity, split=split)
-        for distribution in distributions:
-            if distribution.payable_date is None:
-                raise EconomicAccountingError(
-                    "entitled cash distribution requires payable_date"
-                )
-            if distribution.payable_date < distribution.ex_date:
-                raise EconomicAccountingError(
-                    "payable_date must be on or after ex_date"
-                )
-            first_expected_session_after(
-                distribution.payable_date, expected_session_dates
-            )
+        for event in ordered_events:
+            if isinstance(event, DailyMarketDataSplit):
+                _validate_split_quantity(quantity=state.quantity, split=event)
+            elif isinstance(event, DailyMarketDataCashDistribution):
+                if event.payable_date is None:
+                    raise EconomicAccountingError(
+                        "entitled cash distribution requires payable_date"
+                    )
+                if event.payable_date < event.ex_date:
+                    raise EconomicAccountingError(
+                        "payable_date must be on or after ex_date"
+                    )
+                first_expected_session_after(event.payable_date, expected_session_dates)
 
-    return tuple(sorted(corporate_action_events, key=corporate_action_event_sort_key))
+    return ordered_events
 
 
 def _apply_split_quantity(*, quantity: int, split: DailyMarketDataSplit) -> int:

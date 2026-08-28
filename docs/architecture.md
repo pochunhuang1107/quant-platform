@@ -764,6 +764,36 @@ inputs only in S3d1, not strategy-facing features. A future strategy that
 trades on announcements or corporate-action knowledge needs a separate
 point-in-time feature design.
 
+### S3d2b Economic Foundation
+
+The first S3d2b prerequisite adds pure accounting components only; it does not
+connect snapshot-v2 inputs to a complete backtest run. The gross SPY benchmark
+policy version is
+`daily-etf-gross-benchmark-economic-accounting-v1`. It uses raw prices,
+twelve-decimal fractional units, explicit splits, and explicit
+cash-distribution receivables. Initial units are rounded down to the policy unit
+quantum and any residual value is retained as cash at the existing six-decimal
+money precision. Benchmark distributions settle to retained cash and are not
+reinvested. The benchmark has no commission or slippage.
+
+Benchmark session-open accounting shares S3d1 event-authority validation and
+ordering: settle eligible receivables, validate the complete current event
+set, apply splits, then establish distribution entitlement from carried units.
+Outstanding receivables remain in economic equity beyond the run horizon.
+Duplicate, unsupported, instrument-mismatched, currency-mismatched, and
+ambiguous same-session events fail closed. Fractional benchmark units remain a
+separate state from the integer-share strategy portfolio; no cash-in-lieu is
+inferred.
+
+The same prerequisite also provides a pure initial QQQ buy transition into
+`EconomicPortfolioState`. It applies configured buy slippage and commission to
+the raw open, chooses an integer quantity, reduces cash, and records total book
+cost as executed notional plus commission. Corporate-action accounting does
+not create fills, commissions, slippage, or synthetic trades. The legacy
+synthetic baseline delegates its unchanged initial-fill arithmetic to this
+helper, but this slice adds no snapshot-v2 runner, artifacts, lineage, ledger,
+provider, paper-trading, or live-trading behavior.
+
 ## Snapshot-V2 Economic Backtest Input Pair
 
 Slice 3 S3d2a adds a pure engine-side execution-input bridge for snapshot-v2
