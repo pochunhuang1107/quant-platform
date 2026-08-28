@@ -1142,7 +1142,17 @@ records, economic metrics, drawdown/monthly series, ending QQQ/SPY states,
 transaction-cost totals, and `LATEST_KNOWN` limitations. Its economic identity
 excludes environment metadata and all result outputs; changing an economically
 material config, profile, session, QQQ snapshot, or SPY snapshot changes the
-identity or fails validation.
+identity or fails validation. The public pure execution boundary is
+`run_snapshot_v2_buy_and_hold_backtest(...)`; it accepts exact bundle-byte
+mappings and invokes S3d2a verification and pair validation itself.
+
+`canonicalize_completed_economic_backtest_result(...)` reconstructs a completed
+result through canonical model validation before durable evidence can be
+generated or mapped. It recomputes metrics, drawdown and monthly returns,
+reconciles the initial QQQ fill and costs, terminal states and receivables, and
+corporate-action application audit authority. This boundary prevents an
+already-instantiated model modified through validation-bypassing copy operations
+from becoming artifact or ledger authority.
 
 The deterministic artifact bundle contains the required ten artifacts and the
 optional diagnostic `economic_corporate_action_audit.parquet`. `config.json`
@@ -1155,7 +1165,9 @@ a runtime clock. Writer and verifier share one deterministic semantic-byte
 authority for every JSON, Markdown, and Parquet payload. Verification compares
 stored bytes with bytes rederived from a canonically reconciled completed
 result, so consistently rewriting a payload plus its metadata and manifest
-still fails before ledger mapping.
+still fails before ledger mapping. The public writer/verifier boundaries are
+`generate_economic_artifact_bundle(...)` and
+`verify_economic_artifact_bundle(...)`.
 
 `CompletedExperimentPairRecordBundle` requires two distinct validated snapshot
 manifests. Its `ExperimentRunRecord.data_snapshot_id` must equal the QQQ
@@ -1163,7 +1175,17 @@ snapshot ID, and `ExperimentRunRecord.benchmark.snapshot_id` must equal the SPY
 snapshot ID. The pair recording service writes both snapshots, then the run,
 then the artifact manifest in one caller-owned transaction. Exact replay is
 idempotent, same-identity content differences conflict, and any failure rolls
-back the transaction. No new persistence schema is required.
+back the transaction. The pure mapping boundary is
+`map_completed_economic_backtest_to_ledger_records(...)`; the separate
+transactional boundary is `record_completed_experiment_pair(...)`. No new
+persistence schema is required.
+
+The human-accepted bounded QQQ/SPY 2024 S3d2b validation exercised exact-byte
+execution, canonical result validation, deterministic artifact verification,
+pure pair-ledger mapping, and canonical `CompletedExperimentPairRecordBundle`
+validation. It did not invoke pair recording or persist the run to PostgreSQL.
+The detailed input hashes, run facts, artifact authority, and acceptance limits
+are recorded in `docs/validation/s3d2b-qqq-spy-2024.md`.
 
 ## Research Report Card Contract
 

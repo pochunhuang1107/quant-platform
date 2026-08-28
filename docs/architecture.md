@@ -7,8 +7,10 @@ Phase 1A - Reproducibility Foundation Complete.
 Phase 1B - Research Workflow Layer is next. Current roadmap details live in
 `docs/roadmap-v0.2.md`.
 
-The platform remains research-only. It is not ready for production-data
-research, paper trading, or live trading.
+The platform remains research-only. One bounded QQQ/SPY 2024 `LATEST_KNOWN`
+economic execution has completed human-accepted infrastructure validation; this
+does not establish general production-data research readiness, paper-trading
+readiness, or live-trading readiness.
 
 ## Existing Structure
 
@@ -19,10 +21,12 @@ Implemented:
 
 - `packages/research-sdk`: immutable contracts, schema exports, persistence
   helpers, PostgreSQL repository writes, and completed-experiment recording.
-- `packages/backtest-engine`: deterministic synthetic ETF infrastructure
-  baseline, artifact generation, and pure backtest-to-ledger mapping.
+- `packages/backtest-engine`: deterministic synthetic ETF infrastructure plus
+  pure snapshot-v2 QQQ/SPY economic execution, artifact generation and semantic
+  verification, and pure backtest-to-ledger mapping.
 - `infra/db`: Alembic migrations and local PostgreSQL support.
-- Deterministic synthetic ETF artifacts for the required run artifact set.
+- Deterministic synthetic and snapshot-v2 economic ETF artifacts for the
+  required run artifact set; economic runs add a corporate-action audit.
 - Completed-experiment ledger recording through a caller-owned transaction.
 - Hosted CI and PostgreSQL smoke coverage.
 
@@ -59,12 +63,14 @@ Scaffold-only or deferred:
 - `packages/feature-store`: scaffold-only future feature definitions and
   point-in-time materialization.
 - `packages/backtest-engine`: partially implemented deterministic
-  research-engine execution for the current synthetic ETF infrastructure slice.
-  It includes an importable offline QQQ baseline with SPY as a gross benchmark,
-  explicit costs and slippage, Decimal accounting, deterministic identity,
-  local artifact generation, and pure ledger-record mapping. It does not own
-  SQLAlchemy, Postgres, experiment-ledger transactions, API workflows, paper
-  trading, live trading, broker integrations, or performance claims.
+  research-engine execution for the synthetic fixture baseline and the bounded
+  snapshot-v2 QQQ/SPY economic baseline. It includes exact S3d2a pair
+  validation, raw-price explicit corporate-action accounting, QQQ integer and
+  SPY fractional economics, explicit costs, deterministic identity, local
+  artifact generation and semantic verification, and pure pair-ledger mapping.
+  It does not own SQLAlchemy, Postgres, experiment-ledger transactions, API
+  workflows, paper trading, live trading, broker integrations, or performance
+  claims.
 - `packages/portfolio-engine`: scaffold-only future portfolio construction and
   risk calculations.
 - `packages/execution-engine`: reserved and inactive until later phases; no
@@ -921,6 +927,16 @@ serialization functions for every payload, and verification compares stored
 bytes with result-derived expected bytes rather than trusting rebuilt hashes or
 row-count metadata. No object-store publication is included.
 
+The exported boundaries are `ResolvedEconomicBacktestConfig`,
+`CompletedEconomicBacktestResult`,
+`run_snapshot_v2_buy_and_hold_backtest(...)`,
+`canonicalize_completed_economic_backtest_result(...)`,
+`generate_economic_artifact_bundle(...)`,
+`verify_economic_artifact_bundle(...)`, and
+`map_completed_economic_backtest_to_ledger_records(...)`. Exact snapshot-v2
+bytes enter through the public runner, which invokes S3d2a itself; no parsed-pair
+bypass is an execution boundary.
+
 Pair-aware experiment recording adds
 `CompletedExperimentPairRecordBundle` and
 `record_completed_experiment_pair(...)`. The QQQ manifest is the run's primary
@@ -929,6 +945,13 @@ Pair-aware experiment recording adds
 inside the caller-owned transaction. The existing table can store both
 manifests, so S3d2b requires no migration. The legacy single-snapshot recording
 service and synthetic runner retain their behavior.
+
+The human-accepted bounded QQQ/SPY 2024 validation exercised pure pair-ledger
+mapping and canonical `CompletedExperimentPairRecordBundle` construction only.
+It did not call `record_completed_experiment_pair(...)`, open a database
+transaction, or persist the accepted real validation run to PostgreSQL. Detailed
+evidence and the acceptance boundary are recorded in
+`docs/validation/s3d2b-qqq-spy-2024.md`.
 
 ## Massive Primary Source Capture
 
@@ -1207,8 +1230,10 @@ exact local readback, S3c3c3 provider composition and acquisition-vintage
 validation, S3c3c4 common U.S.-equity expected-session date authority, S3c3c5
 bounded acquisition plus planning, and human-authorized real QQQ/SPY
 acquisition and snapshot-v2 publication. Human-accepted run-008 completed that
-sequence and produced trusted QQQ/SPY snapshot-v2 execution-input bundles, so
-S3d2b economic execution integration is unblocked.
+sequence and produced trusted QQQ/SPY snapshot-v2 execution-input bundles. S3d2b
+subsequently implemented the pure economic execution path and completed the
+separately human-accepted bounded validation recorded in
+`docs/validation/s3d2b-qqq-spy-2024.md`.
 
 ## Deterministic ETF Baseline
 

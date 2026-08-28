@@ -7,11 +7,17 @@
 - Date: 2026-08-05.
 - Relationship to v0.1: v0.2 revises sequencing based on the implemented
   repository state while preserving the strategic principles of v0.1.
-- S3c3c status: the bounded real QQQ/SPY 2024 validation completed, and the
-  human owner accepted formal run-008. Trusted snapshot-v2 execution-input
-  bundles now exist, so S3d2b is unblocked. The evidence remains
-  `LATEST_KNOWN`; paper and live trading remain unapproved. See
+- S3c3c status: the bounded real QQQ/SPY 2024 source/snapshot validation and
+  formal run-008 remain human accepted. See
   `docs/validation/s3c3c-qqq-spy-2024.md`.
+- S3d2b status: implementation is complete, and the human owner accepted the
+  bounded QQQ/SPY 2024 accepted-data economic validation. Exact snapshot-v2
+  verification flowed through S3d2a pair validation, deterministic economic
+  accounting and benchmark comparison, canonical result validation,
+  deterministic artifacts, and pure pair-ledger mapping. The evidence remains
+  `LATEST_KNOWN`; it was not persisted to PostgreSQL and does not approve
+  point-in-time claims, broader strategy validity, paper trading, or live
+  trading. See `docs/validation/s3d2b-qqq-spy-2024.md`.
 
 Roadmap v0.1 remains the historical baseline. This version does not erase prior
 decisions; it records what the repository has actually implemented and splits
@@ -28,8 +34,11 @@ workflow layer.
   under `infra/db/migrations/versions`.
 - Deterministic synthetic ETF vertical slice completed for one fixture-only QQQ
   buy-and-hold baseline with SPY as a gross benchmark.
-- API, UI, semantic memory, knowledge graph, real-data research, paper trading,
-  and live trading remain deferred.
+- A bounded QQQ/SPY 2024 `LATEST_KNOWN` accepted-data validation completed the
+  S3d2b deterministic economic-execution path; this is infrastructure evidence,
+  not general real-data strategy readiness.
+- API, UI, semantic memory, knowledge graph, broader real-data research, paper
+  trading, and live trading remain deferred.
 - Phase 1 is split into:
   - Phase 1A - Reproducibility Foundation Complete.
   - Phase 1B - Research Workflow Layer.
@@ -67,6 +76,8 @@ Implemented completed-experiment recording service:
 - `packages/research-sdk/src/research_sdk/experiment_recording`
 - `CompletedExperimentRecordBundle`
 - `record_completed_experiment`
+- `CompletedExperimentPairRecordBundle`
+- `record_completed_experiment_pair`
 
 Implemented deterministic backtest package:
 
@@ -75,12 +86,20 @@ Implemented deterministic backtest package:
 - `ExecutionMetadata`
 - `CompletedBacktestResult`
 - `GeneratedArtifactBundle`
+- `ResolvedEconomicBacktestConfig`
+- `CompletedEconomicBacktestResult`
+- `run_snapshot_v2_buy_and_hold_backtest`
+- `generate_economic_artifact_bundle`
+- `verify_economic_artifact_bundle`
 
 Implemented backtest-to-ledger mapping boundary:
 
 - `packages/backtest-engine/src/backtest_engine/ledger_mapping.py`
+- `packages/backtest-engine/src/backtest_engine/economic_ledger_mapping.py`
 - `CompletedBacktestLedgerRecords`
 - `map_completed_backtest_to_ledger_records`
+- `CompletedEconomicBacktestLedgerRecords`
+- `map_completed_economic_backtest_to_ledger_records`
 
 Implemented database tables:
 
@@ -112,6 +131,9 @@ The current deterministic artifact set is:
 - `failure_analysis.md`
 - `research_note.md`
 - `artifact_manifest.json`
+
+Snapshot-v2 economic runs also emit the semantically verified diagnostic
+`economic_corporate_action_audit.parquet`.
 
 `research_note.md` is currently a generated run artifact. It is not the same
 thing as a persisted `ResearchNote` contract.
@@ -209,6 +231,14 @@ A generic batch runner should not precede real strategy and data policy.
 
 ## Next Three Implementation Slices
 
+Implementation has advanced beyond the original sequence below. The report-card,
+reviewed-interpretation, compatible-run comparison, and bounded S3d2b economic
+execution boundaries now exist. S3d2b also establishes some prerequisites named
+under Slice 3 for one fixed QQQ/SPY 2024 `LATEST_KNOWN` baseline. These facts do
+not declare Slice 3 complete: broader versioned strategy research,
+validation/out-of-sample design, and controlled experiment batches still require
+their own scoped implementation and human acceptance.
+
 ### Slice 1: Deterministic Report Card And ResearchNote
 
 Acceptance criteria:
@@ -240,6 +270,14 @@ Acceptance criteria:
 - no Sharpe, CAGR, or volatility until calendar and annualization policy exists
 
 ### Slice 3: Real ETF Research Readiness
+
+Current bounded progress: curated QQQ/SPY snapshot lineage, explicit raw-price
+corporate-action economics, a versioned buy-and-hold baseline, benchmark and
+cost policies, deterministic experiment identity, semantic artifacts, and pure
+pair-ledger mapping have been implemented and human validated for the accepted
+2024 inputs. This does not establish point-in-time readiness, general strategy
+validity, PostgreSQL persistence approval for that run, controlled-batch
+readiness, or full real ETF research readiness.
 
 Acceptance criteria:
 
