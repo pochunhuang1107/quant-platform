@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import Any, cast
@@ -10,14 +11,18 @@ from sqlalchemy.engine import Connection
 
 from research_sdk.contracts import (
     DataSnapshotManifest,
+    DataSnapshotStatus,
     ExperimentRunRecord,
     RunArtifactManifest,
 )
 from research_sdk.experiment_recording import (
     CompletedExperimentDispositionCoherenceError,
+    CompletedExperimentPairRecordBundle,
+    CompletedExperimentPairRecordingResult,
     CompletedExperimentRecordBundle,
     CompletedExperimentRecordingResult,
     record_completed_experiment,
+    record_completed_experiment_pair,
 )
 from research_sdk.experiment_recording.service import RepositoryFactory
 from research_sdk.persistence import (
@@ -170,6 +175,36 @@ class _FakeRepository:
         raise AssertionError("review events are outside completed recording")
 
 
+class _PairFakeRepository(_FakeRepository):
+    def __init__(
+        self,
+        *,
+        asset_result: PersistenceWriteResult | BaseException,
+        benchmark_result: PersistenceWriteResult | BaseException,
+        run_result: PersistenceWriteResult | BaseException,
+        artifact_result: PersistenceWriteResult | BaseException,
+    ) -> None:
+        super().__init__(
+            snapshot_result=asset_result,
+            run_result=run_result,
+            artifact_result=artifact_result,
+        )
+        self.snapshot_results = (asset_result, benchmark_result)
+        self.snapshot_index = 0
+
+    def record_data_snapshot_manifest(
+        self,
+        snapshot: DataSnapshotManifest,
+    ) -> PersistenceWriteResult:
+        role = "asset_snapshot" if self.snapshot_index == 0 else "benchmark_snapshot"
+        self.calls.append((role, snapshot))
+        outcome = self.snapshot_results[self.snapshot_index]
+        self.snapshot_index += 1
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+
 class _RepositoryFactory:
     def __init__(self, repository: _FakeRepository) -> None:
         self.repository = repository
@@ -205,6 +240,31 @@ def bundle() -> CompletedExperimentRecordBundle:
         run=run,
         manifest_id="manifest-20260709-001",
         artifact_manifest=artifact_manifest,
+    )
+
+
+@pytest.fixture
+def pair_bundle(
+    bundle: CompletedExperimentRecordBundle,
+) -> CompletedExperimentPairRecordBundle:
+    benchmark_snapshot_id = "distinct-benchmark-snapshot-for-pair-recording"
+    benchmark_snapshot = bundle.snapshot.model_copy(
+        update={"snapshot_id": benchmark_snapshot_id}
+    )
+    run = bundle.run.model_copy(
+        update={
+            "data_snapshot_id": bundle.snapshot.snapshot_id,
+            "benchmark": bundle.run.benchmark.model_copy(
+                update={"snapshot_id": benchmark_snapshot_id}
+            ),
+        }
+    )
+    return CompletedExperimentPairRecordBundle(
+        asset_snapshot=bundle.snapshot,
+        benchmark_snapshot=benchmark_snapshot,
+        run=run,
+        manifest_id=bundle.manifest_id,
+        artifact_manifest=bundle.artifact_manifest,
     )
 
 
@@ -522,6 +582,223 @@ def test_result_is_returned_only_after_successful_transaction_context_exit(
     assert result.artifact_manifest_result.disposition is PersistenceDisposition.CREATED
 
 
+def test_pair_recording_writes_distinct_snapshots_before_run_and_artifact(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+) -> None:
+    repository = pair_repository_with_dispositions()
+    result, context = record_pair_with_fake_repository(
+        bundle=pair_bundle,
+        repository=repository,
+    )
+
+    assert context.exit_exc_type is None
+    assert repository.calls == [
+        ("asset_snapshot", pair_bundle.asset_snapshot),
+        ("benchmark_snapshot", pair_bundle.benchmark_snapshot),
+        ("run", pair_bundle.run),
+        ("artifact", (pair_bundle.manifest_id, pair_bundle.artifact_manifest)),
+    ]
+    assert result.asset_snapshot_result.disposition is PersistenceDisposition.CREATED
+    assert (
+        result.benchmark_snapshot_result.disposition is PersistenceDisposition.CREATED
+    )
+
+
+@pytest.mark.parametrize(
+    "dispositions",
+    [
+        (
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.CREATED,
+        ),
+        (
+            PersistenceDisposition.REPLAYED,
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.CREATED,
+        ),
+        (
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.REPLAYED,
+            PersistenceDisposition.CREATED,
+            PersistenceDisposition.CREATED,
+        ),
+        (
+            PersistenceDisposition.REPLAYED,
+            PersistenceDisposition.REPLAYED,
+            PersistenceDisposition.REPLAYED,
+            PersistenceDisposition.REPLAYED,
+        ),
+    ],
+)
+def test_pair_recording_supports_new_run_and_exact_replay(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+    dispositions: tuple[
+        PersistenceDisposition,
+        PersistenceDisposition,
+        PersistenceDisposition,
+        PersistenceDisposition,
+    ],
+) -> None:
+    result, context = record_pair_with_fake_repository(
+        bundle=pair_bundle,
+        repository=pair_repository_with_dispositions(*dispositions),
+    )
+
+    assert context.exit_exc_type is None
+    assert (
+        result.asset_snapshot_result.disposition,
+        result.benchmark_snapshot_result.disposition,
+        result.experiment_run_result.disposition,
+        result.artifact_manifest_result.disposition,
+    ) == dispositions
+
+
+def test_pair_recording_rejects_missing_or_mismatched_benchmark_before_transaction(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+) -> None:
+    with pytest.raises(ValueError, match="benchmark_snapshot"):
+        CompletedExperimentPairRecordBundle.model_validate(
+            {
+                "asset_snapshot": pair_bundle.asset_snapshot,
+                "run": pair_bundle.run,
+                "manifest_id": pair_bundle.manifest_id,
+                "artifact_manifest": pair_bundle.artifact_manifest,
+            }
+        )
+
+    invalid = pair_bundle.model_copy(
+        update={
+            "benchmark_snapshot": pair_bundle.benchmark_snapshot.model_copy(
+                update={"snapshot_id": "mismatched-benchmark"}
+            )
+        }
+    )
+    context = _TransactionContext()
+    transaction_factory = _TransactionFactory(context)
+    repository_factory = _RepositoryFactory(pair_repository_with_dispositions())
+    with pytest.raises(ValueError, match="benchmark snapshot_id must match"):
+        record_completed_experiment_pair(
+            bundle=invalid,
+            transaction_factory=transaction_factory,
+            repository_factory=cast(RepositoryFactory, repository_factory),
+        )
+    assert transaction_factory.call_count == 0
+    assert repository_factory.call_count == 0
+
+
+def test_pair_recording_rejects_artifact_mismatch_before_transaction(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+) -> None:
+    invalid = pair_bundle.model_copy(
+        update={
+            "artifact_manifest": pair_bundle.artifact_manifest.model_copy(
+                update={"run_id": "different-run"}
+            )
+        }
+    )
+    transaction_factory = _TransactionFactory(_TransactionContext())
+
+    with pytest.raises(ValueError, match="artifact manifest run_id must match"):
+        record_completed_experiment_pair(
+            bundle=invalid,
+            transaction_factory=transaction_factory,
+        )
+    assert transaction_factory.call_count == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "blank_run_environment",
+        "invalid_run_timestamp",
+        "invalid_snapshot_state",
+        "asset_not_completed",
+        "benchmark_not_completed",
+        "invalid_artifact_entry",
+    ),
+)
+def test_pair_recording_canonically_revalidates_before_transaction(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+    mutation: str,
+) -> None:
+    invalid = invalid_pair_bundle(pair_bundle, mutation)
+    context = _TransactionContext()
+    transaction_factory = _TransactionFactory(context)
+    repository_factory = _RepositoryFactory(pair_repository_with_dispositions())
+
+    with pytest.raises(ValueError):
+        record_completed_experiment_pair(
+            bundle=invalid,
+            transaction_factory=transaction_factory,
+            repository_factory=cast(RepositoryFactory, repository_factory),
+        )
+
+    assert transaction_factory.call_count == 0
+    assert repository_factory.call_count == 0
+
+
+def test_pair_benchmark_conflict_propagates_and_rolls_back_atomically(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+) -> None:
+    conflict = ContractHashConflictError(
+        PersistenceErrorContext(
+            table_name="data_snapshot_manifests",
+            operation="record_data_snapshot_manifest",
+            logical_identity={"snapshot_id": "benchmark"},
+        )
+    )
+    repository = pair_repository_with_dispositions(benchmark=conflict)
+    context = _TransactionContext()
+    repository_factory = _RepositoryFactory(repository)
+
+    with pytest.raises(ContractHashConflictError) as raised:
+        record_completed_experiment_pair(
+            bundle=pair_bundle,
+            transaction_factory=_TransactionFactory(context),
+            repository_factory=cast(RepositoryFactory, repository_factory),
+        )
+
+    assert raised.value is conflict
+    assert context.exit_exc_type is ContractHashConflictError
+    assert repository_method_names(repository.calls) == [
+        "asset_snapshot",
+        "benchmark_snapshot",
+    ]
+
+
+def test_pair_partial_prior_run_state_is_rejected_inside_transaction(
+    pair_bundle: CompletedExperimentPairRecordBundle,
+) -> None:
+    repository = pair_repository_with_dispositions(
+        asset=PersistenceDisposition.REPLAYED,
+        benchmark=PersistenceDisposition.REPLAYED,
+        run=PersistenceDisposition.REPLAYED,
+        artifact=PersistenceDisposition.CREATED,
+    )
+    context = _TransactionContext()
+
+    with pytest.raises(CompletedExperimentDispositionCoherenceError):
+        record_completed_experiment_pair(
+            bundle=pair_bundle,
+            transaction_factory=_TransactionFactory(context),
+            repository_factory=cast(
+                RepositoryFactory,
+                _RepositoryFactory(repository),
+            ),
+        )
+
+    assert context.exit_exc_type is CompletedExperimentDispositionCoherenceError
+    assert repository_method_names(repository.calls) == [
+        "asset_snapshot",
+        "benchmark_snapshot",
+        "run",
+        "artifact",
+    ]
+
+
 def load_fixture(filename: str) -> dict[str, object]:
     return json.loads((FIXTURE_DIR / filename).read_text(encoding="utf-8"))
 
@@ -548,6 +825,30 @@ def repository_with_error(
         snapshot_result=error if stage == "snapshot" else created,
         run_result=error if stage == "run" else created,
         artifact_result=error if stage == "artifact" else created,
+    )
+
+
+def pair_repository_with_dispositions(
+    asset: PersistenceDisposition | BaseException = PersistenceDisposition.CREATED,
+    benchmark: PersistenceDisposition | BaseException = (
+        PersistenceDisposition.CREATED
+    ),
+    run: PersistenceDisposition | BaseException = PersistenceDisposition.CREATED,
+    artifact: PersistenceDisposition | BaseException = PersistenceDisposition.CREATED,
+) -> _PairFakeRepository:
+    def outcome(
+        table_name: str,
+        value: PersistenceDisposition | BaseException,
+    ) -> PersistenceWriteResult | BaseException:
+        if isinstance(value, BaseException):
+            return value
+        return write_result(table_name, value)
+
+    return _PairFakeRepository(
+        asset_result=outcome("data_snapshot_manifests", asset),
+        benchmark_result=outcome("data_snapshot_manifests", benchmark),
+        run_result=outcome("experiment_runs", run),
+        artifact_result=outcome("run_artifact_manifests", artifact),
     )
 
 
@@ -585,8 +886,63 @@ def record_with_fake_repository(
     return cast(Any, result), context, repository_factory
 
 
+def record_pair_with_fake_repository(
+    *,
+    bundle: CompletedExperimentPairRecordBundle,
+    repository: _PairFakeRepository,
+) -> tuple[CompletedExperimentPairRecordingResult, _TransactionContext]:
+    context = _TransactionContext()
+    repository_factory = _RepositoryFactory(repository)
+    result = record_completed_experiment_pair(
+        bundle=bundle,
+        transaction_factory=_TransactionFactory(context),
+        repository_factory=cast(RepositoryFactory, repository_factory),
+    )
+    return result, context
+
+
 def repository_method_names(calls: list[tuple[str, object]]) -> list[str]:
     return [name for name, _payload in calls]
+
+
+def invalid_pair_bundle(
+    bundle: CompletedExperimentPairRecordBundle,
+    mutation: str,
+) -> CompletedExperimentPairRecordBundle:
+    if mutation == "blank_run_environment":
+        environment = bundle.run.environment.model_copy(update={"platform": " "})
+        return bundle.model_copy(
+            update={"run": bundle.run.model_copy(update={"environment": environment})}
+        )
+    if mutation == "invalid_run_timestamp":
+        run = bundle.run.model_copy(
+            update={"status_updated_at": bundle.run.created_at - timedelta(days=1)}
+        )
+        return bundle.model_copy(update={"run": run})
+    if mutation == "invalid_snapshot_state":
+        snapshot = bundle.asset_snapshot.model_copy(
+            update={
+                "available_at": bundle.asset_snapshot.created_at + timedelta(days=1)
+            }
+        )
+        return bundle.model_copy(update={"asset_snapshot": snapshot})
+    if mutation == "asset_not_completed":
+        snapshot = bundle.asset_snapshot.model_copy(
+            update={"status": DataSnapshotStatus.CREATED}
+        )
+        return bundle.model_copy(update={"asset_snapshot": snapshot})
+    if mutation == "benchmark_not_completed":
+        snapshot = bundle.benchmark_snapshot.model_copy(
+            update={"status": DataSnapshotStatus.FAILED}
+        )
+        return bundle.model_copy(update={"benchmark_snapshot": snapshot})
+    if mutation == "invalid_artifact_entry":
+        entry = bundle.artifact_manifest.artifacts[0].model_copy(update={"uri": " "})
+        manifest = bundle.artifact_manifest.model_copy(
+            update={"artifacts": (entry, *bundle.artifact_manifest.artifacts[1:])}
+        )
+        return bundle.model_copy(update={"artifact_manifest": manifest})
+    raise AssertionError(f"unknown pair-bundle mutation: {mutation}")
 
 
 def expected_calls_for_failure(stage: str) -> list[str]:

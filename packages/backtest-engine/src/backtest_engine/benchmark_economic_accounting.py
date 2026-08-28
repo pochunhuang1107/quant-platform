@@ -49,11 +49,45 @@ def initialize_economic_benchmark(
         policy.model_dump(mode="python")
     )
     capital = _parse_positive_money(initial_capital, field_name="initial_capital")
-    raw_price = _parse_positive_money(
-        raw_execution_price, field_name="raw_execution_price"
-    )
     capital = quantize_economic_money(capital)
-    raw_price = quantize_economic_money(raw_price)
+    return apply_initial_benchmark_buy(
+        state=EconomicBenchmarkState(
+            policy_version=approved_policy.policy_version,
+            instrument_id=instrument_id,
+            currency=currency,
+            cash=capital,
+            fractional_units=Decimal("0"),
+        ),
+        raw_execution_price=raw_execution_price,
+        policy=approved_policy,
+    )
+
+
+def apply_initial_benchmark_buy(
+    *,
+    state: EconomicBenchmarkState,
+    raw_execution_price: Decimal,
+    policy: BenchmarkEconomicPolicy = APPROVED_BENCHMARK_ECONOMIC_POLICY,
+) -> EconomicBenchmarkState:
+    """Invest a zero-unit state after first-session action accounting."""
+
+    approved_policy = BenchmarkEconomicPolicy.model_validate(
+        policy.model_dump(mode="python")
+    )
+    if state.policy_version != approved_policy.policy_version:
+        raise EconomicAccountingError("benchmark state policy does not match policy")
+    if state.fractional_units != 0:
+        raise EconomicAccountingError("initial benchmark buy requires zero units")
+    if state.receivables:
+        raise EconomicAccountingError(
+            "initial benchmark buy state must not have receivables"
+        )
+    capital = quantize_economic_money(state.cash)
+    if capital <= 0:
+        raise EconomicAccountingError("initial benchmark cash must be positive")
+    raw_price = quantize_economic_money(
+        _parse_positive_money(raw_execution_price, field_name="raw_execution_price")
+    )
 
     with localcontext(_BENCHMARK_DECIMAL_CONTEXT):
         unquantized_units = capital / raw_price
@@ -73,10 +107,12 @@ def initialize_economic_benchmark(
 
     return EconomicBenchmarkState(
         policy_version=approved_policy.policy_version,
-        instrument_id=instrument_id,
-        currency=currency,
+        instrument_id=state.instrument_id,
+        currency=state.currency,
         cash=residual_cash,
         fractional_units=units,
+        receivables=state.receivables,
+        applied_corporate_action_event_ids=(state.applied_corporate_action_event_ids),
     )
 
 
@@ -319,6 +355,7 @@ def _validate_session_date(session_date: date) -> None:
 
 
 __all__ = [
+    "apply_initial_benchmark_buy",
     "apply_session_open_benchmark_economic_accounting",
     "initialize_economic_benchmark",
     "value_economic_benchmark",
