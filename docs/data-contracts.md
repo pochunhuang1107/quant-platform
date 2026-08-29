@@ -1187,6 +1187,29 @@ validation. It did not invoke pair recording or persist the run to PostgreSQL.
 The detailed input hashes, run facts, artifact authority, and acceptance limits
 are recorded in `docs/validation/s3d2b-qqq-spy-2024.md`.
 
+### QQQ SMA Trend-Filter V1 Specification Authority
+
+The human-approved research policy for `qqq-sma-trend-filter-v1` is frozen in
+`strategies/etfs/qqq-sma-trend-filter-v1.md`. That document, rather than this
+general contract inventory, is authoritative for the exact SMA window, timing,
+position, cost, cash/book-cost, corporate-action feature, warm-up, research
+partition, holdout, failure-gate, retuning, benchmark, and progression rules.
+
+This specification adds no runtime or durable contract. Later implementation
+must make economically material strategy policy part of resolved deterministic
+identity, retain exact signal-window and timing evidence, reconcile repeated
+buy/sell costs and book cost, and preserve semantically verified artifacts and
+pair-aware ledger authority. The future multi-year data boundary must preserve
+exact component verification and deterministic ordered provenance without
+overlap, gap, repair, or date intersection. Its concrete versioned contract is
+deliberately deferred to the next architecture slice.
+
+The primary benchmark remains gross economic SPY. Same-period QQQ economic
+buy-and-hold is a separate factual comparator run, not a second engine benchmark
+leg. No provider acquisition, strategy execution, 2025 holdout opening,
+artifact change, identity implementation, persistence change, or trading
+authority follows from the specification alone.
+
 ## Research Report Card Contract
 
 `ResearchReportCard` is a stable `research_sdk` contract for deterministic

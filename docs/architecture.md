@@ -953,6 +953,33 @@ transaction, or persist the accepted real validation run to PostgreSQL. Detailed
 evidence and the acceptance boundary are recorded in
 `docs/validation/s3d2b-qqq-spy-2024.md`.
 
+## QQQ SMA Trend-Filter V1 Research Protocol
+
+`strategies/etfs/qqq-sma-trend-filter-v1.md` is the canonical human-approved
+policy authority for the first proposed real strategy. It freezes one
+`lookback_sessions = 200` raw-close rule, `NEXT_EXPECTED_SESSION` visibility,
+two QQQ states (`CASH` and integer-share `INVESTED`), full-state transitions at
+raw open, symmetric adverse costs, fungible settled cash, independent research
+partitions, split-window fail-closed behavior, catastrophic gates, and the 2025
+holdout embargo.
+
+The specification reuses the approved S3d1/S3d2b economic policies but does not
+add execution code or broaden the accepted 2024 infrastructure evidence. It
+does not define a Pydantic or durable schema, calculate an SMA, support sells,
+compose multi-year data, alter artifacts or identity, access providers, or run
+an experiment. Future multi-year data architecture must provide deterministic
+ordered component authority with exact compatibility and no overlap, gap,
+repair, or intersection; whether that uses a new composite contract or a
+legitimate versioned snapshot extension remains an implementation decision.
+
+The primary engine benchmark remains the existing gross economic SPY
+buy-and-hold policy. Same-period QQQ economic buy-and-hold is a separate run and
+future factual comparison input, not a second benchmark leg. The frozen
+implementation order is multi-year temporal data composition, narrow long/cash
+QQQ SMA execution, then economic report-card/comparison and controlled
+validation readiness. Provider acquisition and each real research-stage
+execution require later explicit human authority.
+
 ## Massive Primary Source Capture
 
 Slice 3 S3c3a records the owner-selected S3c3 development-source decision and
