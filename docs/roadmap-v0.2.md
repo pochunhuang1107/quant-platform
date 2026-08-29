@@ -279,6 +279,15 @@ pair-ledger mapping have been implemented and human validated for the accepted
 validity, PostgreSQL persistence approval for that run, controlled-batch
 readiness, or full real ETF research readiness.
 
+The human-approved first real-strategy research protocol is now frozen in
+`strategies/etfs/qqq-sma-trend-filter-v1.md`. It defines one fixed SMA-200
+raw-price QQQ trend filter, SPY primary benchmark, same-period QQQ buy-and-hold
+secondary comparator, 2016-2025 target authority, independent development /
+validation / holdout partitions, technical and catastrophic gates, and a 2025
+holdout embargo. This is specification authority only: no multi-year data
+composition, strategy execution, provider acquisition, or holdout result is
+implemented or authorized by that document.
+
 Acceptance criteria:
 
 - curated snapshot lineage
@@ -291,6 +300,11 @@ Acceptance criteria:
 - validation and out-of-sample design
 - failure modes
 - human approval for large sweeps
+
+The next implementation sequence is deterministic provider-neutral multi-year
+temporal data composition, then narrow long/cash QQQ SMA execution, then
+economic report-card/compatible factual-comparison support and controlled
+validation readiness. A generic batch runner remains premature.
 
 ## Deferred Scope
 
